@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>CamArcade</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐱</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="pieces.css?v=5">
+</head>
+<body>
+
+<header class="topbar hidden" id="appBar">
+  <a class="logo" href="#/menu"><span class="logo-mark">🐱</span><span class="logo-text">Cam<b>Arcade</b></span></a>
+  <nav class="topnav">
+    <a href="#/menu" data-nav="menu">🏠 Home</a>
+    <a href="#/pass" data-nav="pass">🎟️ Streak Pass</a>
+    <a href="#/cat" data-nav="cat">🐱 My Cat</a>
+  </nav>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="topMicBtn" title="Microphone">🎤</button>
+    <button class="icon-btn" id="topCamBtn" title="Camera in games">📷</button>
+    <button class="icon-btn" id="soundBtn" title="Sound effects">🔊</button>
+    <div class="stats" id="caStats"></div>
+    <div class="user-menu">
+      <button class="user-btn" id="userBtn"><span id="userName"></span> ▾</button>
+      <div class="user-pop hidden" id="userPop">
+        <button class="btn small danger" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ================= SIGN UP / LOG IN ================= -->
+<main class="screen auth-screen hidden" id="scr-auth">
+  <div class="auth-wrap">
+    <div class="auth-hero">
+      <div class="auth-cat" id="authCat"></div>
+      <h1>Cam<b>Arcade</b></h1>
+      <p>Play games as your cat. Win streaks, catch 🐟 fish, and dress your cat up.</p>
+    </div>
+    <div class="card auth-card">
+      <div class="tabs auth-tabs">
+        <button class="tab" type="button" data-auth="signup">Sign up</button>
+        <button class="tab" type="button" data-auth="login">Log in</button>
+      </div>
+      <form id="authForm" novalidate>
+        <label class="field">
+          <span>Username</span>
+          <input id="authUser" maxlength="16" autocomplete="username" spellcheck="false" autocapitalize="off">
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="authPass" type="password" maxlength="64" autocomplete="current-password">
+        </label>
+        <label class="field" id="authPass2Row">
+          <span>Type the password again</span>
+          <input id="authPass2" type="password" maxlength="64" autocomplete="new-password">
+        </label>
+        <label class="check" id="rememberRow"><input type="checkbox" id="authRemember"> Keep me logged in on this computer</label>
+        <p class="msg" id="authMsg" role="alert"></p>
+        <button class="btn go big wide" id="authSubmit" type="submit">Create account</button>
+      </form>
+      <p class="hint small center" id="authHint"></p>
+    </div>
+  </div>
+</main>
+
+<!-- ================= CAMERA + MICROPHONE ================= -->
+<main class="screen perm-screen hidden" id="scr-perm">
+  <div class="card perm-card">
+    <div class="perm-media">
+      <div class="perm-cat" id="permCat"></div>
+      <div class="perm-video hidden" id="permVideoBox"><video id="permVideo" class="mirror" autoplay playsinline muted></video><span class="v-label">📷 You</span></div>
+    </div>
+    <h1 id="permTitle">Turn on your camera and microphone?</h1>
+    <p id="permText">When you play, your camera turns on so the other player can see you, and they hear your voice. You can switch to your cat at any time. Your cat's mouth moves when you talk.</p>
+    <div class="meter hidden" id="permMeter"><i id="permMeterBar"></i></div>
+    <p class="msg" id="permMsg"></p>
+    <div class="row center perm-btns">
+      <button class="btn go big" id="permAllow">🎤📷 Allow camera &amp; microphone</button>
+      <button class="btn big" id="permSkip">No thanks</button>
+      <button class="btn go big hidden" id="permContinue">Continue →</button>
+    </div>
+    <p class="hint small" id="permHint">Choose "No thanks" to play as your cat. You can turn the camera on later with 📷 at the top.</p>
+  </div>
+</main>
+
+<!-- ================= MENU ================= -->
+<main class="screen menu-screen hidden" id="scr-menu">
+  <section class="menu-hello">
+    <div class="menu-cat" id="menuCat"></div>
+    <div class="menu-hello-text">
+      <h1>Hi, <span id="menuName"></span>!</h1>
+      <div class="hero-stats">
+        <span class="stat-chip">🔥 <b id="menuStreak">0</b>&nbsp;streak</span>
+        <span class="stat-chip">🏆 <b id="menuBest">0</b>&nbsp;best</span>
+        <span class="stat-chip fish">🐟 <b id="menuFish">0</b>&nbsp;fish</span>
+        <span class="stat-chip">🎟️ Tier <b id="menuTier">0</b></span>
+      </div>
+      <p class="muted menu-mic" id="menuMic"></p>
+    </div>
+  </section>
+
+  <div class="mode-grid">
+    <a class="mode-card classic" href="#/solos">
+      <span class="tag">⚡ Solos</span>
+      <h2>Classic Games</h2>
+      <p>Get matched with a random player and win quick mini-games. Every win grows your 🔥 streak and catches 🐟 fish.</p>
+      <div class="mc-icons"><span>✊</span><span>⚡</span><span>⭕</span><span>👆</span><span>🧮</span></div>
+      <span class="btn solos-btn big">⚡ Find a match</span>
+    </a>
+    <a class="mode-card chess" href="#/chess">
+      <span class="tag">♞ 1v1</span>
+      <h2>Chess</h2>
+      <p>Play chess with a friend. Create a room, send them the code, and chat while your cats play.</p>
+      <div class="mc-board" id="menuBoard"></div>
+      <span class="btn go big">♞ Play chess</span>
+    </a>
+  </div>
+
+  <section class="card practice-card">
+    <div class="pc-head">
+      <div>
+        <h2>🎯 Practice mode</h2>
+        <p class="muted">Play against a bot. Practice games don't change your streak or fish.</p>
+      </div>
+      <div class="seg" id="practiceLevel" role="group" aria-label="Bot difficulty">
+        <button data-level="easy">😺 Easy</button>
+        <button data-level="medium">😼 Medium</button>
+        <button data-level="hard">😾 Hard</button>
+      </div>
+    </div>
+    <div class="pc-games">
+      <a class="pc-game" href="#/practice?game=rps"><span>✊</span><b>Rock Paper Scissors</b></a>
+      <a class="pc-game" href="#/practice?game=draw"><span>⚡</span><b>Quick Draw</b></a>
+      <a class="pc-game" href="#/practice?game=ttt"><span>⭕</span><b>Tic-Tac-Toe</b></a>
+      <a class="pc-game" href="#/practice?game=tap"><span>👆</span><b>Tap Race</b></a>
+      <a class="pc-game" href="#/practice?game=math"><span>🧮</span><b>Math Sprint</b></a>
+      <a class="pc-game" href="#/chess?bot=1"><span>♞</span><b>Chess vs Computer</b></a>
+    </div>
+  </section>
+
+  <div class="menu-links">
+    <a class="link-card" href="#/cat"><span>🐱</span><b>My Cat &amp; Shop</b><small>Spend your fish on hats, glasses and more</small></a>
+    <a class="link-card" href="#/pass"><span>🎟️</span><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
+  </div>
+</main>
+
+<!-- ================= CLASSIC GAMES (Solos + practice matches) ================= -->
+<main class="screen hidden" id="scr-play">
+  <div class="match" id="matchView">
+    <div class="m-top">
+      <div class="m-player">
+        <div class="vbox cat-tile" id="themTile">
+          <div class="m-cat" id="themCat"></div>
+          <video id="themVideo" class="hidden" autoplay playsinline></video>
+          <div class="v-label"><span class="dot on" id="oppDot"></span><span id="themName">Opponent</span><span id="themMic"></span></div>
+          <span class="streak-tag" id="themStreak"></span>
+          <button class="btn small primary unmute hidden" id="unmuteBtn">🔊 Tap to hear them</button>
+        </div>
+      </div>
+      <div class="m-score">
+        <div class="sc-mode" id="scMode"></div>
+        <div class="sc-game" id="scGame"></div>
+        <div class="sc-row">
+          <div class="sc-side"><b id="scMe">0</b><span>You</span></div>
+          <div class="sc-dash">:</div>
+          <div class="sc-side"><b id="scThem">0</b><span id="scThemName">Them</span></div>
+        </div>
+        <div class="sc-note" id="scNote"></div>
+      </div>
+      <div class="m-player">
+        <div class="vbox cat-tile" id="meTile">
+          <div class="m-cat" id="meCat"></div>
+          <video id="meVideo" class="mirror hidden" autoplay playsinline muted></video>
+          <div class="v-label">You<span id="meMic"></span></div>
+          <span class="streak-tag" id="meStreak"></span>
+        </div>
+      </div>
+    </div>
+    <section class="stage-card"><div class="stage" id="stage"></div></section>
+    <div class="m-controls">
+      <button class="btn" id="micBtn">🎤 Mic on</button>
+      <button class="btn" id="faceBtn">🐱 Show my cat</button>
+      <button class="btn" id="hideThemBtn">🙈 Hide their camera</button>
+      <button class="btn" id="muteThemBtn">🔈 Mute them</button>
+      <button class="btn danger" id="skipBtn">⏭ Skip</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="searchView">
+    <div class="search-card">
+      <div class="radar"><div class="radar-cat" id="searchCat"></div></div>
+      <h2 id="searchTitle">Looking for a player…</h2>
+      <p class="muted" id="searchSub">Searching…</p>
+      <p class="search-tip hidden" id="searchTip">Nobody else is searching right now. Stay here and you'll be matched as soon as someone joins, or invite a friend to open CamArcade too.</p>
+      <div class="row center">
+        <button class="btn hidden" id="retryBtn">↻ Try again</button>
+        <button class="btn ghost" id="cancelSearchBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay vs hidden" id="vs">
+    <div class="vs-side">
+      <div class="vs-cat" id="vsMeCat"></div>
+      <b id="vsMeName"></b>
+      <span id="vsMeTag"></span>
+    </div>
+    <div class="vs-mid">
+      <div class="vs-word">VS</div>
+      <div class="vs-game"><span class="vs-icon" id="vsIcon"></span><b id="vsGame"></b><small id="vsBlurb"></small></div>
+      <div class="vs-count" id="vsCount">3</div>
+    </div>
+    <div class="vs-side">
+      <div class="vs-cat" id="vsThemCat"></div>
+      <b id="vsThemName"></b>
+      <span id="vsThemTag"></span>
+    </div>
+  </div>
+</main>
+
+<!-- ================= MATH SPRINT PRACTICE SETTINGS ================= -->
+<main class="screen hidden" id="scr-practice">
+  <div class="napkin">
+    <h1>🧮 Math Sprint</h1>
+    <p class="muted center">Answer as many as you can before the time runs out.</p>
+    <div class="nk-card">
+      <div class="nk-row">
+        <label class="nk-check"><input type="checkbox" id="nkAdd" checked> Addition</label>
+        <input class="nk-num" id="nkAddA1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkAddA2" type="number" value="100">
+        <span class="nk-op">+</span>
+        <input class="nk-num" id="nkAddB1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkAddB2" type="number" value="100">
+      </div>
+      <div class="nk-row">
+        <label class="nk-check"><input type="checkbox" id="nkSub" checked> Subtraction</label>
+        <input class="nk-num" id="nkSubA1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkSubA2" type="number" value="100">
+        <span class="nk-op">−</span>
+        <input class="nk-num" id="nkSubB1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkSubB2" type="number" value="100">
+      </div>
+      <div class="nk-row">
+        <label class="nk-check"><input type="checkbox" id="nkMul" checked> Multiplication</label>
+        <input class="nk-num" id="nkMulA1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkMulA2" type="number" value="12">
+        <span class="nk-op">×</span>
+        <input class="nk-num" id="nkMulB1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkMulB2" type="number" value="100">
+      </div>
+      <div class="nk-row">
+        <label class="nk-check"><input type="checkbox" id="nkDiv" checked> Division</label>
+        <input class="nk-num" id="nkDivA1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkDivA2" type="number" value="12">
+        <span class="nk-op">÷</span>
+        <input class="nk-num" id="nkDivB1" type="number" value="2"><span class="nk-to">to</span><input class="nk-num" id="nkDivB2" type="number" value="100">
+      </div>
+      <div class="nk-row">
+        <span class="nk-check">Duration</span>
+        <input class="nk-num" id="nkTime" type="number" value="120"><span class="nk-to">seconds</span>
+      </div>
+    </div>
+    <p class="msg center" id="nkMsg"></p>
+    <button class="btn nk-start" id="nkStart">Start</button>
+    <p class="muted center">Your best score: <b id="nkBest">0</b> · <a href="#/menu">Back to menu</a></p>
+  </div>
+</main>
+
+<!-- ================= CHESS ================= -->
+<main class="screen hidden" id="scr-chess">
+  <div id="lobby" class="lobby">
+    <div class="lobby-head">
+      <h1>♞ Chess</h1>
+      <p>Create a room and send the code to a friend. You'll see each other's cats and hear each other talk.</p>
+    </div>
+    <div class="lobby-grid">
+      <section class="card">
+        <div class="card-head"><h2>🐱 You</h2><span class="pill" id="chessMicPill">Mic off</span></div>
+        <div class="vbox cat-tile lobby-cat" id="lobbyCat"></div>
+        <p class="hint" id="lobbyMicHint"></p>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>♟️ Play</h2></div>
+        <div class="invite hidden" id="inviteBox">
+          <span>🎉 You're invited to room <b id="inviteCode"></b></span>
+          <button class="btn go" id="inviteJoinBtn">Join game</button>
+        </div>
+        <div class="panel" id="menuPanel">
+          <button class="choice" id="createBtn">
+            <span class="choice-icon">🌐</span>
+            <span class="choice-text"><b>Create a room</b><small>Get a code to send to your friend</small></span>
+            <span class="chev">›</span>
+          </button>
+          <div class="choice join">
+            <span class="choice-icon">🔑</span>
+            <span class="choice-text"><b>Join a room</b><small>Type the code your friend sent you</small></span>
+            <div class="join-row">
+              <input id="joinInput" class="code-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" aria-label="Room code">
+              <button class="btn primary" id="joinBtn">Join</button>
+            </div>
+          </div>
+          <button class="choice" id="localBtn">
+            <span class="choice-icon">👥</span>
+            <span class="choice-text"><b>Pass &amp; play</b><small>Two players on this computer</small></span>
+            <span class="chev">›</span>
+          </button>
+          <p class="msg" id="menuMsg" role="alert"></p>
+        </div>
+        <div class="panel hidden" id="hostPanel">
+          <p class="muted center label">Your room code</p>
+          <div class="room-code" id="roomCode">······</div>
+          <div class="row center">
+            <button class="btn small" id="copyCodeBtn">📋 Copy code</button>
+            <button class="btn small" id="copyLinkBtn">🔗 Copy invite link</button>
+          </div>
+          <div class="waiting"><span class="spinner"></span><span id="hostMsg">Waiting for your friend to join…</span></div>
+          <p class="hint center">Send the code to your friend. They open CamArcade, go to Chess, type it in, and press <b>Join</b>.</p>
+          <p class="hint center small hidden" id="linkHint">To test by yourself, open CamArcade in a second browser and join with this code.</p>
+          <button class="btn ghost" id="cancelHostBtn">Cancel</button>
+        </div>
+        <div class="panel hidden" id="joinPanel">
+          <div class="waiting big"><span class="spinner"></span><span id="joinMsg">Joining…</span></div>
+          <button class="btn ghost" id="cancelJoinBtn">Cancel</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="gameView" class="game hidden">
+    <section class="g-videos">
+      <div class="vbox cat-tile remote" id="remoteTile">
+        <div class="m-cat" id="remoteCat"></div>
+        <video id="remoteVideo" class="hidden" autoplay playsinline></video>
+        <div class="v-label"><span class="dot off" id="oppDot"></span><span id="remoteName">Opponent</span><span id="remoteMic"></span></div>
+        <div class="v-overlay hidden" id="remoteOverlay"><p id="remoteText"></p></div>
+        <button class="btn small primary unmute hidden" id="unmuteBtn">🔊 Click to hear your opponent</button>
+      </div>
+      <div class="vbox cat-tile mine" id="localTile">
+        <div class="m-cat" id="localCat"></div>
+        <video id="localVideo" class="mirror hidden" autoplay playsinline muted></video>
+        <div class="v-label">You</div>
+      </div>
+    </section>
+
+    <section class="g-board">
+      <div class="pbar" id="topBar"></div>
+      <div class="board-frame"><div id="board" class="board"></div></div>
+      <div class="pbar" id="bottomBar"></div>
+    </section>
+
+    <section class="g-info">
+      <div class="banner hidden" id="banner"><span id="bannerText"></span><div class="row" id="bannerBtns"></div></div>
+      <div class="status" id="statusBox"></div>
+      <div class="offer hidden" id="offerBar"><span id="offerText"></span><div class="row" id="offerBtns"></div></div>
+      <div class="controls">
+        <button class="btn" id="micBtn">🎤 Mic on</button>
+        <button class="btn" id="faceBtn">📷 Show my face</button>
+        <button class="btn" id="drawBtn">🤝 Offer draw</button>
+        <button class="btn" id="resignBtn">🏳️ Resign</button>
+        <button class="btn" id="undoBtn">↶ Undo</button>
+        <button class="btn" id="rematchBtn">↻ Rematch</button>
+        <button class="btn" id="flipBtn">⇅ Flip board</button>
+        <button class="btn danger" id="leaveBtn">✕ Leave</button>
+      </div>
+      <div class="moves-card">
+        <div class="moves-head">Moves</div>
+        <div class="moves" id="moveList"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal hidden" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-icon" id="modalIcon"></div>
+      <h2 id="modalTitle"></h2>
+      <p id="modalText"></p>
+      <div class="promo hidden" id="promoRow"></div>
+      <div class="row center" id="modalBtns"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ================= STREAK PASS ================= -->
+<main class="screen hidden" id="scr-pass">
+  <div class="pass-page">
+    <section class="pass-hero">
+      <div class="pass-head">
+        <span class="tag">🎟️ Season 1</span>
+        <h1>Streak Pass</h1>
+        <p>Win Classic Games to earn XP and unlock 20 tiers of rewards. Your 🔥 streak gives bonus XP, so the longer your streak, the faster you climb.</p>
+        <div class="pp-top"><b id="ppTier">Tier 0</b><span id="ppXp">0 / 300 XP</span></div>
+        <div class="bar big"><i id="ppBar"></i></div>
+        <div class="row pass-actions">
+          <a class="btn solos-btn big" href="#/solos">⚡ Play Classic Games</a>
+          <button class="btn primary big" id="claimAllBtn">🎁 Claim all</button>
+        </div>
+      </div>
+      <div class="card xp-card">
+        <h3>How to earn</h3>
+        <div class="xp-row"><span>🏆 Win</span><b>100 XP + 20 per 🔥 · 🐟 5 + 5 per 🔥</b></div>
+        <div class="xp-row"><span>🤝 Draw</span><b>50 XP · 🐟 3</b></div>
+        <div class="xp-row"><span>💀 Loss</span><b>25 XP</b></div>
+        <div class="xp-row"><span>Your streak</span><b>🔥 <span id="ptStreak">0</span> · best <span id="ptBest">0</span></b></div>
+        <p class="muted small">The streak bonus tops out at 🔥10 (300 XP and 55 fish a win). A loss resets your streak, but you keep your tiers and everything you claimed.</p>
+      </div>
+    </section>
+    <section class="tiers" id="tiers"></section>
+  </div>
+</main>
+
+<!-- ================= MY CAT + SHOP ================= -->
+<main class="screen hidden" id="scr-cat">
+  <div class="char-page">
+    <section class="card char-left">
+      <div class="char-stage" id="charStage"></div>
+      <div class="preview-bar hidden" id="previewBar">
+        <span id="previewText"></span>
+        <div class="row">
+          <button class="btn small go" id="previewBuy">Buy</button>
+          <button class="btn small ghost" id="previewClear">Take it off</button>
+        </div>
+      </div>
+      <div class="char-name"><b id="charName"></b><span class="muted small" id="charTalk"></span></div>
+      <div class="char-stats">
+        <span>🔥 <b id="csStreak">0</b> streak</span>
+        <span>🏆 <b id="csBest">0</b> best</span>
+        <span>✅ <b id="csWins">0</b> wins</span>
+      </div>
+    </section>
+    <section class="char-right">
+      <div class="tabs">
+        <button class="tab" data-tab="wardrobe">👕 Wardrobe</button>
+        <button class="tab" data-tab="shop">🛒 Shop</button>
+        <span class="coin-pill">🐟 <b id="fishCount">0</b></span>
+      </div>
+      <div class="slot-chips" id="slotChips"></div>
+      <div class="item-grid" id="itemGrid"></div>
+      <p class="empty-note hidden" id="emptyNote"></p>
+    </section>
+  </div>
+</main>
+
+<div class="modal hidden" id="caModal" role="dialog" aria-modal="true" aria-labelledby="caModalTitle">
+  <div class="modal-card">
+    <div class="modal-icon" id="caModalIcon"></div>
+    <h2 id="caModalTitle"></h2>
+    <p id="caModalText"></p>
+    <div class="row center" id="caModalBtns"></div>
+  </div>
+</div>
+<div class="toast hidden" id="caToast" role="status" aria-live="polite"></div>
+
+<script src="lib/chess.min.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="common.js?v=5"></script>
+<script src="solos.js?v=5"></script>
+<script src="chess.js?v=5"></script>
+<script src="pass.js?v=5"></script>
+<script src="character.js?v=5"></script>
+<script src="app.js?v=5"></script>
+</body>
+</html>
