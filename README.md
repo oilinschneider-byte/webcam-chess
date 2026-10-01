@@ -12,11 +12,86 @@ A browser game site for 1v1 games over webcam. Show your camera, or play as a ca
 1. **Sign up** with a username and password. Next time, just **log in**. Accounts are saved in this browser on this computer.
 2. **Allow camera & microphone**, or press **No thanks**. If you allow them, your camera turns on by itself in every game (Classic Games, Chess, Practice and Chess vs Computer) and turns off when you leave the game. With the microphone on, other players hear you and your cat's mouth moves when you talk. If you press **No thanks**, you play as your cat.
 3. Pick from the menu:
-   - **⚡ Classic Games** (left): starts searching for a random player right away. You play a quick mini-game: Rock Paper Scissors, Quick Draw, Tic-Tac-Toe, Tap Race or Math Sprint. Every win adds 🔥 to your streak and catches 🐟 fish, and the longer your streak, the more fish each win gives. A loss resets your streak. The first time you search with your camera on, a reminder says that other players will see you.
+   - **⚡ Classic Games** (left): starts searching for a random player right away. Every round goes like this:
+     1. **Match found:** 5 seconds face to face (big cameras, or cats), while the game's rules show.
+     2. **The game:** one of 38 quick mini-games, picked at random. Most take about 30 seconds; a few (like Stack Tower and Remember the Sequence) keep going until someone wins. See the list below.
+     3. **After the game:** a few seconds face to face again to react, with **🔁 Rematch** and **⏭ Next**. If you both press Rematch, you play each other again with a new game. Otherwise you're matched with someone new right away. (If nobody new turns up for about 20 seconds, you can get the same player again.)
+
+     Every win adds 🔥 to your streak and catches 🐟 fish, and the longer your streak, the more fish each win gives. A loss resets your streak. Your camera is on the left and the other player is on the right. The first time you search with your camera on, a reminder says that other players will see you.
    - **♞ Chess** (right): create a room and send the code to a friend. Your cameras turn on when the game starts.
-   - **🎯 Practice mode** (underneath): play any game against a bot (Easy, Medium or Hard), or **Chess vs Computer**. Practice doesn't change your streak or fish. **Math Sprint** practice lets you choose which kinds of problems, the number ranges, and the time limit.
+   - **🎯 Practice mode** (underneath): press **🎲 Classic mode vs bots** to play random games one after another against bots (face to face with each bot, then Rematch or a new bot), or pick one game to practice. There's also **Chess vs Computer**. Choose Easy, Medium or Hard bots. Practice doesn't change your streak or fish. **Math Sprint** practice lets you choose which kinds of problems, the number ranges, and the time limit.
    - **🐱 My Cat & Shop**: spend fish on fur colors, hats, glasses, shirts, collars, things to hold and backgrounds.
    - **🎟️ Streak Pass**: wins earn XP (more with a longer streak) that unlock 20 tiers of fish and exclusive items.
+
+## The 38 Classic Games
+
+Every game has exactly the same chance of coming up. The app goes through all 38 in a random order before any game repeats. (Online, the other player's app picks the game half the time, so a game can come back a bit sooner.) Pose Match only comes up when both players have their camera on.
+
+**⚡ Action**
+
+| Game | How to win |
+| --- | --- |
+| ✊ Rock Paper Scissors | Pick at the same time. First to 2 round wins. |
+| ⚡ Quick Draw | Click when it turns green. Clicking too early loses the round. First to 2. |
+| 👆 Tap Race | Tap the most in 5 seconds. Best of 3. |
+| 🎯 Aim Targets | Hit the most targets in 20 seconds. |
+| ⏱️ Perfect Timing | Stop the moving needle closest to the gold line. First to 2. |
+| ☄️ Dodge | Dodge the falling rocks (3 lives). Whoever lasts longest wins. |
+| 🧱 Stack Tower | Drop the sliding blocks onto the tower. There's no clock: the blocks speed up as the tower grows, and you keep going until one tower beats the other. (15 seconds without dropping a block also ends your tower.) |
+| 🐍 Snake Sprint | Eat the most apples in 30 seconds. Crashing makes you start small again. |
+| 🌀 Mini Maze Race | Same maze for both players. First out wins. |
+| ⚽ Penalty Shootout | Swipe left, up (the middle) or right to shoot. Then the view flips: you're the goalie and you swipe to dive. On a computer, drag with the mouse or use the arrow keys. 3 kicks each, then sudden death. |
+| 🕺 Pose Match | Copy the pose on screen. Your camera checks it, and the first to hold the pose wins the round. First to 2. |
+
+**🧠 Brain & board**
+
+| Game | How to win |
+| --- | --- |
+| 🧠 Memory Match | Same cards for both players. Find all 6 pairs first, or the most pairs in 40 seconds. |
+| 🔁 Remember the Sequence | Tiles light up one after another, and you tap them back in order. Every round adds one more tile. The first to make a mistake loses. |
+| 🥤 Cup Shuffle | Follow the ball's cup through faster and faster shuffles. 3 rounds. |
+| 🧮 Math Sprint | Most right answers in 35 seconds. |
+| 🔢 Higher or Lower | Guess if the next card is higher or lower. Most right after 5 cards (A = 1, K = 13). |
+| 🧐 Odd One Out | Tap the thing that doesn't belong. Most right in 30 seconds wins. |
+| 🧩 Pattern Next | What comes next in the pattern? Most right in 30 seconds wins. |
+| 🔍 Spot the Difference | Find the 5 differences first (wrong clicks freeze you for a moment). |
+| ⭕ Tic-Tac-Toe | Three in a row wins. A tie means you play again. After 3 ties in a row, it's a draw (your streak is safe) and you both move on to someone new. |
+| 🟦 Connect Four | Four in a row. 5 seconds a turn. |
+| ♟️ Speed Chess | 8 seconds a move. If nobody wins within 40 seconds (or it's a draw), 💣 the board gets nuked: each side keeps its king and at most 3 random pieces. Then you play 25 more seconds. No checkmate by then? Whoever has more piece points left wins (queen 9, rook 5, bishop and knight 3, pawn 1). |
+
+**🌍 Quiz** (the fastest right answer wins each round)
+
+| Game | How to win |
+| --- | --- |
+| 🏳️ Flag Quiz | Name the country. First to 4. After 2 flags it gets hard: all 4 answers are look-alike flags (like Ireland and Côte d'Ivoire). |
+| 🌍 GeoGuessr | Click where a famous place is on the world map. The closest guess wins the round. First to 2. |
+| 🗺️ Country Shape | Name the country from its outline. First to 3. |
+| ⚖️ Which Is Bigger? | Taller, faster, older, more people? First to 3. |
+| 📏 Closest Guess | Answer a number question. Closest wins the round. 3 rounds. |
+| 📅 Timeline | Put 4 events in order, oldest first (tap one again to take it back), then lock in. 3 rounds. |
+| 🎬 Emoji Movie Guess | Name the movie from emojis. First to 3. |
+| 🐾 Animal Guess | Guess the animal from clues that start hard and get easier. All 4 answers are similar animals (like 4 big cats). First to 3. |
+
+**🔤 Words & minds**
+
+| Game | How to win |
+| --- | --- |
+| 🔤 Word Scramble | Unscramble the word first. First to 3. |
+| 📝 Type Race | Type a short passage (3 or 4 sentences) exactly. First to finish wins. If nobody finishes in 75 seconds, whoever typed more wins. |
+| 🎵 Rhyme Race | You both get the same word. Type words that rhyme with it perfectly: each new one is a point. Most in 30 seconds wins. With the same score, whoever found their last rhyme first wins. At the end you see both players' words and the rhymes nobody found. |
+| 🔠 Longest Word | Make the longest real word from 9 letters. |
+| 📋 Category Rush | Name things in a category (like "Animals that start with S"). Most in 30 seconds wins. |
+| 🔮 Guess Their Choice | Pick your answer, then guess the other player's. Most right guesses wins. |
+| 🤔 Would You Rather | Same idea, with "Would you rather…?" questions. |
+| 🤝 Same Answer | Teamwork: match the other player's answer on 3 of 5 and you both win. Otherwise it's a draw. |
+
+If you're too slow on your turn, a random move is made for you, so nobody can stall a game.
+
+**About Pose Match:** it uses Google's free MediaPipe pose detector, which runs on your own computer. Your video isn't sent anywhere new. The detector downloads (about 10 MB) the first time Pose Match comes up, so it needs the internet.
+
+**About the word games:** Longest Word checks answers against the ENABLE word list (public domain), which loads only when that game comes up.
+
+**About Rhyme Race:** rhymes are checked by how words sound, not how they're spelled. The sounds come from the CMU Pronouncing Dictionary (American English). "Cot" and "caught" count as the same sound, like for most Americans, so dog, fog and log all rhyme, and so do hot and thought. Good and food don't rhyme, and neither do snow and cow. Rare words count if they're real dictionary words, but names don't. The rhyme families are saved in `lib/rhymes.js`. To add more words, edit the lists in `tools/make-rhymes.ps1` and run it (right-click → Run with PowerShell). It rebuilds `lib/rhymes.js`.
 
 During a game:
 
@@ -62,11 +137,22 @@ Classic Games matches you with strangers. They see you if your camera is on, and
 - `index.html`: the whole app (all the screens)
 - `app.js`: sign up / log in, the camera and microphone question, the menu, the top bar
 - `common.js`: accounts, your saved cat and fish, the cat drawing, the shop items, the Streak Pass, the microphone and camera
-- `solos.js`: Classic Games matchmaking, the mini-games, Practice mode
+- `solos.js`: Classic Games matchmaking, the first 5 mini-games, Practice mode
+- `games-quick.js`: Memory Match, Aim Targets, Higher or Lower
+- `games-words.js`: Word Scramble, Type Race
+- `games-board.js`: Connect Four, Speed Chess
+- `games-world.js`: Flag Quiz (the flags are drawn in code, because Windows can't show flag emojis), GeoGuessr
+- `games-action.js`: Perfect Timing, Dodge, Mini Maze Race, Stack Tower, Snake Sprint, Remember the Sequence, Cup Shuffle, Penalty Shootout
+- `games-quiz.js`: Closest Guess, Country Shape, Odd One Out, Which Is Bigger?, Timeline, Emoji Movie Guess, Animal Guess, Pattern Next, Spot the Difference
+- `games-mind.js`: Rhyme Race, Longest Word, Category Rush, Guess Their Choice, Same Answer, Would You Rather
+- `games-pose.js`: Pose Match
 - `chess.js`: chess (online, pass & play, vs computer)
 - `pass.js`, `character.js`: the Streak Pass and My Cat screens
 - `style.css`, `pieces.css`: how everything looks
-- `lib/`: chess rules ([chess.js](https://github.com/jhlywa/chess.js), BSD) and connections between players ([PeerJS](https://peerjs.com), MIT)
+- `lib/`: chess rules ([chess.js](https://github.com/jhlywa/chess.js), BSD), connections between players ([PeerJS](https://peerjs.com), MIT), the world map and country outlines (`world-map.js`, `countries.js`), the word list (`words.js`) and the rhyme families (`rhymes.js`)
+- `tools/make-rhymes.ps1`: rebuilds `lib/rhymes.js` (only needed if you change the rhyme lists)
 - `start.bat`, `serve.ps1`: the small local web server
 
-Chess pieces: the "cburnett" set by Colin M.L. Burnett (GPLv2+), the same pieces lichess.org uses.
+Chess pieces: the "cburnett" set by Colin M.L. Burnett (GPLv2+), the same pieces lichess.org uses. World map and country outlines: [Natural Earth](https://www.naturalearthdata.com) (public domain), via the [world-atlas](https://github.com/topojson/world-atlas) package (ISC). Word list: ENABLE (public domain). Pronunciations for Rhyme Race: the [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) (BSD-style license, notice in `lib/rhymes.js`). Pose detection: [MediaPipe](https://developers.google.com/mediapipe) (Apache 2.0), loaded from the internet.
+
+Everyone who plays together needs the same version. When the list of games changes, the app stops old and new versions from matching each other in Classic Games.

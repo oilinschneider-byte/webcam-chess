@@ -547,11 +547,15 @@ function negamax(g, depth, alpha, beta, sign) {
   return best;
 }
 
-function computerMove() {
-  const g = new Chess(game.fen());
+function computerMove() { return pickMove(game.fen(), botLevel); }
+
+// Also used by Speed Chess in Classic Games (through CA.chessAI).
+function pickMove(fen, level) {
+  const g = new Chess(fen);
   const moves = g.moves({ verbose: true });
-  if (botLevel === 'easy' && Math.random() < 0.35) return moves[Math.floor(Math.random() * moves.length)];
-  const depth = { easy: 1, medium: 2, hard: 3 }[botLevel] || 2;
+  if (!moves.length) return null;
+  if (level === 'easy' && Math.random() < 0.35) return moves[Math.floor(Math.random() * moves.length)];
+  const depth = { easy: 1, medium: 2, hard: 3 }[level] || 2;
   const sign = g.turn() === 'w' ? 1 : -1;
   let best = -Infinity;
   let pick = moves[0];
@@ -563,6 +567,7 @@ function computerMove() {
   }
   return pick;
 }
+CA.chessAI = { pickMove };
 
 function computerTurn() {
   thinking = true;

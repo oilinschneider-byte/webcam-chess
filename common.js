@@ -811,15 +811,16 @@ const SOUNDS = {
   start: [[392, 0, 0.1], [523, 0.1, 0.16]], correct: [[784, 0, 0.06]],
   win: [[523, 0, 0.12], [659, 0.12, 0.12], [784, 0.24, 0.12], [1047, 0.36, 0.3]],
   lose: [[392, 0, 0.16], [330, 0.16, 0.16], [262, 0.32, 0.3]], draw: [[440, 0, 0.14], [440, 0.2, 0.14]],
+  boom: [[110, 0, 0.35], [82, 0.08, 0.45], [55, 0.2, 0.6]], flip: [[620, 0, 0.04]],
 };
 
-function sound(kind) {
+function sound(kind) { // a name from SOUNDS, or your own notes: [[frequency, start (s), length (s)], …]
   if (!soundOn) return;
   try {
     sfx = sfx || new (window.AudioContext || window.webkitAudioContext)();
     if (sfx.state === 'suspended') sfx.resume();
     const now = sfx.currentTime;
-    for (const [freq, at, len] of SOUNDS[kind] || SOUNDS.tick) {
+    for (const [freq, at, len] of Array.isArray(kind) ? kind : SOUNDS[kind] || SOUNDS.tick) {
       const osc = sfx.createOscillator();
       const g = sfx.createGain();
       osc.type = 'triangle';

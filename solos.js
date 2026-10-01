@@ -9,7 +9,7 @@ const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('
 
 // Matchmaking without a server of our own: waiting players hold one of these PeerJS ids ("slots"),
 // and searching players knock on the lower-numbered slots until someone answers.
-const SLOT_PREFIX = 'camarcade-solos-v2-';
+const SLOT_PREFIX = 'camarcade-solos-v6-'; // bump when the games or the match flow change, so old and new versions don't meet
 const SLOT_COUNT = 10;
 const PEER_OPTS = { debug: 0 }; // probing slots causes expected "taken"/"unavailable" errors; we handle them ourselves
 const CONN_OPTS = { reliable: true, serialization: 'json' };
@@ -24,9 +24,11 @@ const DEFAULT_MATH = {
     { kind: 'div', on: true, a1: 2, a2: 12, b1: 2, b2: 100 },
   ],
 };
+const CLASSIC_MATH = Object.assign({}, DEFAULT_MATH, { duration: 35 });
 
 let mode = 'solos';      // 'solos' = real players, 'practice' = bots
 let practiceGame = null;
+let practiceMix = false; // "Classic mode vs bots": a random game every time
 let mathSettings = DEFAULT_MATH;
 
 let peer = null;
@@ -38,6 +40,7 @@ let reservedInfo = null;
 let reserveTimer = null;
 let searchStarted = 0;
 let searchTick = null;
+let searchGen = 0;       // counts searches, so leftovers from an older search know to stop
 let conn = null;
 let isHost = false;
 let opp = null;
@@ -58,8 +61,9 @@ let lastCallSig = '';     // which of mic ('a') / camera ('v') the call to the o
 
 let match = null;        // { ctx, gameId, started, over }
 let lastGame = null;
-let againMine = false;
-let againTheirs = false;
+let gameBag = [];        // the games still to come in this round of "every game once"
+let nextTimer = null;    // the countdown to the next opponent after a game
+let recentName = '';
 
 /* ================= SMALL HELPERS ================= */
 
@@ -110,6 +114,9 @@ function resetTimer(id) {
 /* ================= THE MINI-GAMES ================= */
 
 // Shared flow for games where both players act at once each round (then both answers are revealed).
+// Optional extras: cfg.points(mine, theirs) -> [myPoints, theirPoints] when both can score in a round,
+// cfg.over(my, op, round) for a custom end, cfg.botNow(round) for races (the bot's result the moment you finish, or
+// undefined to wait for it), and cfg.afkMs (how long to wait for the other player before they count as gone).
 function roundMatch(ctx, cfg) {
   const theirs = {};
   let round = 0;
@@ -123,7 +130,7 @@ function roundMatch(ctx, cfg) {
     if (!msg || msg.t !== 'v' || !Number.isInteger(msg.r)) return;
     theirs[msg.r] = msg.v;
     if (msg.r === round) {
-      if (cfg.onTheirs && mine === null) cfg.onTheirs(round);
+      if (cfg.onTheirs && mine === null) cfg.onTheirs(round, msg.v);
       resolve();
     }
   });
@@ -143,35 +150,46 @@ function roundMatch(ctx, cfg) {
       ctx.later(() => {
         theirs[r] = v;
         if (r !== round) return;
-        if (cfg.onTheirs && mine === null) cfg.onTheirs(r);
+        if (cfg.onTheirs && mine === null) cfg.onTheirs(r, v);
         resolve();
       }, cfg.botDelay(r, v));
     } else if (r in theirs && cfg.onTheirs) {
-      cfg.onTheirs(r);
+      cfg.onTheirs(r, theirs[r]);
     }
   }
 
   function resolve() {
     if (resolvedRound === round || mine === null) return;
+    if (!(round in theirs) && ctx.bot && cfg.botNow) { const v = cfg.botNow(round); if (v !== undefined) theirs[round] = v; }
     if (!(round in theirs)) {
       if (!ctx.bot && !afkTimer) {
         const r = round;
-        afkTimer = ctx.later(() => { afkTimer = null; if (round === r && !(r in theirs)) ctx.afk(); }, 45000);
+        afkTimer = ctx.later(() => { afkTimer = null; if (round === r && !(r in theirs)) ctx.afk(); }, cfg.afkMs || 45000);
       }
       return;
     }
     if (afkTimer) { ctx.cancel(afkTimer); afkTimer = null; }
     resolvedRound = round;
     const t = theirs[round];
-    const w = cfg.compare(mine, t);
-    if (w > 0) my++;
-    else if (w < 0) { op++; ctx.oppCheer(); }
+    let w;
+    if (cfg.points) {
+      const [pm, po] = cfg.points(mine, t, round);
+      my += pm;
+      op += po;
+      w = Math.sign(pm - po);
+    } else {
+      w = cfg.compare(mine, t);
+      if (w > 0) my++;
+      else if (w < 0) op++;
+    }
+    if (w < 0) ctx.oppCheer();
     ctx.score(my, op);
     cfg.reveal(round, mine, t, w);
     sound(w > 0 ? 'point' : w < 0 ? 'miss' : 'tick');
     const r = round;
     ctx.later(() => {
-      if (my >= cfg.target || op >= cfg.target || r >= cfg.maxRounds) ctx.finish(my > op ? 'win' : my < op ? 'lose' : 'draw');
+      const over = cfg.over ? cfg.over(my, op, r) : my >= cfg.target || op >= cfg.target || r >= cfg.maxRounds;
+      if (over) ctx.finish(cfg.outcome ? cfg.outcome(my, op) : my > op ? 'win' : my < op ? 'lose' : 'draw');
       else start();
     }, cfg.revealMs || 2100);
   }
@@ -183,7 +201,7 @@ function roundMatch(ctx, cfg) {
 const GAMES = {};
 
 GAMES.rps = {
-  name: 'Rock Paper Scissors', icon: '✊', blurb: 'Pick at the same time. First to 3 round wins.',
+  name: 'Rock Paper Scissors', icon: '✊', blurb: 'Pick at the same time. First to win 2 rounds wins.',
   start(ctx) {
     const CH = { r: ['🪨', 'Rock'], p: ['📄', 'Paper'], s: ['✂️', 'Scissors'] };
     const BEATS = { r: 's', p: 'r', s: 'p' };
@@ -202,10 +220,10 @@ GAMES.rps = {
       if (k && onPick) onPick(k);
     });
     roundMatch(ctx, {
-      target: 3,
-      maxRounds: 9,
+      target: 2,
+      maxRounds: 5,
       play(r, submit) {
-        ctx.note('Round ' + r + ' · first to 3');
+        ctx.note('Round ' + r + ' · first to 2');
         setMsg('rpsMe', '❔');
         setMsg('rpsThem', '❔');
         $('rpsMe').className = 'rps-hand';
@@ -255,7 +273,7 @@ GAMES.rps = {
 };
 
 GAMES.draw = {
-  name: 'Quick Draw', icon: '⚡', blurb: 'Wait for GO, then click as fast as you can. Clicking too early loses the round!',
+  name: 'Quick Draw', icon: '⚡', blurb: 'Wait for GO, then click as fast as you can. Clicking too early loses the round! First to 2.',
   start(ctx) {
     const delays = [];
     for (let i = 0; i < 9; i++) delays.push(1600 + Math.floor(ctx.rng() * 3000));
@@ -270,10 +288,10 @@ GAMES.draw = {
       if ((e.code === 'Space' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); if (hit) hit(); }
     });
     roundMatch(ctx, {
-      target: 3,
-      maxRounds: 7,
+      target: 2,
+      maxRounds: 5,
       play(r, submit) {
-        ctx.note('Round ' + r + ' · first to 3');
+        ctx.note('Round ' + r + ' · first to 2');
         let state = 'wait';
         let goAt = 0;
         pad.className = 'draw-pad wait';
@@ -448,9 +466,9 @@ function fmtTime(ms) {
 }
 
 GAMES.math = {
-  name: 'Math Sprint', icon: '🧮', blurb: 'Answer as many sums as you can in 2 minutes. Most right answers wins!',
+  name: 'Math Sprint', icon: '🧮', blurb: 'Answer as many sums as you can in 35 seconds. Most right answers wins!',
   start(ctx) {
-    const settings = ctx.math || (window.__mathSeconds ? Object.assign({}, DEFAULT_MATH, { duration: window.__mathSeconds }) : DEFAULT_MATH);
+    const settings = ctx.math || (window.__mathSeconds ? Object.assign({}, DEFAULT_MATH, { duration: window.__mathSeconds }) : CLASSIC_MATH);
     const LEN = settings.duration * 1000;
     const problems = [];
     const problem = i => { while (problems.length <= i) problems.push(makeProblem(settings, ctx.rng)); return problems[i]; };
@@ -571,7 +589,7 @@ function bestMove(b, me) {
 }
 
 GAMES.ttt = {
-  name: 'Tic-Tac-Toe', icon: '⭕', blurb: 'Get three in a row. First to win 2 games takes the match.',
+  name: 'Tic-Tac-Toe', icon: '⭕', blurb: 'Get three in a row to win! A tie means you play again. After 3 ties in a row, you both move on (your streak is safe).',
   start(ctx) {
     const hostFirst = ctx.rng() < 0.5;
     ctx.stage.innerHTML =
@@ -616,7 +634,7 @@ GAMES.ttt = {
       const iStart = hostStarts === ctx.isHost;
       myMark = iStart ? 'X' : 'O';
       turnMine = iStart;
-      ctx.note('Game ' + g + ' · you are ' + myMark + ' · first to 2 wins');
+      ctx.note((g > 1 ? 'Game ' + g + ' · ' : '') + 'you are ' + myMark);
       render();
       nextTurn();
       const now = pending.filter(m => m.g === g);
@@ -682,7 +700,8 @@ GAMES.ttt = {
       setMsg('tttMsg', !w ? "It's a tie game!" : w === myMark ? 'Three in a row. You win this game!' : ctx.oppName + ' got three in a row.');
       sound(!w ? 'tick' : w === myMark ? 'point' : 'miss');
       ctx.later(() => {
-        if (my >= 2 || op >= 2 || g >= 5) ctx.finish(my > op ? 'win' : my < op ? 'lose' : 'draw');
+        if (my >= 1 || op >= 1) ctx.finish(my > op ? 'win' : 'lose');
+        else if (g >= 3) ctx.finish('draw', { noRematch: true, text: '3 ties in a row, so you both move on. Your streak is safe!' });
         else newGame();
       }, 1900);
     }
@@ -692,14 +711,329 @@ GAMES.ttt = {
   },
 };
 
-const GAME_IDS = Object.keys(GAMES);
-
-function pickGame() {
+// Every game gets exactly the same chance: all of them come up once, in a random order, before any game repeats.
+// Games that need cameras (Pose Match) are only picked when opts.camera says everyone's camera is on.
+function pickGame(opts) {
   const forced = window.__forceGame; // lets the automated tests pick a game
   if (forced && GAMES[forced]) return forced;
-  const pool = GAME_IDS.filter(g => g !== lastGame);
-  return pool[Math.floor(Math.random() * pool.length)];
+  const ok = id => !GAMES[id].camera || !!(opts && opts.camera);
+  if (!gameBag.some(ok)) gameBag = shuffle(Object.keys(GAMES), Math.random);
+  const allowed = gameBag.map((id, i) => i).filter(i => ok(gameBag[i]));
+  let i = allowed[allowed.length - 1];
+  if (gameBag[i] === lastGame && allowed.length > 1) i = allowed[Math.floor(Math.random() * (allowed.length - 1))]; // not the same game twice in a row
+  return gameBag.splice(i, 1)[0];
 }
+
+// (The tests set window.__timeScale to make the timed games shorter.)
+function L(ms) { return Math.round(ms * (window.__timeScale || 1)); }
+function skillOf(ctx) { return ctx.bot ? (ctx.bot.level - 1) / 8 : 0; } // 0 = easy bot … 1 = hard bot
+const msOf = v => (v && Number.isFinite(v.ms) ? v.ms : Infinity);
+
+// A timed race: both players play the same thing on their own screen at the same time. Highest score wins; with the
+// same score, whoever got there first (0 to 0 is a tie). cfg.endsRace: finishing (say, reaching the exit) ends it for
+// both players. cfg.untilBeaten: no clock (cfg.len is only a safety limit). You play until you're out, and once the
+// other player is out, you play on until you pass them. cfg.extra() adds to your final result (like the words you found).
+function scoreRace(ctx, cfg) {
+  const LEN = cfg.len;
+  const until = !!cfg.untilBeaten;
+  const bars = raceBars(ctx, cfg.barMax || 10);
+  const fmt = cfg.fmt || (n => String(Math.floor(n)));
+  const barOf = cfg.barValue || (n => n);
+  ctx.stage.innerHTML = '<div class="g-race">' + cfg.html(bars.html) + '</div>';
+  let score = 0;
+  let scoreAt = 0;
+  let running = false;
+  let t0 = 0;
+  let finish = null;
+  let capped = false;      // the safety limit ran out
+  let theirFinal = null;   // (untilBeaten) the other player's score once they're out
+  const bot = ctx.bot ? cfg.bot(skillOf(ctx)) : null; // { final, at }: the bot's final score, and when it gets there
+  const botScore = ms => (cfg.botCurve ? cfg.botCurve(bot, ms) : bot.final * Math.min(1, ms / bot.at));
+  const botExtra = ms => (cfg.botExtra ? cfg.botExtra(bot, ms) : null);
+  let botLive = !!bot;     // the bot's bar keeps moving until its result is in
+  let botTimer = null;
+  const api = {
+    get score() { return score; },
+    get theirs() { return theirFinal; },
+    set(n) {
+      if (!running || n === score) return;
+      score = n;
+      scoreAt = Math.round(performance.now() - t0);
+      bars.set('me', barOf(n), fmt(n));
+      ctx.send({ t: 'live', n });
+      if (until && theirFinal !== null && score > theirFinal) finish(); // you passed them: that's the win
+    },
+    add(k) { api.set(score + (k == null ? 1 : k)); },
+    done() { if (finish) finish(); }, // you're out, or finished: your score is final
+    running: () => running,
+    elapsed: () => performance.now() - t0,
+    later: (fn, ms) => ctx.later(fn, ms),
+  };
+  ctx.on(msg => { if (msg && msg.t === 'live' && Number.isFinite(msg.n)) bars.set('them', barOf(msg.n), fmt(msg.n)); });
+  const scoreOf = v => (v && Number.isFinite(v.n) ? v.n : -Infinity);
+  const timeOf = v => (v && Number.isFinite(v.t) ? v.t : Infinity);
+  // (untilBeaten, against a bot) the bot's result arrives like a real player's would
+  const botArrives = (v, ms) => {
+    if (botTimer) ctx.cancel(botTimer);
+    botTimer = ctx.later(() => {
+      botLive = false;
+      bars.set('them', barOf(v.n), fmt(v.n));
+      ctx.deliver({ t: 'v', r: 1, v });
+    }, Math.max(0, ms - (performance.now() - t0)));
+  };
+  const theyreOut = n => {
+    theirFinal = n;
+    if (!running) return;
+    if (score > n) { finish(); return; }
+    ctx.note(cfg.passNote ? cfg.passNote(n) : ctx.oppName + ' is out with ' + fmt(n) + '. Beat it to win!');
+  };
+  roundMatch(ctx, {
+    target: 1,
+    maxRounds: 1,
+    revealMs: cfg.revealMs || 2600,
+    afkMs: until ? LEN + 20000 : undefined, // (they might play on for a while after you're out)
+    play(r, submit) {
+      ctx.note(cfg.note);
+      running = true;
+      t0 = performance.now();
+      if (cfg.timerId) startTimer(cfg.timerId, LEN);
+      finish = () => {
+        if (!running) return;
+        if (cfg.stop) cfg.stop(); // (the game can still set its final score here)
+        running = false;
+        if (cfg.timerId) stopTimer(cfg.timerId);
+        if (until && bot && botLive && !capped) { // the bot plays on: it passes you, or it's out below you
+          if (bot.final > score) botArrives({ n: score + 1, t: Math.round(bot.at * (score + 1) / bot.final) }, bot.at * (score + 1) / bot.final);
+          else botArrives({ n: bot.final, t: Math.round(bot.at) }, bot.at);
+        }
+        submit(Object.assign({ n: score, t: score > 0 ? scoreAt : null }, cfg.extra ? cfg.extra() : null));
+      };
+      ctx.later(() => { capped = true; finish(); }, LEN);
+      if (bot) {
+        ctx.every(() => { if (running || (until && botLive)) { const n = botScore(performance.now() - t0); bars.set('them', barOf(n), fmt(n)); } }, 250);
+        if (until && bot.at < LEN) botArrives({ n: bot.final, t: Math.round(bot.at) }, bot.at); // the bot is out
+      }
+      cfg.start(api);
+    },
+    onTheirs(r, v) {
+      if (cfg.endsRace && finish) finish();
+      if (until) theyreOut(scoreOf(v));
+    },
+    compare(a, b) {
+      const sa = scoreOf(a), sb = scoreOf(b);
+      if (sa !== sb) return sa > sb ? 1 : -1;
+      if (sa <= 0) return 0; // nobody scored
+      const ta = timeOf(a), tb = timeOf(b);
+      return ta === tb ? 0 : ta < tb ? 1 : -1;
+    },
+    reveal(r, a, b, w) {
+      bars.set('me', barOf(scoreOf(a)), fmt(scoreOf(a)));
+      bars.set('them', barOf(scoreOf(b)), fmt(scoreOf(b)));
+      if (cfg.reveal) cfg.reveal(scoreOf(a), scoreOf(b), w, a, b);
+    },
+    botValue() { return Object.assign({ n: bot.final, t: Math.round(bot.at) }, botExtra(Infinity)); },
+    botDelay() { return until ? LEN + 60000 : cfg.endsRace && bot.at < LEN ? bot.at : LEN + 150; },
+    botNow() {
+      if (until && !capped) return undefined; // (it arrives by itself, see botArrives)
+      const ms = performance.now() - t0;
+      return Object.assign({ n: cfg.botNow ? cfg.botNow(bot, ms) : Math.floor(botScore(ms)), t: Math.round(ms) }, botExtra(ms));
+    },
+  });
+}
+
+// Question rounds: both players get the same question, and the fastest right answer wins the round.
+// cfg.rounds: [{ q: question HTML, options: [labels], answer: index, after: text for the reveal }]
+function quizRounds(ctx, cfg) {
+  const ROUND = cfg.roundMs;
+  const skill = skillOf(ctx);
+  ctx.stage.innerHTML = '<div class="g-quiz' + (cfg.cls ? ' ' + cfg.cls : '') + '"><div class="qz-q" id="qzQ"></div><div class="qz-opts" id="qzOpts"></div>' +
+    '<div class="timer"><i id="qzTimer"></i></div><p class="g-msg" id="qzMsg"></p><p class="muted small center" id="qzThem"></p></div>';
+  let onPick = null;
+  ctx.listen($('qzOpts'), 'click', e => {
+    const b = e.target.closest && e.target.closest('.qz-opt');
+    if (b && onPick) onPick(+b.dataset.i);
+  });
+  ctx.listen(document, 'keydown', e => {
+    const k = { 1: 0, 2: 1, 3: 2, 4: 3 }[e.key];
+    if (k !== undefined && onPick) onPick(k);
+  });
+  const pickOf = v => (v && Number.isInteger(v.pick) ? v.pick : -1);
+  const round = r => cfg.rounds[r - 1];
+  roundMatch(ctx, {
+    target: cfg.target,
+    maxRounds: cfg.maxRounds,
+    revealMs: cfg.revealMs || 2200,
+    points(a, b, r) {
+      const ok = round(r).answer;
+      const ca = pickOf(a) === ok, cb = pickOf(b) === ok;
+      if (ca && cb) { const ma = msOf(a), mb = msOf(b); return ma === mb ? [0, 0] : ma < mb ? [1, 0] : [0, 1]; }
+      return [ca ? 1 : 0, cb ? 1 : 0];
+    },
+    play(r, submit) {
+      const rd = round(r);
+      if (window.__testHooks) window.__peek = { answer: rd.answer };
+      ctx.note(cfg.note(r));
+      $('qzQ').innerHTML = rd.q;
+      $('qzOpts').className = 'qz-opts' + (rd.options.length === 2 ? ' two' : '');
+      $('qzOpts').innerHTML = rd.options.map((o, i) => '<button class="qz-opt" data-i="' + i + '"><kbd>' + (i + 1) + '</kbd>' + o + '</button>').join('');
+      setMsg('qzMsg', cfg.ask || 'Pick the right answer!');
+      setMsg('qzThem', '');
+      startTimer('qzTimer', ROUND);
+      const t0 = performance.now();
+      let picked = false;
+      onPick = i => {
+        if (picked) return;
+        picked = true;
+        onPick = null;
+        const ms = Math.round(performance.now() - t0);
+        ctx.stage.querySelectorAll('.qz-opt').forEach((b, k) => { b.disabled = true; b.classList.toggle('picked', k === i); });
+        stopTimer('qzTimer');
+        setMsg('qzMsg', i < 0 ? "Time's up!" : 'Locked in! Waiting for ' + ctx.oppName + '…');
+        sound('tick');
+        submit({ pick: i, ms });
+      };
+      if (cfg.onRound) cfg.onRound(rd, ctx);
+      ctx.later(() => { if (!picked) onPick(-1); }, ROUND);
+    },
+    onTheirs() { setMsg('qzThem', ctx.oppName + ' has answered'); },
+    reveal(r, a, b, w) {
+      const rd = round(r);
+      ctx.stage.querySelectorAll('.qz-opt').forEach((btn, k) => {
+        btn.classList.toggle('right', k === rd.answer);
+        btn.classList.toggle('wrong', k === pickOf(a) && k !== rd.answer);
+      });
+      const res = v => (pickOf(v) === rd.answer ? '✅ ' + (msOf(v) / 1000).toFixed(1) + 's' : '❌');
+      setMsg('qzMsg', (rd.after ? rd.after + ' ' : '') + (w > 0 ? 'Point for you!' : w < 0 ? 'Point for ' + ctx.oppName + '.' : 'No point.'));
+      setMsg('qzThem', 'You ' + res(a) + ' · ' + ctx.oppName + ' ' + res(b));
+    },
+    botValue(r) {
+      const rd = round(r);
+      const right = Math.random() < (cfg.botRight ? cfg.botRight(skill) : 0.5 + skill * 0.4);
+      const wrongs = rd.options.map((o, k) => k).filter(k => k !== rd.answer);
+      const ms = Math.round(Math.min(ROUND - 300, Math.max(900, gauss((cfg.botMs || 4200) - skill * 1800, 800))));
+      return { pick: right ? rd.answer : wrongs[Math.floor(Math.random() * wrongs.length)], ms };
+    },
+    botDelay(r, v) { return v.ms; },
+  });
+}
+
+// Mind-reading rounds: pick your own answer, then guess the other player's. A right guess scores a point.
+function predictRounds(ctx, cfg) {
+  const ROUND = cfg.roundMs;
+  ctx.stage.innerHTML = '<div class="g-predict"><div class="pr-q" id="prQ"></div><p class="pr-step" id="prStep"></p><div class="pr-opts" id="prOpts"></div>' +
+    '<div class="timer"><i id="prTimer"></i></div><p class="g-msg" id="prMsg"></p></div>';
+  let onPick = null;
+  ctx.listen($('prOpts'), 'click', e => {
+    const b = e.target.closest && e.target.closest('.pr-opt');
+    if (b && onPick) onPick(+b.dataset.i);
+  });
+  const valid = (v, n) => v && Number.isInteger(v.mine) && v.mine >= 0 && v.mine < n;
+  roundMatch(ctx, {
+    revealMs: 2500,
+    points: cfg.points || ((a, b, r) => {
+      const n = cfg.rounds[r - 1].options.length;
+      return [valid(b, n) && a.guess === b.mine ? 1 : 0, valid(a, n) && b && b.guess === a.mine ? 1 : 0];
+    }),
+    over: (my, op, r) => r >= cfg.rounds.length,
+    outcome: cfg.outcome,
+    play(r, submit) {
+      const rd = cfg.rounds[r - 1];
+      ctx.note('Round ' + r + ' of ' + cfg.rounds.length);
+      $('prQ').innerHTML = rd.q;
+      const draw = sel => { $('prOpts').innerHTML = rd.options.map((o, i) => '<button class="pr-opt' + (sel === i ? ' picked' : '') + '" data-i="' + i + '">' + o + '</button>').join(''); };
+      draw(-1);
+      setMsg('prStep', cfg.guess ? '1. Pick YOUR answer' : 'Pick your answer');
+      setMsg('prMsg', '');
+      startTimer('prTimer', ROUND);
+      const pick = { mine: -1, guess: -1 };
+      let sent = false;
+      const send = () => {
+        if (sent) return;
+        sent = true;
+        onPick = null;
+        stopTimer('prTimer');
+        ctx.stage.querySelectorAll('.pr-opt').forEach(b => { b.disabled = true; });
+        setMsg('prMsg', 'Locked in! Waiting for ' + ctx.oppName + '…');
+        submit({ mine: pick.mine, guess: pick.guess });
+      };
+      onPick = i => {
+        sound('tick');
+        if (pick.mine < 0) {
+          pick.mine = i;
+          if (!cfg.guess) { draw(i); send(); return; }
+          draw(-1);
+          setMsg('prStep', '2. What will ' + ctx.oppName + ' pick?');
+          $('prOpts').classList.add('guess');
+          return;
+        }
+        pick.guess = i;
+        draw(i);
+        $('prOpts').classList.remove('guess');
+        send();
+      };
+      $('prOpts').classList.remove('guess');
+      ctx.later(() => {
+        if (sent) return;
+        const n = rd.options.length;
+        if (pick.mine < 0) pick.mine = Math.floor(Math.random() * n);
+        if (cfg.guess && pick.guess < 0) pick.guess = Math.floor(Math.random() * n);
+        setMsg('prStep', "Time's up! We picked for you.");
+        send();
+      }, ROUND);
+    },
+    onTheirs() { setMsg('prMsg', ctx.oppName + ' has answered'); },
+    reveal(r, a, b) {
+      const rd = cfg.rounds[r - 1];
+      const n = rd.options.length;
+      const name = i => (i >= 0 && i < n ? rd.options[i] : 'nothing');
+      $('prStep').textContent = '';
+      $('prOpts').classList.remove('guess');
+      $('prOpts').innerHTML = rd.options.map((o, i) =>
+        '<div class="pr-opt shown">' + o + '<span>' + (a && a.mine === i ? '<i class="me">You</i>' : '') + (b && b.mine === i ? '<i class="them">' + CA.esc(ctx.oppName) + '</i>' : '') + '</span></div>').join('');
+      setMsg('prMsg', cfg.reveal ? cfg.reveal(a, b, rd, name) : 'You guessed ' + name(a && a.guess) + (b && a && a.guess === b.mine ? ' ✅' : ' ❌') +
+        ' · ' + ctx.oppName + ' guessed ' + name(b && b.guess) + (a && b && b.guess === a.mine ? ' ✅' : ' ❌'));
+    },
+    botValue(r) {
+      const n = cfg.rounds[r - 1].options.length;
+      return { mine: Math.floor(Math.random() * n), guess: Math.floor(Math.random() * n) };
+    },
+    botDelay() { return 1500 + Math.random() * 3500; },
+  });
+}
+
+function shuffle(list, rng) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Two progress bars (you and the other player) for the race games.
+function raceBars(ctx, max) {
+  const html = '<div class="tap-bars race-bars">' +
+    '<div class="tap-row"><span>You</span><div class="tap-bar"><i data-bar="me"></i></div><b data-num="me">0</b></div>' +
+    '<div class="tap-row them"><span>' + esc(ctx.oppName) + '</span><div class="tap-bar"><i data-bar="them"></i></div><b data-num="them">0</b></div></div>';
+  function set(who, n, text) {
+    const bar = ctx.stage.querySelector('[data-bar="' + who + '"]');
+    const num = ctx.stage.querySelector('[data-num="' + who + '"]');
+    if (bar) bar.style.width = Math.max(0, Math.min(100, n / max * 100)) + '%';
+    if (num) num.textContent = text != null ? text : n;
+  }
+  return { html, set };
+}
+
+// The other game files (games-*.js) add their games through this.
+CA.games = {
+  add(id, def) { GAMES[id] = def; },
+  pick: opts => pickGame(opts), // (the tests use this to check that every game gets the same chance)
+  ids: () => Object.keys(GAMES),
+  kit: {
+    $, setMsg, esc, sound, sleep, gauss, shuffle, startTimer, stopTimer, resetTimer, roundMatch, raceBars, fmtTime,
+    L, skillOf, msOf, scoreRace, quizRounds, predictRounds,
+  },
+};
 
 /* ================= MATCH FLOW ================= */
 
@@ -741,7 +1075,7 @@ function makeCtx(gameId, seed, extra) {
     score(a, b) { setMsg('scMe', a); setMsg('scThem', b); },
     note(text) { setMsg('scNote', text || ''); },
     oppCheer() { if (opp && opp.bot) botTalk(700); },
-    finish(outcome) { if (ctx.alive()) endMatch(outcome); },
+    finish(outcome, opts) { if (ctx.alive()) endMatch(outcome, null, opts); }, // opts: { noRematch, text }
     finishSolo(score) { if (ctx.alive()) endSolo(score); },
     afk() { if (ctx.alive()) endMatch('win', 'afk'); },
     cleanup() {
@@ -757,8 +1091,8 @@ function makeCtx(gameId, seed, extra) {
 
 function beginMatch(gameId, seed, extra) {
   if (match) { match.over = true; match.ctx.cleanup(); }
+  cancelNext();
   lastGame = gameId;
-  againMine = againTheirs = false;
   const ctx = makeCtx(gameId, seed, extra);
   const solo = !!(extra && extra.solo);
   match = { ctx, gameId, started: false, over: false, solo };
@@ -767,7 +1101,9 @@ function beginMatch(gameId, seed, extra) {
   CA.showScreen('scr-play');
   $('matchView').classList.toggle('solo-run', solo);
   renderPlayers();
-  setMsg('scMode', mode === 'practice' ? '🎯 Practice' + (solo ? '' : ' · ' + practiceLevel()) : '⚡ Classic Games');
+  setMsg('scMode', mode !== 'practice' ? '⚡ Classic Games'
+    : solo ? '🎯 Practice'
+    : (practiceMix ? '🎲 Classic vs bots' : '🎯 Practice') + ' · ' + practiceLevel());
   setMsg('scGame', g.icon + ' ' + g.name);
   ctx.score(0, 0);
   ctx.note('');
@@ -777,7 +1113,8 @@ function beginMatch(gameId, seed, extra) {
     g.start(ctx);
     ctx.flush();
   };
-  if (solo) countdown(ctx, go); else playVs(ctx, g, go);
+  if (g.prepare) g.prepare(ctx); // (e.g. load the word list while you look at each other)
+  if (solo) countdown(ctx, go); else faceToFace(ctx, g, go);
 }
 
 function countdown(ctx, then) {
@@ -792,32 +1129,137 @@ function countdown(ctx, then) {
   step();
 }
 
-function playVs(ctx, g, then) {
+/* ================= FACE TO FACE ================= */
+// Before every round: 5 seconds of seeing each other (big cameras, or cats) while the game's rules show.
+// After it: a few seconds to react, with Rematch / Next.
+
+function showFaces() {
   const p = CA.profile;
   $('vsMeCat').innerHTML = CA.catSVG(p.equip, { label: p.name, talker: 'me' });
-  $('vsThemCat').innerHTML = CA.catSVG(opp.equip, { label: opp.name, talker: 'opp' });
+  $('vsThemCat').innerHTML = opp ? CA.catSVG(opp.equip, { label: opp.name, talker: 'opp' }) : '';
   setMsg('vsMeName', p.name);
-  setMsg('vsThemName', opp.name);
-  setMsg('vsMeTag', mode === 'practice' ? '🎯 Practice' : '🔥 ' + p.streak + ' streak');
-  setMsg('vsThemTag', opp.bot ? '🤖 Bot · ' + practiceLevel() : '🔥 ' + opp.streak + ' streak');
+  setMsg('vsThemName', opp ? opp.name : '');
+  setMsg('vsMeTag', mode === 'practice' ? '🎯 Practice' : '🔥 ' + p.streak);
+  setMsg('vsThemTag', !opp ? '' : opp.bot ? '🤖 ' + practiceLevel() : '🔥 ' + opp.streak);
+  syncFaceVideos();
+}
+
+function syncFaceVideos() {
+  const mv = $('vsMeVideo');
+  const mine = CA.voice.cameraOn();
+  if (mine && mv.srcObject !== CA.voice.camera) { mv.srcObject = CA.voice.camera; mv.play().catch(() => {}); }
+  if (!mine) mv.srcObject = null;
+  mv.classList.toggle('hidden', !mine);
+  const tv = $('vsThemVideo');
+  const src = $('themVideo').srcObject;
+  const theirs = !!opp && !opp.bot && !opp.gone && opp.face && remoteHasVideo && !hideThem && !!src;
+  if (theirs && tv.srcObject !== src) { tv.srcObject = src; tv.play().catch(() => {}); }
+  if (!theirs) tv.srcObject = null;
+  tv.classList.toggle('hidden', !theirs);
+}
+
+function faceToFace(ctx, g, then) {
+  stopReaction(true);
+  showFaces();
   setMsg('vsIcon', g.icon);
   setMsg('vsGame', g.name);
   setMsg('vsBlurb', g.blurb);
-  let n = 3;
+  $('vsIntro').classList.remove('hidden');
+  $('vsReact').classList.add('hidden');
+  const len = window.__introMs != null ? window.__introMs : 5000; // (the tests make this shorter)
+  let n = Math.max(1, Math.round(len / 1000));
+  const per = len / n;
   setMsg('vsCount', n);
   $('vs').classList.remove('hidden');
   sound('match');
   if (opp.bot) botTalk(900);
   const step = () => {
     n--;
-    if (n > 0) { setMsg('vsCount', n); sound('tick'); ctx.later(step, 850); return; }
+    if (n > 0) { setMsg('vsCount', n); sound('tick'); ctx.later(step, per); return; }
     $('vs').classList.add('hidden');
     then();
   };
-  ctx.later(step, 1500);
+  ctx.later(step, per);
 }
 
-function endMatch(outcome, reason) {
+let react = null; // the few seconds after a round: { mine, theirs, due, iv } (did you / they press Rematch?)
+
+function startReaction(outcome, res, opts) {
+  stopReaction(true);
+  const online = mode === 'solos';
+  const noRematch = !!(opts && opts.noRematch); // (e.g. 3 tied Tic-Tac-Toe games: on to someone new)
+  const ms = window.__reactMs != null ? window.__reactMs : 5000;
+  react = { mine: false, theirs: false, due: Date.now() + ms, iv: null };
+  showFaces();
+  $('vsIntro').classList.add('hidden');
+  const box = $('vsReact');
+  box.className = 'f2f-react ' + outcome;
+  setMsg('rxBadge', outcome === 'win' ? '🏆' : outcome === 'lose' ? '😿' : '🤝');
+  setMsg('rxTitle', outcome === 'win' ? 'You win!' : outcome === 'lose' ? 'You lost' : "It's a draw");
+  let reward = '';
+  if (res) {
+    reward = '🔥 ' + res.before.streak + ' → ' + res.after.streak + (res.fish ? ' · +' + res.fish + ' 🐟' : '') + ' · +' + res.xp + ' XP' +
+      (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
+  } else if (mode === 'practice') {
+    reward = '🎯 Practice: nothing is counted';
+  }
+  $('rxReward').innerHTML = reward;
+  const rb = $('rematchBtn');
+  const gone = online && (!conn || !conn.open || !opp || opp.gone);
+  rb.disabled = gone || noRematch;
+  rb.classList.remove('chosen');
+  rb.textContent = '🔁 Rematch';
+  setMsg('nextBtn', online ? '⏭ Next player' : '⏭ New bot');
+  setMsg('rxNote', gone ? opp.name + ' has left.' : noRematch ? '3 ties in a row: on to ' + (online ? 'someone new' : 'a new bot') + '!' : '');
+  $('vs').classList.remove('hidden');
+  startTimer('rxTimer', ms); // (after showing it: a hidden bar doesn't animate)
+  react.iv = setInterval(reactTick, 150);
+}
+
+function reactTick() {
+  if (!react || Date.now() < react.due) return;
+  if (react.mine && react.theirs && Date.now() < react.due + 3000) return; // the rematch is starting
+  if (document.visibilityState !== 'visible') { // don't match you with someone while you're away
+    clearInterval(react.iv);
+    react.iv = null;
+    setMsg('rxNote', '⏸ Paused while you were away. Pick Rematch or Next.');
+    return;
+  }
+  goNext(mode === 'solos' ? 'next' : 'bot');
+}
+
+function stopReaction(keepOverlay) {
+  if (react) clearInterval(react.iv);
+  react = null;
+  if (!keepOverlay) $('vs').classList.add('hidden');
+}
+
+function maybeRematch() {
+  if (!react || !react.mine || !react.theirs || !isHost) return;
+  const game = pickGame({ camera: CA.voice.cameraOn() && !!opp && opp.face });
+  const seed = randSeed();
+  send({ t: 'start', game, seed });
+  beginMatch(game, seed);
+}
+
+$('rematchBtn').addEventListener('click', () => {
+  if (!react || react.mine) return;
+  if (mode !== 'solos') { // the bot always says yes: same bot, a new game
+    stopReaction(true);
+    beginMatch(practiceMix ? pickGame({ camera: CA.voice.cameraOn() }) : practiceGame, randSeed());
+    return;
+  }
+  react.mine = true;
+  const rb = $('rematchBtn');
+  rb.classList.add('chosen');
+  rb.textContent = react.theirs ? '🔁 Starting…' : '⏳ Waiting for ' + opp.name + '…';
+  send({ t: 'again' });
+  maybeRematch();
+});
+$('nextBtn').addEventListener('click', () => { if (react) goNext(mode === 'solos' ? 'next' : 'bot'); });
+$('rxMenuBtn').addEventListener('click', () => { stopReaction(); CA.go('menu'); });
+
+function endMatch(outcome, reason, opts) {
   if (!match || match.over) return;
   match.over = true;
   match.ctx.cleanup();
@@ -829,9 +1271,10 @@ function endMatch(outcome, reason) {
   const counted = mode === 'solos' && !opp.bot && !(opp.device && opp.device === CA.deviceId());
   const res = counted ? CA.applyResult(outcome) : null;
   send({ t: 'card', card: myCard() });
-  showResult(outcome, reason, res);
+  showResult(outcome, reason, res, opts);
   sound(outcome === 'win' ? 'win' : outcome === 'lose' ? 'lose' : 'draw');
   if (opp.bot && outcome === 'lose') botTalk(1400);
+  if (mode === 'solos' || practiceMix) startReaction(outcome, res, opts); // react face to face, then Rematch or Next
 }
 
 function endSolo(score) {
@@ -850,18 +1293,20 @@ function endSolo(score) {
 function showNoContest(text) {
   $('stage').innerHTML =
     '<div class="result"><div class="result-badge">👋</div><h2>Match cancelled</h2><p class="muted">' + esc(text) + '</p>' +
-    '<div class="row center result-btns"><button class="btn solos-btn big" data-act="next">⚡ Find another player</button>' +
-    '<button class="btn ghost" data-act="menu">Menu</button></div></div>';
+    '<div class="row center result-btns"><button class="btn solos-btn big" data-act="next">⚡ Next player now</button>' +
+    '<button class="btn ghost" data-act="menu">Menu</button></div><p class="next-note" id="nextNote"></p></div>';
   wireResultButtons();
+  autoNext('next', 2500);
 }
 
-function showResult(outcome, reason, res) {
+function showResult(outcome, reason, res, opts) {
   const g = GAMES[match.gameId];
   const title = outcome === 'win' ? 'You win!' : outcome === 'lose' ? 'You lost' : "It's a draw";
   const badge = outcome === 'win' ? '🏆' : outcome === 'lose' ? '😿' : '🤝';
   const text =
     reason === 'left' ? opp.name + ' left the match, so the win is yours.'
     : reason === 'afk' ? opp.name + ' stopped playing, so the win is yours.'
+    : opts && opts.text ? opts.text
     : (outcome === 'win' ? 'You beat ' : outcome === 'lose' ? 'You lost to ' : 'You tied with ') + opp.name + ' at ' + g.name + '.';
   let body;
   if (mode === 'practice') {
@@ -891,59 +1336,64 @@ function showResult(outcome, reason, res) {
       (res.after.tier > res.before.tier ? '<a class="tier-up" href="#/pass">🎁 You reached tier ' + tier + '! Claim your reward</a>' : '') +
       '</div>';
   }
-  const buttons = mode === 'practice'
-    ? '<button class="btn go big" data-act="again">↻ Play again</button><button class="btn ghost" data-act="menu">Menu</button>'
-    : '<button class="btn solos-btn big" data-act="next">⚡ Next game</button>' +
-      '<button class="btn big" data-act="again" id="againBtn">↻ Play again</button><button class="btn ghost" data-act="menu">Menu</button>';
+  const buttons =
+    mode !== 'practice' ? '<button class="btn solos-btn big" data-act="next">⚡ Next player now</button>'
+    : practiceMix ? '<button class="btn solos-btn big" data-act="bot">🎲 Next game now</button>'
+    : '<button class="btn go big" data-act="again">↻ Play again</button>';
   $('stage').innerHTML =
     '<div class="result ' + outcome + '"><div class="result-badge">' + badge + '</div><h2>' + title + '</h2>' +
     '<p class="muted">' + esc(text) + '</p>' + body +
-    '<div class="row center result-btns">' + buttons + '</div><p class="muted small center" id="againNote"></p></div>';
+    '<div class="row center result-btns">' + buttons + '<button class="btn ghost" data-act="menu">Menu</button></div>' +
+    '<p class="next-note" id="nextNote"></p></div>';
   wireResultButtons();
-  updateAgainButton();
 }
 
 function wireResultButtons() {
   $('stage').querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
     const act = b.dataset.act;
-    if (act === 'next') nextOpponent();
+    if (act === 'next' || act === 'bot') goNext(act);
     else if (act === 'again') playAgain();
     else if (act === 'settings') CA.go('practice', { game: 'math' });
     else CA.go('menu');
   }));
 }
 
-function updateAgainButton() {
-  const btn = $('againBtn');
-  if (!btn || !opp || opp.bot) return;
-  const note = $('againNote');
-  if (opp.gone || !conn || !conn.open) {
-    btn.disabled = true;
-    if (note) note.textContent = opp.name + ' has left.';
-    return;
-  }
-  btn.disabled = againMine;
-  btn.textContent = againMine ? '⏳ Waiting for ' + opp.name + '…' : '↻ Play again';
-  btn.classList.toggle('primary', againTheirs && !againMine);
-  if (note) note.textContent = againTheirs && !againMine ? opp.name + ' wants to play again!' : '';
+// A short countdown on the result screen, then on to someone new (used when a match gets cancelled).
+function autoNext(act, ms) {
+  cancelNext();
+  const wait = window.__nextMs != null ? window.__nextMs : ms; // (the tests can change this)
+  const due = Date.now() + wait;
+  const tick = () => {
+    const note = $('nextNote');
+    if (!note) { cancelNext(); return; }
+    const left = due - Date.now();
+    if (left > 0) {
+      note.textContent = (act === 'bot' ? '🎲 Next game with a new bot in ' : '⚡ Finding you a new player in ') + Math.ceil(left / 1000) + '…';
+      return;
+    }
+    cancelNext();
+    if (document.visibilityState !== 'visible') { note.textContent = '⏸ Paused while you were away. Press the button to keep playing.'; return; }
+    goNext(act);
+  };
+  nextTimer = setInterval(tick, 200);
+  tick();
+}
+
+function cancelNext() {
+  clearInterval(nextTimer);
+  nextTimer = null;
+}
+
+function goNext(act) {
+  cancelNext();
+  stopReaction();
+  if (act === 'bot') nextBot();
+  else nextOpponent();
 }
 
 function playAgain() {
-  if (match && match.solo) { startSolo(); return; }
-  if (opp && opp.bot) { beginMatch(practiceGame, randSeed()); return; }
-  if (!opp || opp.gone || !conn || !conn.open) { CA.toast('Your opponent has left.'); return; }
-  againMine = true;
-  send({ t: 'again' });
-  updateAgainButton();
-  maybeRestart();
-}
-
-function maybeRestart() {
-  if (!againMine || !againTheirs || !isHost) return;
-  const game = pickGame();
-  const seed = randSeed();
-  send({ t: 'start', game, seed });
-  beginMatch(game, seed);
+  if (match && match.solo) startSolo();
+  else if (opp && opp.bot) nextBot();
 }
 
 function skipPressed() {
@@ -974,8 +1424,12 @@ function nextOpponent() {
   startSearch();
 }
 
+// Don't get matched with the same person again right away (unless nobody else turns up for a while).
 function rememberOpponent() {
-  if (opp && !opp.bot && opp.device) { recentDevice = opp.device; recentUntil = Date.now() + 20000; }
+  if (!opp || opp.bot || !opp.device) return;
+  recentDevice = opp.device;
+  recentName = opp.name;
+  recentUntil = Date.now() + (window.__recentMs != null ? window.__recentMs : 20000);
 }
 
 /* ================= PLAYERS ON SCREEN ================= */
@@ -1017,6 +1471,7 @@ function updateTiles() {
   $('themVideo').classList.toggle('hidden', !showThem);
   $('hideThemBtn').classList.toggle('hidden', !human || !opp.face);
   setMsg('hideThemBtn', hideThem ? '👀 Show their camera' : '🙈 Hide their camera');
+  syncFaceVideos();
 }
 
 // The bot "meows" (moves its mouth) now and then.
@@ -1039,10 +1494,16 @@ function setOppMouth(v) {
 
 /* ================= SEARCHING ================= */
 
+const SEARCH_TIP = $('searchTip').textContent;
+
 function showSearch() {
+  const fresh = Date.now() < recentUntil;
   $('searchCat').innerHTML = CA.catSVG(CA.profile.equip, { bg: false, label: 'You', talker: 'me' });
-  setMsg('searchTitle', 'Looking for a player…');
+  setMsg('searchTitle', fresh ? 'Looking for a new player…' : 'Looking for a player…');
   setMsg('searchSub', 'Searching…');
+  setMsg('searchTip', fresh
+    ? 'Nobody new is searching right now. If nobody else joins soon, you will play ' + recentName + ' again.'
+    : SEARCH_TIP);
   $('searchTip').classList.add('hidden');
   $('retryBtn').classList.add('hidden');
   $('searchView').classList.remove('hidden');
@@ -1098,18 +1559,20 @@ function isRecent(device) { return !!device && device === recentDevice && Date.n
 
 function startSearch() {
   hangUp();
+  const gen = ++searchGen; // (a new search: anything still running from an older one stops)
   opp = null;
   mode = 'solos';
+  practiceMix = false;
   searching = true;
   CA.voice.setInGame(true); // start the camera now so it's ready when someone is found
   CA.showScreen('scr-play');
   $('matchView').classList.remove('solo-run');
   $('stage').innerHTML = '';
   showSearch();
-  claimSlot()
-    .then(() => { if (searching) scanLoop(); })
+  claimSlot(gen)
+    .then(() => { if (searching && gen === searchGen) scanLoop(gen); })
     .catch(err => {
-      if (!searching) return;
+      if (!searching || gen !== searchGen) return;
       console.warn('Matchmaking failed:', err);
       searchFailed("Can't reach the matchmaking server. Check your internet connection.");
     });
@@ -1117,11 +1580,11 @@ function startSearch() {
 
 // Take the lowest free slot so other searchers can find us. Waiting players pile up at the
 // bottom, so a newcomer's first knock (on the slot just below) usually lands on someone waiting.
-function claimSlot() {
+function claimSlot(gen) {
   return new Promise((resolve, reject) => {
     let slot = 0;
     const tryNext = () => {
-      if (!searching) { reject(new Error('cancelled')); return; }
+      if (!searching || gen !== searchGen) { reject(new Error('cancelled')); return; }
       if (slot >= SLOT_COUNT) { // every slot is busy: wait a moment and try again
         slot = 0;
         setTimeout(tryNext, 2000);
@@ -1133,7 +1596,7 @@ function claimSlot() {
       p.on('open', () => {
         if (settled) return;
         settled = true;
-        if (!searching) { p.destroy(); reject(new Error('cancelled')); return; }
+        if (!searching || gen !== searchGen) { p.destroy(); reject(new Error('cancelled')); return; }
         peer = p;
         mySlot = mine;
         wirePeer(p);
@@ -1151,9 +1614,11 @@ function claimSlot() {
   });
 }
 
+// (After you move on, your old peer lingers for a moment before it's destroyed. It must not start a new match:
+// that match would die the moment the peer goes. So only the current peer takes knocks and calls.)
 function wirePeer(p) {
-  p.on('connection', onIncoming);
-  p.on('call', onIncomingCall);
+  p.on('connection', c => { if (peer === p) onIncoming(c, p); else { try { c.close(); } catch (e) { /* ignore */ } } });
+  p.on('call', call => { if (peer === p) onIncomingCall(call); else { try { call.close(); } catch (e) { /* ignore */ } } });
   p.on('error', err => {
     if (peer !== p || err.type === 'peer-unavailable') return; // empty slots are expected while searching
     console.warn('PeerJS error:', err.type, err);
@@ -1167,10 +1632,10 @@ function wirePeer(p) {
 }
 
 // Knock on the lower-numbered slots. (Only the higher slot knocks, so two waiting players never both knock at once.)
-async function scanLoop() {
-  while (searching && !conn) {
+async function scanLoop(gen) {
+  while (searching && !conn && gen === searchGen) {
     for (let s = mySlot - 1; s >= 0; s--) {
-      if (!searching || conn) return;
+      if (!searching || conn || gen !== searchGen) return;
       if (reserved) break;
       if ((busySlots[s] || 0) > Date.now()) continue; // they're mid-game; don't bother them for a bit
       if (await tryMatch(s)) return;
@@ -1206,10 +1671,11 @@ function tryMatch(slot) {
     c.on('data', msg => {
       if (conn === c) { onNet(msg); return; }
       if (finished || !msg) return;
-      if (msg.t === 'busy') { busySlots[slot] = Date.now() + 30000; done(false); return; }
+      // (They're in a game. Games are short and everyone looks again afterwards, so check back soon.)
+      if (msg.t === 'busy') { busySlots[slot] = Date.now() + 8000; done(false); return; }
       if (msg.t === 'welcome') {
         const card = readCard(msg.card);
-        if (!searching || conn || reserved || isRecent(card.device) || !GAMES[msg.game]) {
+        if (peer !== p || !searching || conn || reserved || isRecent(card.device) || !GAMES[msg.game]) {
           try { c.send({ t: 'cancel' }); } catch (e) { /* ignore */ }
           setTimeout(() => done(false), 200);
           return;
@@ -1224,7 +1690,7 @@ function tryMatch(slot) {
   });
 }
 
-function onIncoming(c) {
+function onIncoming(c, p) {
   let greeted = false;
   c.on('data', msg => {
     if (conn === c) { onNet(msg); return; }
@@ -1234,13 +1700,13 @@ function onIncoming(c) {
       greeted = true;
       const card = readCard(msg.card);
       // (Being mid-knock ourselves is fine: if that knock also gets a welcome, we cancel it because we're reserved.)
-      if (!searching || conn || reserved || isRecent(card.device)) {
+      if (peer !== p || !searching || conn || reserved || isRecent(card.device)) {
         try { c.send({ t: 'busy' }); } catch (e) { /* ignore */ }
         setTimeout(() => { try { c.close(); } catch (e) { /* ignore */ } }, 400);
         return;
       }
       reserved = c;
-      reservedInfo = { card, game: pickGame(), seed: randSeed() };
+      reservedInfo = { card, game: pickGame({ camera: CA.voice.cameraOn() && card.face }), seed: randSeed() };
       c.send({ t: 'welcome', card: myCard(), game: reservedInfo.game, seed: reservedInfo.seed });
       clearTimeout(reserveTimer);
       reserveTimer = setTimeout(() => {
@@ -1255,7 +1721,7 @@ function onIncoming(c) {
       const info = reservedInfo;
       clearTimeout(reserveTimer);
       reserved = null;
-      if (!searching || conn) { try { c.send({ t: 'bye' }); c.close(); } catch (e) { /* ignore */ } return; }
+      if (peer !== p || !searching || conn) { try { c.send({ t: 'bye' }); c.close(); } catch (e) { /* ignore */ } return; }
       commit(c, true, info.card, info.game, info.seed);
     } else if (msg.t === 'cancel') {
       clearTimeout(reserveTimer);
@@ -1310,6 +1776,18 @@ function onNet(msg) {
     case 'media':
       if (opp) { opp.mic = !!msg.mic; opp.face = !!msg.face; updateTiles(); }
       return;
+    case 'again': // they pressed Rematch
+      if (react && opp) {
+        react.theirs = true;
+        setMsg('rxNote', opp.name + ' wants a rematch! 🔁');
+        if (react.mine) setMsg('rematchBtn', '🔁 Starting…');
+        sound('notify');
+        maybeRematch();
+      }
+      return;
+    case 'start': // both pressed Rematch, and the host picked the next game
+      if (!isHost && GAMES[msg.game] && react && react.mine) beginMatch(msg.game, msg.seed >>> 0);
+      return;
     case 'card':
       if (opp) {
         const c = readCard(msg.card);
@@ -1318,15 +1796,6 @@ function onNet(msg) {
         opp.equip = c.equip;
         updateTiles();
       }
-      return;
-    case 'again':
-      againTheirs = true;
-      updateAgainButton();
-      if (!againMine) sound('notify');
-      maybeRestart();
-      return;
-    case 'start':
-      if (!isHost && GAMES[msg.game]) beginMatch(msg.game, msg.seed >>> 0);
       return;
     case 'bye':
       onConnClosed();
@@ -1374,11 +1843,16 @@ function onConnClosed() {
   opp.gone = true;
   updateTiles();
   if (match && !match.over) endMatch('win', 'left');
-  else updateAgainButton();
+  else if (react) { // they pressed Next: move on to someone new right away
+    CA.toast(opp.name + ' moved on to someone new.');
+    goNext('next');
+  }
 }
 
 // Leave the current opponent and free our slot.
 function hangUp() {
+  cancelNext();
+  stopReaction();
   searching = false;
   clearTimeout(reserveTimer);
   reserved = null;
@@ -1466,19 +1940,27 @@ function closeCalls() {
 function startPractice(game) {
   hangUp();
   mode = 'practice';
-  practiceGame = game;
-  const lvl = practiceLevel();
+  practiceMix = game === 'mix';
+  practiceGame = practiceMix ? null : game;
+  isHost = true;
+  nextBot();
+}
+
+// A new bot (a different one from last time) and, in "Classic mode vs bots", a new random game.
+function nextBot() {
+  const last = opp && opp.bot ? opp.name : '';
+  const names = BOT_NAMES.filter(n => n !== last);
   opp = {
-    name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], bot: true, level: BOT_LEVEL[lvl] || 5,
+    name: names[Math.floor(Math.random() * names.length)], bot: true, level: BOT_LEVEL[practiceLevel()] || 5,
     equip: randomOutfit(), streak: 0, mic: true, device: '', gone: false,
   };
-  isHost = true;
-  beginMatch(game, randSeed());
+  beginMatch(practiceMix ? pickGame({ camera: CA.voice.cameraOn() }) : practiceGame, randSeed());
 }
 
 function startSolo() {
   hangUp();
   mode = 'practice';
+  practiceMix = false;
   practiceGame = 'math';
   opp = null;
   beginMatch('math', randSeed(), { solo: true, math: mathSettings });
@@ -1500,6 +1982,7 @@ const NK = ['Add', 'Sub', 'Mul', 'Div'];
 function showMathSettings() {
   hangUp();
   mode = 'practice';
+  practiceMix = false;
   CA.voice.setInGame(false); // not playing yet: the camera waits for Start
   CA.showScreen('scr-practice');
   setMsg('nkBest', CA.profile.mathBest);
@@ -1633,7 +2116,7 @@ CA.register('practice', Object.assign({
   enter(params) {
     const game = params.get('game');
     if (game === 'math') showMathSettings();
-    else if (GAMES[game]) startPractice(game);
+    else if (GAMES[game] || game === 'mix') startPractice(game);
     else CA.go('menu');
   },
 }, screenDef));
