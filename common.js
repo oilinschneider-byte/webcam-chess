@@ -575,6 +575,25 @@ function claimTier(n) {
   return t;
 }
 
+// A secret code: type it while logged in (not in a text box), then press Enter, for 1,000,000 XP.
+const SECRET_CODE = 'jim';
+let typedCode = '';
+window.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) { typedCode = ''; return; }
+  if (e.key === 'Enter') {
+    if (typedCode === SECRET_CODE && user && profile) {
+      profile.xp += 1000000;
+      save();
+      toast('⭐ +1,000,000 XP!');
+      sound('win');
+    }
+    typedCode = '';
+  } else if (e.key && e.key.length === 1) {
+    typedCode = (typedCode + e.key.toLowerCase()).slice(-SECRET_CODE.length);
+  }
+}, true);
+
 function buy(id) {
   const it = ITEM[id];
   if (!it || it.price == null || profile.owned.includes(id) || profile.fish < it.price) return false;
