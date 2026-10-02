@@ -698,6 +698,18 @@ a.stat-chip:hover { background: var(--surface-2); }
 .pad [data-d="d"] { grid-column: 2; grid-row: 2; }
 .pad [data-d="r"] { grid-column: 3; grid-row: 2; }
 
+.g-barrel { width: 100%; }
+.bb-canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 16px; border: 1px solid var(--border); background: #160f33; touch-action: none; user-select: none; -webkit-user-select: none; }
+.bb-pad { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.bb-pad div { display: flex; gap: 6px; }
+.bb-pad button {
+  width: 52px; height: 50px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  font: 900 20px var(--font); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.bb-pad button.on { background: var(--accent-soft); border-color: var(--accent); }
+.bb-pad .bb-v { background: var(--warn-soft); color: var(--warn); }
+@media (hover: hover) and (pointer: fine) { .bb-pad { display: none; } } /* (on a computer you use the keyboard) */
+
 .g-seq { width: 100%; max-width: 420px; text-align: center; }
 .sq-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: min(330px, 100%); margin: 0 auto 12px; }
 .sq-tile {

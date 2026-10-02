@@ -311,9 +311,12 @@ const TIER_XP = 300;
 let uidCounter = 0;
 
 // talker: 'me' (mouth follows your microphone) or 'opp' (mouth follows your opponent's voice).
+// For pictures drawn on a canvas (where the page's CSS doesn't apply): arms: false leaves out the arms, paws and
+// held item, mouth: 'open' or 'closed' draws only that mouth, and look moves the eyes sideways (in viewBox units).
 function catSVG(equip, opts) {
   const o = opts || {};
   const eq = equip || {};
+  const arms = o.arms !== false;
   const uid = 'k' + (++uidCounter);
   const pick = slot => (eq[slot] && ITEM[eq[slot]] && ITEM[eq[slot]].slot === slot ? ITEM[eq[slot]] : null);
   const fur = pick('skin') || ITEM['skin-orange'];
@@ -349,9 +352,11 @@ function catSVG(equip, opts) {
   p.push('<ellipse cx="82" cy="225" rx="11" ry="7.5" fill="' + fill + '"/><ellipse cx="118" cy="225" rx="11" ry="7.5" fill="' + fill + '"/>');
   p.push('<path d="' + BODY + '" fill="' + fill + '"/>');
   if (shirt) p.push('<g clip-path="url(#' + uid + '-body)">' + shirt.art(c) + '</g>');
-  p.push('<path d="' + ARMS + '" fill="none" stroke="' + mid + '" stroke-width="15" stroke-linecap="round"/>');
-  if (shirt && shirt.sleeve) p.push('<path d="' + SLEEVES + '" fill="none" stroke="' + shirt.sleeve + '" stroke-width="17" stroke-linecap="round"/>');
-  p.push('<circle cx="56" cy="188" r="11" fill="' + fill + '"/><circle cx="144" cy="188" r="11" fill="' + fill + '"/>');
+  if (arms) {
+    p.push('<path d="' + ARMS + '" fill="none" stroke="' + mid + '" stroke-width="15" stroke-linecap="round"/>');
+    if (shirt && shirt.sleeve) p.push('<path d="' + SLEEVES + '" fill="none" stroke="' + shirt.sleeve + '" stroke-width="17" stroke-linecap="round"/>');
+    p.push('<circle cx="56" cy="188" r="11" fill="' + fill + '"/><circle cx="144" cy="188" r="11" fill="' + fill + '"/>');
+  }
 
   p.push('<g class="cat-head">');
   p.push('<path d="M36 70 C30 45 30 22 38 12 C50 14 68 24 80 36 Z" fill="' + fill + '"/>');
@@ -367,18 +372,22 @@ function catSVG(equip, opts) {
   if (fur.sparkle) p.push(dots([[58, 58, 1.8], [146, 62, 2], [118, 40, 1.5], [82, 42, 1.3], [154, 110, 1.5], [46, 112, 1.4]], '#fff', 0.9));
   p.push('<ellipse cx="96" cy="56" rx="44" ry="24" fill="url(#' + uid + '-sheen)"/>');
   const rim = fur.dark ? ' stroke="#fff" stroke-opacity=".5" stroke-width="1.6"' : ''; // so dark cats' eyes still show
+  if (o.look) p.push('<g transform="translate(' + o.look + ' 0)">');
   p.push('<g class="cat-eye"><ellipse cx="71" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="73.5" cy="85" r="2.8" fill="#fff"/></g>');
   p.push('<g class="cat-eye"><ellipse cx="129" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="131.5" cy="85" r="2.8" fill="#fff"/></g>');
+  if (o.look) p.push('</g>');
   p.push('<path d="M41 103 Q49 103 56.5 105 M43.5 116 Q50 113 56.5 111 M159 103 Q151 103 143.5 105 M156.5 116 Q150 113 143.5 111" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>');
-  p.push('<g class="cat-mouth-open"><ellipse cx="100" cy="117" rx="8.5" ry="8" fill="#3d1810"/>' +
-    '<ellipse cx="100" cy="122" rx="5.5" ry="3.4" fill="#ff8a9a" clip-path="url(#' + uid + '-mouth)"/></g>');
-  p.push('<path class="cat-mouth-closed" d="M100 108.3 L100 111.5 M86 110.5 Q93 118.5 100 111.5 Q107 118.5 114 110.5" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
+  if (o.mouth !== 'closed') {
+    p.push('<g class="cat-mouth-open"><ellipse cx="100" cy="117" rx="8.5" ry="8" fill="#3d1810"/>' +
+      '<ellipse cx="100" cy="122" rx="5.5" ry="3.4" fill="#ff8a9a" clip-path="url(#' + uid + '-mouth)"/></g>');
+  }
+  if (o.mouth !== 'open') p.push('<path class="cat-mouth-closed" d="M100 108.3 L100 111.5 M86 110.5 Q93 118.5 100 111.5 Q107 118.5 114 110.5" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
   p.push('<path d="M94.5 101.5 Q100 99.3 105.5 101.5 Q103 107 100 108.3 Q97 107 94.5 101.5 Z" fill="#4a2418"/>');
   if (eyes) p.push(eyes.art(c));
   if (hat) p.push(hat.art(c));
   p.push('</g>');
   if (neck) p.push(neck.art(c));
-  if (hand) p.push(hand.art(c));
+  if (hand && arms) p.push(hand.art(c));
 
   const cls = 'cat' + (o.anim === false ? '' : ' anim') + (o.talker ? ' talk-' + o.talker : '');
   return '<svg class="' + cls + '" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" role="img" style="--mouth:0" aria-label="' +

@@ -9,7 +9,7 @@ const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('
 
 // Matchmaking without a server of our own: waiting players hold one of these PeerJS ids ("slots"),
 // and searching players knock on the lower-numbered slots until someone answers.
-const SLOT_PREFIX = 'camarcade-solos-v6-'; // bump when the games or the match flow change, so old and new versions don't meet
+const SLOT_PREFIX = 'camarcade-solos-v27-'; // bump when the games or the match flow change, so old and new versions don't meet
 const SLOT_COUNT = 10;
 const PEER_OPTS = { debug: 0 }; // probing slots causes expected "taken"/"unavailable" errors; we handle them ourselves
 const CONN_OPTS = { reliable: true, serialization: 'json' };
@@ -1049,6 +1049,7 @@ function makeCtx(gameId, seed, extra) {
     isHost,
     bot: opp && opp.bot ? { level: opp.level } : null,
     oppName: opp ? opp.name : '',
+    oppEquip: opp ? opp.equip : null, // (for games that draw the other player's cat)
     started: false,
     alive: () => !!match && match.ctx === ctx && !match.over,
     send(msg) { if (opp && !opp.bot) send({ t: 'g', m: msg }); },
