@@ -9,7 +9,7 @@ const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('
 
 // Matchmaking without a server of our own: waiting players hold one of these PeerJS ids ("slots"),
 // and searching players knock on the lower-numbered slots until someone answers.
-const SLOT_PREFIX = 'camarcade-solos-v27-'; // bump when the games or the match flow change, so old and new versions don't meet
+const SLOT_PREFIX = 'camarcade-solos-v29-'; // bump when the games or the match flow change, so old and new versions don't meet
 const SLOT_COUNT = 10;
 const PEER_OPTS = { debug: 0 }; // probing slots causes expected "taken"/"unavailable" errors; we handle them ourselves
 const CONN_OPTS = { reliable: true, serialization: 'json' };
@@ -1043,6 +1043,7 @@ function makeCtx(gameId, seed, extra) {
   const listeners = [];
   const handlers = [];
   const queue = [];
+  const enders = [];
   const ctx = Object.assign({
     stage: $('stage'),
     rng: mulberry32(seed),
@@ -1050,6 +1051,7 @@ function makeCtx(gameId, seed, extra) {
     bot: opp && opp.bot ? { level: opp.level } : null,
     oppName: opp ? opp.name : '',
     oppEquip: opp ? opp.equip : null, // (for games that draw the other player's cat)
+    theirCam: () => theirStream(),    // (for games that show the other player's camera themselves)
     started: false,
     alive: () => !!match && match.ctx === ctx && !match.over,
     send(msg) { if (opp && !opp.bot) send({ t: 'g', m: msg }); },
@@ -1073,6 +1075,7 @@ function makeCtx(gameId, seed, extra) {
     },
     stopEvery(id) { clearInterval(id); intervals.delete(id); },
     listen(target, type, fn, opts) { target.addEventListener(type, fn, opts); listeners.push([target, type, fn, opts]); },
+    onEnd(fn) { enders.push(fn); }, // runs when the match ends, however it ends (like stopping a voice that's talking)
     score(a, b) { setMsg('scMe', a); setMsg('scThem', b); },
     note(text) { setMsg('scNote', text || ''); },
     oppCheer() { if (opp && opp.bot) botTalk(700); },
@@ -1085,6 +1088,7 @@ function makeCtx(gameId, seed, extra) {
       intervals.forEach(clearInterval);
       intervals.clear();
       listeners.splice(0).forEach(([t, ty, fn, o]) => t.removeEventListener(ty, fn, o));
+      enders.splice(0).forEach(fn => { try { fn(); } catch (e) { console.warn('Game cleanup failed:', e); } });
     },
   }, extra || {});
   return ctx;
@@ -1152,11 +1156,16 @@ function syncFaceVideos() {
   if (!mine) mv.srcObject = null;
   mv.classList.toggle('hidden', !mine);
   const tv = $('vsThemVideo');
+  const src = theirStream();
+  if (src && tv.srcObject !== src) { tv.srcObject = src; tv.play().catch(() => {}); }
+  if (!src) tv.srcObject = null;
+  tv.classList.toggle('hidden', !src);
+}
+
+// The other player's camera, while they show it and you haven't hidden it (otherwise null).
+function theirStream() {
   const src = $('themVideo').srcObject;
-  const theirs = !!opp && !opp.bot && !opp.gone && opp.face && remoteHasVideo && !hideThem && !!src;
-  if (theirs && tv.srcObject !== src) { tv.srcObject = src; tv.play().catch(() => {}); }
-  if (!theirs) tv.srcObject = null;
-  tv.classList.toggle('hidden', !theirs);
+  return !!opp && !opp.bot && !opp.gone && opp.face && remoteHasVideo && !hideThem && src ? src : null;
 }
 
 function faceToFace(ctx, g, then) {
