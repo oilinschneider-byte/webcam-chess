@@ -710,6 +710,16 @@ a.stat-chip:hover { background: var(--surface-2); }
 .bb-pad .bb-v { background: var(--warn-soft); color: var(--warn); }
 @media (hover: hover) and (pointer: fine) { .bb-pad { display: none; } } /* (on a computer you use the keyboard) */
 
+.g-climb { width: 100%; }
+.cc-wrap { position: relative; }
+.cc-canvas {
+  display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 16px; border: 1px solid var(--border); background: #3a2a5c;
+  touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair;
+}
+.cc-lock { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+.cc-pad { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; color: var(--muted); font-weight: 800; }
+@media (hover: hover) and (pointer: fine) { .cc-pad { display: none; } } /* (the 🐟 button is for phones: on a computer it's V) */
+
 .g-seq { width: 100%; max-width: 420px; text-align: center; }
 .sq-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: min(330px, 100%); margin: 0 auto 12px; }
 .sq-tile {

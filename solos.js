@@ -9,7 +9,7 @@ const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('
 
 // Matchmaking without a server of our own: waiting players hold one of these PeerJS ids ("slots"),
 // and searching players knock on the lower-numbered slots until someone answers.
-const SLOT_PREFIX = 'camarcade-solos-v29-'; // bump when the games or the match flow change, so old and new versions don't meet
+const SLOT_PREFIX = 'camarcade-solos-v30-'; // bump when the games or the match flow change, so old and new versions don't meet
 const SLOT_COUNT = 10;
 const PEER_OPTS = { debug: 0 }; // probing slots causes expected "taken"/"unavailable" errors; we handle them ourselves
 const CONN_OPTS = { reliable: true, serialization: 'json' };

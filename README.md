@@ -14,7 +14,7 @@ A browser game site for 1v1 games over webcam. Show your camera, or play as a ca
 3. Pick from the menu:
    - **⚡ Classic Games** (left): starts searching for a random player right away. Every round goes like this:
      1. **Match found:** 5 seconds face to face (big cameras, or cats), while the game's rules show.
-     2. **The game:** one of 41 quick mini-games, picked at random. Most take about 30 seconds; a few (like Stack Tower, Remember the Sequence, Barrel Brawl and Simon Says) keep going until someone wins. See the list below.
+     2. **The game:** one of 42 quick mini-games, picked at random. Most take about 30 seconds; a few (like Stack Tower, Remember the Sequence, Barrel Brawl and Simon Says) keep going until someone wins, and Claw Climb is a race of a few minutes. See the list below.
      3. **After the game:** a few seconds face to face again to react, with **🔁 Rematch** and **⏭ Next**. If you both press Rematch, you play each other again with a new game. Otherwise you're matched with someone new right away. (If nobody new turns up for about 20 seconds, you can get the same player again.)
 
      Every win adds 🔥 to your streak and catches 🐟 fish, and the longer your streak, the more fish each win gives. A loss resets your streak. Your camera is on the left and the other player is on the right. The first time you search with your camera on, a reminder says that other players will see you.
@@ -23,9 +23,9 @@ A browser game site for 1v1 games over webcam. Show your camera, or play as a ca
    - **🐱 My Cat & Shop**: spend fish on fur colors, hats, glasses, shirts, collars, things to hold and backgrounds.
    - **🎟️ Streak Pass**: wins earn XP (more with a longer streak) that unlock 20 tiers of fish and exclusive items.
 
-## The 41 Classic Games
+## The 42 Classic Games
 
-Every game has exactly the same chance of coming up. The app goes through all 41 in a random order before any game repeats. (Online, the other player's app picks the game half the time, so a game can come back a bit sooner.) Pose Match and Simon Says only come up when both players have their camera on.
+Every game has exactly the same chance of coming up. The app goes through all 42 in a random order before any game repeats. (Online, the other player's app picks the game half the time, so a game can come back a bit sooner.) Pose Match and Simon Says only come up when both players have their camera on.
 
 **⚡ Action**
 
@@ -43,6 +43,7 @@ Every game has exactly the same chance of coming up. The app goes through all 41
 | ⚽ Penalty Shootout | Swipe left, up (the middle) or right to shoot. Then the view flips: you're the goalie and you swipe to dive. On a computer, drag with the mouse or use the arrow keys. 3 kicks each, then sudden death. |
 | 🛢️ Barrel Brawl | Two cats with very long, floppy arms and one barrel. Press **V** next to it to pick it up. Hold **V** to wind up and let go to shoot it over your head at the other cat: the longer you hold, the further it flies. No barrel nearby? **V** slaps with your long arms: it knocks the other cat back and makes it drop the barrel, but doesn't cost a life. Tap ← or → (or A or D) twice fast to dash. Jump with ↑, W or Space. On a phone, use the buttons under the game (tap ◀ or ▶ twice to dash). 3 lives each and no clock. After 40 seconds a few tiles of ground start cracking and falling into the lava, but most of the ground always stays. Fall in and you lose a life (you float back down on a parachute). |
 | 🏀 Cat Hoops | 1v1 basketball with the long-armed cats, in a gym full of cat fans. Move with A and D (or ← →), and tap A or D twice fast to dash. You pick the ball up just by touching it. Hold **W** to jump and shoot: a bar fills up next to you, and letting go in the green usually goes in (less often if the other cat is right in your face). If the bar reaches the top, you shoot anyway. Run in close to the hoop and **W** dunks instead. **V** is a quick shot without the bar. On defense, jump with **W** and press **S** at the right moment to block a shot, or slap the ball out of their hands with **V** (or **S** on the ground). Shots from beyond the arc are worth 3. Most points in 60 seconds wins; a tie goes to overtime, and the next basket wins. |
+| 🧗 Claw Climb | A race up a giant cat tower, a bit like Getting Over It. Your cat climbs with one very long arm, and the paw follows your mouse or trackpad (click the game first; Esc gives you the mouse back). On a phone, drag on the game. Press the paw against a ledge and its claws hold on: moving the mouse on then moves your whole cat instead. Press down on a ledge to push yourself up, push sideways to shuffle along, and move fast to fling yourself higher. There is no jump button. Shiny metal and glass are slippery. **V** takes out a giant fish in your other paw (**V** again puts it away). While the fish is out, the mouse swings the fish, and your climbing paw just keeps holding on where it is. A fast swing that hits the other cat knocks them loose and down the tower, but the fish only lasts 2 slaps. The cats are solid, but if they get stuck against each other for a second, they slip through each other for a moment, so nobody can block the way. Every game is a new tower (the same one for both players). First to the golden fish at the top wins; after 4 minutes, whoever is higher wins. |
 | 🕺 Pose Match | Copy the pose on screen. Your camera checks it, and the first to hold the pose wins the round. First to 2. |
 | 🗣️ Simon Says | Simon, a cat with a very deep voice, calls out poses (arms up in a V, hands on your head, show me your muscles…). Do the pose, but **only** when he starts with "Simon says"! If he just says "Hands on your head!", don't move. You hear him and see his words in a speech bubble, with a little drawing of the pose. The bubble glows pink when he really says "Simon says". Your camera is on the left and theirs is on the right, both with lines showing what the pose checker sees. A label on your camera says which pose Simon sees (or "Step back so Simon sees both hands"), and the **Hold it!** bar fills up while you hold the right pose. Every command comes faster, and Simon talks faster too. No clock: the first to mess up loses, by doing a pose Simon didn't say or by being too slow. If you both mess up on the same command, it keeps going (3 times in a row is a draw). |
 
@@ -151,10 +152,11 @@ Classic Games matches you with strangers. They see you if your camera is on, and
 - `games-quiz.js`: Closest Guess, Country Shape, Odd One Out, Which Is Bigger?, Timeline, Emoji Movie Guess, Animal Guess, Pattern Next, Spot the Difference
 - `games-mind.js`: Rhyme Race, Longest Word, Category Rush, Guess Their Choice, Same Answer, Would You Rather
 - `games-pose.js`: Pose Match
-- `games-floppy.js`: the long-armed cats that Barrel Brawl and Cat Hoops share (the cat pictures, the floppy arms, the controls with double-tap dashes)
+- `games-floppy.js`: the long-armed cats that Barrel Brawl, Cat Hoops and Claw Climb share (the cat pictures, the floppy arms, the controls with double-tap dashes)
 - `games-barrel.js`: Barrel Brawl
 - `games-hoops.js`: Cat Hoops
 - `games-simon.js`: Simon Says (it shares Pose Match's pose detector)
+- `games-climb.js`: Claw Climb (the cat tower, the one-armed climbing, the fish, and the bot that finds its way up)
 - `chess.js`: chess (online, pass & play, vs computer)
 - `pass.js`, `character.js`: the Streak Pass and My Cat screens
 - `style.css`, `pieces.css`: how everything looks
