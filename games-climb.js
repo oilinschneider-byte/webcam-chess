@@ -1,18 +1,24 @@
-/* Classic Games: Claw Climb. A race to the top of a giant cat tower, a bit like Getting Over It: your cat climbs
-   with one very long arm. Move the mouse (or trackpad) and the paw follows. Press it against something and the claws
-   hold, so moving the mouse on moves your whole cat instead: press down on a ledge to push yourself up, swing, and
-   fling yourself higher. There's no jump button. Shiny metal and glass are slippery.
+/* Classic Games: Claw Climb. A race up a junk mountain, a bit like Getting Over It: your cat climbs with one very
+   long arm. Move the mouse (or trackpad) and the paw follows. Press it against something and the claws hold, so moving
+   the mouse on moves your whole cat instead: press down on a ledge to push yourself up, swing, and fling yourself
+   higher. There's no jump button. Shiny metal is slippery, and slopes are only good for claws.
+
+   The course winds from a backyard at sunset up to a golden shelf near the stars: over a boulder and a ramp to an old
+   armchair, up crates and a fridge (hold on to its magnets), back left up a pallet, a big round boulder and some
+   crooked crates, right up a leaning ladder, over a suitcase on a washing machine and a plank bridge, up a wobbly tower
+   of tires, and across stepping stones to the finish. Fall, and you land wherever you land.
 
    V takes out a giant fish in your other paw (V again puts it away). While it's out, the mouse swings the fish, and
-   your climbing paw just keeps holding on where it is. A fast swing that hits the other cat knocks them loose and
-   down the tower, but the fish only lasts 2 slaps. First to the top wins (after 4 minutes, whoever is higher wins).
+   your climbing paw just keeps holding on where it is. A fast swing that hits the other cat knocks them loose, but
+   the fish only lasts 2 slaps. First to the top wins (after 4 minutes, whoever got further wins).
 
    The cats are solid, but when they're stuck against each other for a moment they slip through each other for a few
-   seconds, so nobody can block the way. The gaps in the tower are all wide enough for a cat.
+   seconds, so nobody can block the way. Every gap on the course is either too small to fall into or big enough to
+   climb back out of.
 
    Online, each app moves its own cat and sends where it is, and each app decides when its own fish hits. The host's
-   app decides who got to the top first. Against a bot, the bot climbs along a path up the tower (and falls like
-   anyone else when it's slapped). Both players get the same tower, built from the match's shared random numbers. */
+   app decides who got to the top first. Against a bot, the bot climbs along a path up the course (and falls like
+   anyone else when it's slapped). */
 (() => {
 'use strict';
 
@@ -34,119 +40,112 @@ const PAW_R = 9;
 const PAW_SPEED = 2600;          // a paw that isn't touching anything moves this fast toward where you point
 const K = 2300, DAMP = 55, PUSH = 5200; // the arm is a stiff spring: how hard pressing your paw on something pushes your cat
 const MAX_V = 1400;
-const MU = { carpet: 3, box: 2.6, wood: 2.4, gold: 2.6, wall: 0.35, metal: 0.12, glass: 0.06 }; // how well claws grip it
-const SLIPPERY = { wall: 1, metal: 1, glass: 1 };
-const THICK = { carpet: 20, box: 22, wood: 16, metal: 16, glass: 14, gold: 22 }; // (thin, so a cat always fits under the platform above)
-const ROWS = 21;                 // rows of platforms in the tower
+const MU = { dirt: 2.6, rock: 2.4, wood: 2.4, rubber: 3, fabric: 3, grip: 3, gold: 2.6, wall: 0.35, metal: 0.12 }; // how well claws grip it
+const SLIPPERY = { wall: 1, metal: 1 };
 const SENS = 1.1;                // how far the paw moves for the mouse
 const FISH_LEN = 112, FISH_USES = 2, SLAP_SPEED = 950; // a slap needs the fish swinging at least this fast
-const TIME_LIMIT = 240;          // seconds; then whoever is higher wins
+const TIME_LIMIT = 240;          // seconds; then whoever got further wins
 const READY = 2.4;               // the 3-2-1 countdown
 const GHOST_AFTER = 1.1, GHOST_FOR = 2.5; // stuck against each other this long: slip through each other this long
 const SEND_MS = 50, VIEW_DELAY = 100; // (the other cat is drawn this many ms in the past, so it moves smoothly)
-const START_X = [325, 635];      // where the cats start (the host's on the left)
+const START_X = [150, 265];      // where the cats start (the host's on the left)
 
 CA.games.add('climb', {
   name: 'Claw Climb', icon: '🧗',
-  blurb: 'Race to the top of the cat tower! Move the mouse and your long claw arm follows: press the paw on things to push ' +
+  blurb: 'Race up the junk mountain! Move the mouse and your long claw arm follows: press the paw on things to push ' +
     'and pull yourself up (no jumping!). V takes out a giant fish: swing it fast to slap the other cat down (2 slaps). V puts it away.',
+  prepare() { setTimeout(() => courseRoute(theCourse()), 30); }, // (the route is worked out while you look at each other)
   start(ctx) { play(ctx); },
 });
 
-/* ---------- the tower ---------- */
+/* ---------- shapes ---------- */
 
-// Rows of platforms, taking turns between three (left, middle, right) and two (in between), so every platform has one
-// below it on each side to climb up from. Higher up, the platforms get narrower and further apart, some go missing,
-// and more of them are slippery metal and glass. Every gap is wide enough for a cat, so there are no tight spots to
-// get stuck in (or to block someone in).
-function makeTower(rng) {
-  const R = (a, b) => a + rng() * (b - a);
-  const rows = [];
-  let y = 0;
-  for (let k = 1; k <= ROWS; k++) {
-    const t = (k - 1) / (ROWS - 1);
-    y -= Math.round(R(114, 120) + t * 12); // (always room for a cat under the platform above, and always within reach)
-    const three = k % 2 === 1;
-    const plats = (three ? [175, 480, 785] : [325, 635]).map(c0 => {
-      const w = Math.round((three ? R(150, 180) : R(160, 190)) - t * 60);
-      const cx = Math.round(c0 + R(-1, 1) * (three ? 18 : 10));
-      let x1 = cx - (w >> 1), x2 = cx + (w >> 1);
-      if (x1 < 100) x1 = 20; // (it reaches the wall: no thin gap to wedge into)
-      if (x2 > 860) x2 = 940;
-      return { x1, x2, m: 'wood' };
-    });
-    rows.push({ y, t, plats });
+// Everything on the course is a convex shape: { pts (its corners, in order), n (each side's outward direction), m (its
+// material: how well claws grip it), look (how it's drawn), x1, y1, x2, y2 (a box around it) }.
+function shape(points, m, look) {
+  const s = points.slice().sort((p, q) => p[0] - q[0] || p[1] - q[1]); // (the convex hull, so the corners are in order)
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of s) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (const p of s.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  const pts = lower.slice(0, -1).concat(upper.slice(0, -1));
+  const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+  const n = pts.map((p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    let nx = q[1] - p[1], ny = p[0] - q[0];
+    const l = Math.hypot(nx, ny) || 1;
+    nx /= l; ny /= l;
+    if (((p[0] + q[0]) / 2 - cx) * nx + ((p[1] + q[1]) / 2 - cy) * ny < 0) { nx = -nx; ny = -ny; }
+    return [nx, ny];
+  });
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return { pts, n, m, look: look || m, cx, cy, x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+}
+const box = (x1, y1, x2, y2, m, look) => shape([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], m, look);
+// A plank whose top runs from a to b, th thick (it hangs below that line).
+function slab(ax, ay, bx, by, th, m, look) {
+  const l = Math.hypot(bx - ax, by - ay);
+  let px = -(by - ay) / l, py = (bx - ax) / l;
+  if (py < 0) { px = -px; py = -py; }
+  return shape([[ax, ay], [bx, by], [bx + px * th, by + py * th], [ax + px * th, ay + py * th]], m, look);
+}
+// A box turned by `turn` radians.
+function tilted(cx, cy, w, h, turn, m, look) {
+  const c = Math.cos(turn), s = Math.sin(turn);
+  return shape([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([x, y]) => [cx + x * c - y * s, cy + x * s + y * c]), m, look);
+}
+// A lumpy boulder (always the same lumps for the same `seed`).
+function rock(cx, cy, r, seed) {
+  const pts = [];
+  for (let k = 0; k < 10; k++) {
+    const a = k / 10 * Math.PI * 2 + Math.sin(seed * 7.1 + k * 3.3) * 0.18, rr = r * (0.9 + 0.1 * Math.sin(seed * 3.7 + k * 5.9));
+    pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
   }
-  // Higher up, a platform here and there goes missing (but you can always still get up from every row).
-  const linked = (a, b) => Math.max(0, b.x1 - a.x2, a.x1 - b.x2) <= 150;
-  for (let k = 1; k < rows.length - 1; k++) {
-    const row = rows[k];
-    if (row.t < 0.3 || rng() > 0.35 || row.plats.length < 2) continue;
-    const j = Math.floor(rng() * row.plats.length);
-    const rest = row.plats.filter((p, i) => i !== j);
-    if (rows[k + 1].plats.every(u => rest.some(p => linked(p, u))) && rows[k - 1].plats.every(l => rest.some(p => linked(l, p)))) row.plats = rest;
-  }
-  for (const row of rows) {
-    for (const p of row.plats) {
-      const r = rng();
-      p.m = row.t < 0.25 ? (r < 0.35 ? 'box' : r < 0.7 ? 'carpet' : 'wood')
-        : row.t < 0.6 ? (r < 0.18 ? 'metal' : r < 0.75 ? 'wood' : 'box')
-        : (r < 0.2 ? 'glass' : r < 0.32 ? 'metal' : r < 0.85 ? 'wood' : 'carpet');
-    }
-    if (row.plats.every(p => SLIPPERY[p.m])) row.plats[0].m = 'wood'; // (always something to grab)
-  }
-  const top = rows[rows.length - 1].y - 125;
-  const shift = 330 - top; // (so the finish is 330 below the top of the world)
-  const rects = [];
-  for (const row of rows) for (const p of row.plats) rects.push({ x1: p.x1, y1: row.y + shift, x2: p.x2, y2: row.y + shift + THICK[p.m], m: p.m });
-  const finish = { x1: 380, y1: top + shift, x2: 580, y2: top + shift + THICK.gold, m: 'gold' };
-  rects.push(finish);
-  const floor = shift;
-  rects.push({ x1: -60, y1: floor, x2: W + 60, y2: floor + 80, m: 'carpet', floor: true });
-  rects.push({ x1: -60, y1: -400, x2: 20, y2: floor + 80, m: 'wall' }, { x1: 940, y1: -400, x2: W + 60, y2: floor + 80, m: 'wall' });
-  rects.push({ x1: -60, y1: -400, x2: W + 60, y2: finish.y1 - 190, m: 'wall' });
-  // pictures on the wallpaper (just for show)
-  const frames = [];
-  for (let k = 0; k < rows.length; k += 3) frames.push({ x: Math.round(R(140, 820)), y: rows[k].y + shift - 62, w: Math.round(R(46, 70)), h: Math.round(R(36, 52)), e: ['🐟', '🐭', '🧶', '🐈', '🌙', '🐦'][Math.floor(R(0, 6))] });
-  return { rects, finish, floor, h: floor + 80, frames };
+  return Object.assign(shape(pts, 'rock'), { seed });
 }
 
-// Pushes a circle (o: { x, y }, radius r) out of the rects. Returns the surface it ends up against (within `slack`
+// How far (x, y) is from a shape (less than 0 inside it), which way is out, and the nearest point on its surface.
+function polyDist(s, x, y) {
+  const P = s.pts, N = s.n;
+  let inside = true, sep = -Infinity, sn = N[0], best = Infinity, bx = 0, by = 0;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    const d = (x - a[0]) * N[i][0] + (y - a[1]) * N[i][1];
+    if (d > 0) inside = false;
+    if (d > sep) { sep = d; sn = N[i]; }
+    const ex = b[0] - a[0], ey = b[1] - a[1], t = clamp(((x - a[0]) * ex + (y - a[1]) * ey) / (ex * ex + ey * ey || 1), 0, 1);
+    const qx = a[0] + ex * t, qy = a[1] + ey * t, d2 = (x - qx) * (x - qx) + (y - qy) * (y - qy);
+    if (d2 < best) { best = d2; bx = qx; by = qy; }
+  }
+  if (inside) return { d: sep, nx: sn[0], ny: sn[1], qx: x - sn[0] * sep, qy: y - sn[1] * sep };
+  const d = Math.sqrt(best) || 1e-6;
+  return { d, nx: (x - bx) / d, ny: (y - by) / d, qx: bx, qy: by };
+}
+
+// Pushes a circle (o: { x, y }, radius r) out of the shapes. Returns the surface it ends up against (within `slack`
 // px) as { nx, ny, m }: which way is out of the surface, and its material. Or null.
-function pushOut(o, r, rects, slack) {
+function pushOut(o, r, shapes, slack) {
   let hit = null;
   for (let it = 0; it < 3; it++) {
     let moved = false;
-    for (const b of rects) {
-      if (o.x < b.x1 - r - slack || o.x > b.x2 + r + slack || o.y < b.y1 - r - slack || o.y > b.y2 + r + slack) continue;
-      const cx = clamp(o.x, b.x1, b.x2), cy = clamp(o.y, b.y1, b.y2);
-      const dx = o.x - cx, dy = o.y - cy, d = Math.hypot(dx, dy);
-      if (d === 0) { // the middle of the circle is inside: out through the nearest side
-        let depth = o.x - b.x1, nx = -1, ny = 0;
-        if (b.x2 - o.x < depth) { depth = b.x2 - o.x; nx = 1; ny = 0; }
-        if (o.y - b.y1 < depth) { depth = o.y - b.y1; nx = 0; ny = -1; }
-        if (b.y2 - o.y < depth) { depth = b.y2 - o.y; nx = 0; ny = 1; }
-        o.x += nx * (depth + r);
-        o.y += ny * (depth + r);
-        hit = { nx, ny, m: b.m };
-        moved = true;
-      } else if (d < r + slack) {
-        const nx = dx / d, ny = dy / d;
-        if (d < r) { o.x += nx * (r - d); o.y += ny * (r - d); moved = true; }
-        hit = { nx, ny, m: b.m };
-      }
+    for (const s of shapes) {
+      if (o.x < s.x1 - r - slack || o.x > s.x2 + r + slack || o.y < s.y1 - r - slack || o.y > s.y2 + r + slack) continue;
+      const q = polyDist(s, o.x, o.y);
+      if (q.d >= r + slack) continue;
+      if (q.d < r) { o.x += q.nx * (r - q.d); o.y += q.ny * (r - q.d); moved = true; }
+      hit = { nx: q.nx, ny: q.ny, m: s.m };
     }
     if (!moved) break;
   }
   return hit;
 }
 
-function bodyClear(rects, x, y, margin) {
-  for (const s of CIRCLES) {
-    const cx = x + s.x, cy = y + s.y, r = s.r + margin;
-    for (const b of rects) {
-      const dx = cx - clamp(cx, b.x1, b.x2), dy = cy - clamp(cy, b.y1, b.y2);
-      if (dx * dx + dy * dy < r * r) return false;
+function bodyClear(shapes, x, y, margin) {
+  for (const c of CIRCLES) {
+    const cx = x + c.x, cy = y + c.y, r = c.r + margin;
+    for (const s of shapes) {
+      if (cx < s.x1 - r || cx > s.x2 + r || cy < s.y1 - r || cy > s.y2 + r) continue;
+      if (polyDist(s, cx, cy).d < r) return false;
     }
   }
   return true;
@@ -159,31 +158,100 @@ function segDist(a, b, x, y) {
   return Math.hypot(a.x + dx * t - x, a.y + dy * t - y);
 }
 
+/* ---------- the course ---------- */
+
+let COURSE = null;
+function theCourse() { return COURSE || (COURSE = makeCourse()); }
+
+// The junk mountain, from the backyard up. Each step is within an arm's reach of the last, and every gap between
+// things is either closed off, too small for a cat, or open enough to climb back out of.
+function makeCourse() {
+  const w = 1440, h = 3200, ground = 3100;
+  const S = [], decor = [];
+  const add = s => (S.push(s), s);
+  add(box(-200, -400, 0, h + 200, 'wall', 'none'));            // the edges of the world
+  add(box(w, -400, w + 200, h + 200, 'wall', 'none'));
+  add(box(-200, -400, w + 200, 140, 'wall', 'none'));
+  add(box(-200, ground, w + 200, h + 200, 'dirt', 'ground'));
+  // 1. the backyard: a boulder, a stack of tires, a ramp up to an old armchair
+  add(rock(470, 3062, 78, 1));
+  add(box(556, 3022, 690, ground, 'rubber', 'tires'));
+  add(slab(690, 3030, 912, 2932, 18, 'wood', 'plank'));
+  add(box(905, 2932, 1042, 2976, 'fabric', 'seat'));
+  add(box(912, 2976, 1036, ground, 'fabric', 'chair'));
+  add(box(1006, 2810, 1046, 2932, 'fabric', 'chairback'));
+  // 2. crates against a fridge (it's slippery, but its two big magnets aren't: there's room to stand on each one, and
+  // there's a dish towel on top)
+  add(box(1046, 2984, 1240, ground, 'wood', 'crate'));
+  add(box(1046, 2862, 1240, 2984, 'wood', 'crate'));
+  add(box(1240, 2609, w, ground, 'metal', 'fridge'));
+  for (const y of [2768, 2671]) add(box(1204, y, 1240, y + 12, 'grip', 'magnet'));
+  add(box(1240, 2601, w, 2609, 'fabric', 'towel'));
+  // 3. back left: up a pallet leaning over the fridge, a big round boulder, three crooked crates
+  add(slab(1330, 2490, 950, 2350, 20, 'wood', 'pallet'));
+  add(rock(860, 2352, 60, 2));
+  add(tilted(735, 2262, 120, 70, -0.15, 'wood', 'crate'));
+  add(tilted(575, 2151, 110, 64, 0.12, 'wood', 'crate'));
+  add(tilted(442, 2063, 130, 76, -0.1, 'wood', 'crate'));
+  // 4. right, up a leaning ladder (only its rungs are solid)
+  for (let k = 0; k < 4; k++) add(box(530 + 110 * k, 1918 - 85 * k, 590 + 110 * k, 1928 - 85 * k, 'wood', 'rung'));
+  decor.push({ k: 'ladder', a: [512, 1937], b: [905, 1633] });
+  // 5. a suitcase on a washing machine, a boulder, and a plank bridge back left
+  add(box(945, 1630, 1095, 1770, 'metal', 'washer'));
+  add(box(955, 1575, 1085, 1630, 'fabric', 'suitcase'));
+  add(rock(1180, 1530, 62, 3));
+  add(box(900, 1360, 1135, 1378, 'wood', 'plank'));
+  // 6. a wobbly tower of tires, zigzagging up
+  // (two columns of stacks, far enough apart for a cat to climb up between them)
+  for (let k = 0; k < 5; k++) add(box(k % 2 ? 560 : 744, 1270 - 90 * k, (k % 2 ? 560 : 744) + 110, 1330 - 90 * k, 'rubber', 'tires'));
+  // 7. stepping stones off to the right, up to the golden shelf
+  add(rock(920, 858, 46, 4));
+  add(rock(1030, 780, 46, 5));
+  add(rock(1140, 710, 46, 6));
+  const finish = add(box(1195, 580, 1395, 602, 'gold', 'gold'));
+  decor.push({ k: 'sign', x: 330, y: ground, text: 'TOP →' });
+  return { w, h, ground, shapes: S, finish, decor };
+}
+
 /* ---------- the bot's way up ---------- */
 
-// A grid over the tower: where a cat fits, and where it's within an arm's reach of something to grab (not the walls,
-// and nothing slippery). The bot climbs along the cheapest path through it (A*), so it stays near things to hold on to.
-function makeGrid(tw) {
-  const CS = 10, GW = Math.ceil(W / CS), GH = Math.ceil(tw.h / CS);
+// A grid over the course: where a cat fits, and where it's within an arm's reach of something to grab (nothing
+// slippery). The bot climbs along the cheapest path through it (A*), so it stays near things to hold on to. The same
+// path from the start is the course's route: how far along it you are is how far you've got.
+function makeGrid(cs) {
+  const CS = 10, GW = Math.ceil(cs.w / CS), GH = Math.ceil(cs.h / CS);
   const free = new Uint8Array(GW * GH), held = new Uint8Array(GW * GH), goal = new Uint8Array(GW * GH);
-  const grips = tw.rects.filter(b => !SLIPPERY[b.m]);
-  const f = tw.finish;
+  const grips = cs.shapes.filter(s => !SLIPPERY[s.m]);
+  const f = cs.finish;
   for (let j = 0; j < GH; j++) {
     for (let i = 0; i < GW; i++) {
       const x = i * CS + CS / 2, y = j * CS + CS / 2, n = j * GW + i;
-      if (!bodyClear(tw.rects, x, y, 2)) continue;
+      if (!bodyClear(cs.shapes, x, y, 2)) continue;
       free[n] = 1;
-      const sx = x + SHOULDERS[0].x, sy = y + SHOULDERS[0].y;
-      let best = Infinity;
-      for (const b of grips) best = Math.min(best, Math.hypot(sx - clamp(sx, b.x1, b.x2), sy - clamp(sy, b.y1, b.y2)));
-      if (best < REACH - 15) held[n] = 1;
+      const sx = x + SHOULDERS[0].x, sy = y + SHOULDERS[0].y, R = REACH - 15;
+      for (const s of grips) {
+        if (sx < s.x1 - R || sx > s.x2 + R || sy < s.y1 - R || sy > s.y2 + R) continue;
+        if (pushable(s, sx, sy, R)) { held[n] = 1; break; }
+      }
       if (x > f.x1 + 20 && x < f.x2 - 20 && y > f.y1 - 50 && y < f.y1 - BODY.r) goal[n] = 1;
     }
   }
   return { CS, GW, GH, free, held, goal };
 }
+// Is the top of this shape within r of (x, y)? (Its sides and underside don't count: pushing on them pushes you
+// sideways or down, not up. And from right underneath it, your paw can't get round to its top.)
+function pushable(s, x, y, r) {
+  if (x > s.x1 + 10 && x < s.x2 - 10 && y > s.y2 - 5) return false;
+  for (let i = 0; i < s.pts.length; i++) {
+    if (s.n[i][1] > -0.3) continue;
+    const a = s.pts[i], b = s.pts[(i + 1) % s.pts.length];
+    if (segDist({ x: a[0], y: a[1] }, { x: b[0], y: b[1] }, x, y) < r) return true;
+  }
+  return false;
+}
+function courseGrid(cs) { return cs.grid || (cs.grid = makeGrid(cs)); }
 
-function findPath(grid, tw, sx, sy) {
+function findPath(grid, cs, sx, sy) {
   const { CS, GW, GH, free, held, goal } = grid;
   const si = clamp(Math.floor(sx / CS), 0, GW - 1), sj = clamp(Math.floor(sy / CS), 0, GH - 1);
   let start = -1;
@@ -198,7 +266,7 @@ function findPath(grid, tw, sx, sy) {
   if (start < 0) return null;
   const N = GW * GH;
   const cost = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), done = new Uint8Array(N);
-  const gx = (tw.finish.x1 + tw.finish.x2) / 2 / CS, gy = (tw.finish.y1 - 30) / CS;
+  const gx = (cs.finish.x1 + cs.finish.x2) / 2 / CS, gy = (cs.finish.y1 - 30) / CS;
   const hf = [], hn = [];
   const push = (fv, n) => {
     let i = hf.length;
@@ -276,6 +344,29 @@ function findPath(grid, tw, sx, sy) {
   return path;
 }
 
+// The route up the course (the bot's path from the start), measured along the way.
+function courseRoute(cs) {
+  if (cs.route !== undefined) return cs.route;
+  const pts = findPath(courseGrid(cs), cs, START_X[0], cs.ground - 30);
+  if (!pts) return (cs.route = null);
+  const at = [0];
+  for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  return (cs.route = { pts, at, total: at[at.length - 1] });
+}
+// How far along the route (x, y) is, from 0 (the start) to 1 (the top).
+function progressAt(cs, x, y) {
+  const R = courseRoute(cs);
+  if (!R) return 0;
+  let best = Infinity, at = 0;
+  for (let i = 0; i < R.pts.length - 1; i++) {
+    const a = R.pts[i], b = R.pts[i + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = clamp(((x - a.x) * dx + (y - a.y) * dy) / l2, 0, 1);
+    const d = Math.hypot(a.x + dx * t - x, a.y + dy * t - y);
+    if (d < best) { best = d; at = R.at[i] + t * Math.sqrt(l2); }
+  }
+  return clamp(at / R.total, 0, 1);
+}
+
 /* ---------- the cat pictures ---------- */
 
 // A cat's picture without its arms and legs (those are drawn separately), mouth closed [0] and open [1].
@@ -304,8 +395,10 @@ function play(ctx) {
   const host = ctx.isHost;              // (against a bot, you're always the host)
   const meI = host ? 0 : 1;
   const skill = skillOf(ctx);
-  const tower = makeTower(ctx.rng);
+  const course = theCourse();
+  const shapes = course.shapes;
   const LIMIT = L(TIME_LIMIT * 1000) / 1000;
+  courseRoute(course);
 
   ctx.stage.innerHTML =
     '<div class="g-climb"><div class="cc-wrap"><canvas class="cc-canvas" id="ccCanvas" width="' + W + '" height="' + H + '"></canvas>' +
@@ -320,14 +413,14 @@ function play(ctx) {
   const { dot, star, roundRect, label, bigText, dizzy } = F.painter(g, W);
 
   function newCat(i, eq, name) {
-    const x = START_X[i], y = tower.floor - BODY.r - 0.5;
-    const aim = { x: i ? -44 : 44, y: 6 };
+    const x = START_X[i], y = course.ground - BODY.r - 0.5;
+    const aim = { x: 44, y: 6 };
     const S = { x: x + SHOULDERS[0].x, y: y + SHOULDERS[0].y };
     return {
       i, name, fur: F.fur(eq), pics: bodyPics(eq),
       x, y, vx: 0, vy: 0, ground: null,
       aim, aimV: { x: 0, y: 0 }, paw: { x: S.x + aim.x, y: S.y + aim.y }, hold: null,
-      fish: false, uses: FISH_USES, fishAim: { x: i ? 50 : -50, y: 20 }, fishPaw: { x: x, y: y }, tip: { x: x, y: y }, tipV: { x: 0, y: 0 },
+      fish: false, uses: FISH_USES, fishAim: { x: -50, y: 20 }, fishPaw: { x: x, y: y }, tip: { x: x, y: y }, tipV: { x: 0, y: 0 },
       slapCd: 0, stun: 0, done: false, legs: null, arm2: null, landV: 0,
     };
   }
@@ -336,8 +429,8 @@ function play(ctx) {
 
   let phase = 'ready', readyT = 0, count = 0, goAt = 0, clock = 0, winner = null;
   let touchT = 0, ghostT = 0;    // (see "the cats are solid")
-  let camY = tower.floor - H + 60;
-  let lastMsg = performance.now(), sentTop = false;
+  let camX = 0, camY = course.h - H;
+  let lastMsg = performance.now(), sentTop = false, testCam = null;
   const fxs = []; // effects: dust, rings, words
 
   /* ---------- controls ---------- */
@@ -444,7 +537,7 @@ function play(ctx) {
         if (sl > lim) { // too sideways for the claws: it slides
           const k = lim / sl;
           const o = { x: tx + dn * h.nx + sx * k, y: ty + dn * h.ny + sy * k };
-          const hit = pushOut(o, PAW_R, tower.rects, 1.5);
+          const hit = pushOut(o, PAW_R, shapes, 1.5);
           if (!hit) c.hold = null;
           else { h.x = o.x; h.y = o.y; h.nx = hit.nx; h.ny = hit.ny; h.m = hit.m; }
         }
@@ -469,12 +562,12 @@ function play(ctx) {
   function movePaw(c, tx, ty, step) {
     const p = c.paw;
     const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
-    if (d < 0.01) return c.stun > 0 ? null : pushOut(p, PAW_R, tower.rects, 0.6);
+    if (d < 0.01) return c.stun > 0 ? null : pushOut(p, PAW_R, shapes, 0.6);
     const go = Math.min(d, step), n = Math.max(1, Math.ceil(go / 5));
     for (let k = 1; k <= n; k++) {
       p.x += dx / d * go / n;
       p.y += dy / d * go / n;
-      const hit = pushOut(p, PAW_R, tower.rects, 0);
+      const hit = pushOut(p, PAW_R, shapes, 0);
       if (hit) return c.stun > 0 ? null : hit;
     }
     return null;
@@ -506,10 +599,16 @@ function play(ctx) {
     c.tip = tip;
   }
 
-  // Moves a cat's body one step: gravity, the push from its arm, and bumping into the tower (and the other cat).
+  // Moves a cat's body one step: gravity, the push from its arm, and bumping into things (and the other cat).
   function moveBody(c, dt, ax, ay, o) {
+    const was = c.ground;
     c.vx += ax * dt;
-    c.vy += (ay + G) * dt;
+    c.vy += ay * dt;
+    if (was && !SLIPPERY[was.m]) { // on a slope, your fur holds you still: gravity only presses you into it
+      const gn = G * was.ny * dt;
+      c.vx += gn * was.nx;
+      c.vy += gn * was.ny;
+    } else c.vy += G * dt;
     if (ax || ay) { // (the arm is springy: damp it, toward moving the way the mouse moves your cat)
       const f = Math.hypot(ax, ay), ux = ax / f, uy = ay / f, k = Math.min(1, DAMP * dt);
       const along = (c.vx + c.aimV.x) * ux + (c.vy + c.aimV.y) * uy;
@@ -526,16 +625,21 @@ function play(ctx) {
     for (let it = 0; it < 2; it++) {
       for (const s of CIRCLES) {
         const p = { x: c.x + s.x, y: c.y + s.y };
-        const hit = pushOut(p, s.r, tower.rects, 0.5);
+        const hit = pushOut(p, s.r, shapes, 0.5);
         if (!hit) continue;
         c.x = p.x - s.x;
         c.y = p.y - s.y;
         const vn = c.vx * hit.nx + c.vy * hit.ny;
         if (vn < 0) { hard = Math.max(hard, -vn); c.vx -= vn * hit.nx; c.vy -= vn * hit.ny; }
-        if (hit.ny < -0.5) c.ground = hit;
+        if (hit.ny < -0.5 && (!c.ground || hit.ny < c.ground.ny)) c.ground = hit;
       }
     }
-    if (c.ground) c.vx *= Math.exp(-(SLIPPERY[c.ground.m] ? 0.6 : 12) * dt); // (slippery things are slippery)
+    if (c.ground) { // standing on something: friction (slippery things are slippery)
+      const n = c.ground, slip = SLIPPERY[n.m];
+      const tx = -n.ny, ty = n.nx, vt = c.vx * tx + c.vy * ty, k = 1 - Math.exp(-(slip ? 0.6 : 12) * dt);
+      c.vx -= vt * tx * k;
+      c.vy -= vt * ty * k;
+    }
     if (hard > 380 && c.landV <= 0) { // a thud
       c.landV = 0.2;
       for (let k = 0; k < 5 && fxs.length < 80; k++) fxDust(c.x + (Math.random() - 0.5) * 30, c.y + BODY.r);
@@ -611,10 +715,10 @@ function play(ctx) {
   /* ---------- the race ---------- */
 
   function atTop(v) {
-    const f = tower.finish;
+    const f = course.finish;
     return v.x > f.x1 - 6 && v.x < f.x2 + 6 && v.y + BODY.r <= f.y1 + 3 && v.y > f.y1 - 150;
   }
-  const height = v => clamp((tower.floor - BODY.r - v.y) / (tower.floor - BODY.r - tower.finish.y1 + BODY.r), 0, 1);
+  const progress = v => progressAt(course, v.x, v.y);
 
   function reachedTop() {
     me.done = true;
@@ -623,7 +727,7 @@ function play(ctx) {
     else if (!sentTop) { sentTop = true; ctx.send({ t: 'top' }); hint('You made it! Checking who was first…'); }
   }
   function timeUp() {
-    const a = height(me), b = height(theirView(performance.now()));
+    const a = progress(me), b = progress(theirView(performance.now()));
     endGame(Math.abs(a - b) < 0.004 ? -1 : a > b ? meI : 1 - meI, true);
   }
   function endGame(w, timeout) { // w: the winner (0 or 1), or -1 for a draw
@@ -649,7 +753,7 @@ function play(ctx) {
   }
   function onRemote(s) { // (it comes from the other app: check everything)
     if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) return;
-    const x = clamp(s.x, -100, W + 100), y = clamp(s.y, -600, tower.h + 200);
+    const x = clamp(s.x, -100, course.w + 100), y = clamp(s.y, -600, course.h + 200);
     rbuf.push({
       at: performance.now(), x, y, vx: clamp(num(s.vx, 0), -3000, 3000), vy: clamp(num(s.vy, 0), -3000, 3000),
       px: clamp(num(s.px, x), x - 300, x + 300), py: clamp(num(s.py, y), y - 300, y + 300),
@@ -682,11 +786,11 @@ function play(ctx) {
   /* ---------- the bot ---------- */
 
   const bot = ctx.bot ? {
-    grid: null, path: null, pi: 1, phys: false, rest: 0, retry: 0, wave: Math.random() * 6, anchor: null, next: 0, swing: null,
-    speed: 34 + 34 * skill, slip: 0.05 - 0.035 * skill,
+    path: null, pi: 1, phys: false, rest: 0, retry: 0, wave: Math.random() * 6, anchor: null, next: 0, swing: null,
+    speed: 40 + 36 * skill, slip: 0.05 - 0.035 * skill,
   } : null;
-  if (bot) { bot.grid = makeGrid(tower); replan(); }
-  function replan() { bot.path = findPath(bot.grid, tower, them.x, them.y); bot.pi = 1; bot.anchor = null; }
+  if (bot) replan();
+  function replan() { bot.path = findPath(courseGrid(course), course, them.x, them.y); bot.pi = 1; bot.anchor = null; }
 
   function stepBot(dt, mv) {
     const c = them;
@@ -719,7 +823,7 @@ function play(ctx) {
     c.vx = (c.x - x0) / dt;
     c.vy = (c.y - y0) / dt;
     const probe = { x: c.x, y: c.y + 4 };
-    const standing = !!pushOut(probe, BODY.r, tower.rects, 1);
+    const standing = !!pushOut(probe, BODY.r, shapes, 1);
     if (!standing && Math.random() < bot.slip * dt) { // it slips
       bot.phys = true;
       c.vx = (Math.random() - 0.5) * 160;
@@ -745,13 +849,13 @@ function play(ctx) {
       const p = bot.path[Math.min(bot.pi + 1, bot.path.length - 1)];
       const gx = S.x + clamp(p.x - c.x, -90, 90) * 0.8, gy = S.y - 80;
       let best = null, bd = Infinity;
-      for (const b of tower.rects) {
-        if (SLIPPERY[b.m]) continue;
-        const q = { x: clamp(gx, b.x1, b.x2), y: clamp(gy, b.y1, b.y2) };
-        const hit = pushOut(q, PAW_R, [b], 0);
-        if (!hit || Math.hypot(q.x - S.x, q.y - S.y) > REACH) continue;
-        const d = Math.hypot(q.x - gx, q.y - gy);
-        if (d < bd) { bd = d; best = { x: q.x, y: q.y, nx: hit.nx, ny: hit.ny, m: b.m }; }
+      for (const s of shapes) {
+        if (SLIPPERY[s.m] || s.x2 < S.x - REACH || s.x1 > S.x + REACH || s.y2 < S.y - REACH || s.y1 > S.y + REACH) continue;
+        const q = polyDist(s, gx, gy);
+        const ax = q.qx + q.nx * PAW_R, ay = q.qy + q.ny * PAW_R; // (the paw sits on the surface)
+        if (Math.hypot(ax - S.x, ay - S.y) > REACH) continue;
+        const d = Math.hypot(ax - gx, ay - gy);
+        if (d < bd) { bd = d; best = { x: ax, y: ay, nx: q.nx, ny: q.ny, m: s.m }; }
       }
       bot.anchor = best;
     }
@@ -775,7 +879,8 @@ function play(ctx) {
       if (bot.swing.t > 0.45) { bot.swing = null; c.fish = false; }
       return;
     }
-    if (c.uses <= 0 || c.stun > 0 || me.done) return;
+    // (not at the very start, when you're both still on the ground, and not at someone who's behind it)
+    if (c.uses <= 0 || c.stun > 0 || me.done || clock < 10 || progress(me) < progress(c) - 0.02) return;
     const S = shoulder(c, 1);
     const dx = me.x - S.x, dy = me.y - 15 - S.y;
     if (Math.hypot(dx, dy) < REACH + FISH_LEN * 0.7 && Math.random() < (0.25 + 0.5 * skill) * dt) {
@@ -862,8 +967,8 @@ function play(ctx) {
   ctx.note('First to the top wins · 🐟 2 slaps each');
   if (window.__testHooks) {
     window.__cc = {
-      tower, me, them, bot, host, phase: () => phase, ghost: () => ghostT, clock: () => clock, view: () => theirView(performance.now()),
-      move: (dx, dy) => { inX += dx; inY += dy; }, fish: toggleFish, setAim: (x, y) => { testAim = { x, y }; },
+      course, me, them, bot, host, phase: () => phase, ghost: () => ghostT, clock: v => (v === undefined ? clock : (clock = v)), view: () => theirView(performance.now()),
+      move: (dx, dy) => { inX += dx; inY += dy; }, fish: toggleFish, setAim: (x, y) => { testAim = { x, y }; }, progress, cam: (x, y) => { testCam = x == null ? null : { x, y }; },
     };
   }
 
@@ -880,11 +985,16 @@ function play(ctx) {
   function render(now, dt) {
     const tv = bot ? viewOf(them) : theirView(now);
     const mv = viewOf(me);
-    const want = clamp(me.y - H * 0.58, 0, tower.h - H);
-    camY += (want - camY) * Math.min(1, dt * 6);
-    g.setTransform(DPR, 0, 0, DPR, 0, -camY * DPR);
-    drawRoom();
-    for (const b of tower.rects) if (b.y2 > camY - 20 && b.y1 < camY + H + 20 && !(b.m === 'wall')) drawRect(b);
+    const wx = clamp(me.x - W / 2, 0, course.w - W), wy = clamp(me.y - H * 0.56, 0, course.h - H);
+    camX += (wx - camX) * Math.min(1, dt * 5);
+    camY += (wy - camY) * Math.min(1, dt * 6);
+    if (testCam) { camX = testCam.x; camY = testCam.y; }
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawScenery(now);
+    g.setTransform(DPR, 0, 0, DPR, -camX * DPR, -camY * DPR);
+    drawDecor(false);
+    for (const s of shapes) if (s.look !== 'none' && s.x2 > camX - 20 && s.x1 < camX + W + 20 && s.y2 > camY - 20 && s.y1 < camY + H + 20) drawShape(s);
+    drawDecor(true);
     drawFinish(now);
     stepLimbs(them, tv, dt);
     stepLimbs(me, mv, dt);
@@ -903,103 +1013,197 @@ function play(ctx) {
     updateMsg(now);
   }
 
-  function drawRoom() {
-    const t = camY / tower.h;
-    const sky = g.createLinearGradient(0, camY, 0, camY + H);
-    sky.addColorStop(0, t < 0.33 ? '#3a2a5c' : t < 0.66 ? '#2e3c5e' : '#4a2f45');
-    sky.addColorStop(1, t < 0.33 ? '#4b3570' : t < 0.66 ? '#3a4c72' : '#5d3a52');
+  /* the world around the course */
+
+  const mix = (a, b, t) => {
+    const p = q => [parseInt(q.slice(1, 3), 16), parseInt(q.slice(3, 5), 16), parseInt(q.slice(5, 7), 16)];
+    const A = p(a), B = p(b);
+    return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')';
+  };
+  const STARS = Array.from({ length: 70 }, (_, k) => [(k * 211.7) % W, (k * 97.3) % (H * 0.8), 0.6 + (k % 3) * 0.5]);
+
+  // The sky goes from a teal-and-orange sunset at the bottom to a starry night at the top, with hills, a lighthouse
+  // and the moon far away (they move slower than you, so they look far).
+  function drawScenery(now) {
+    const t = clamp(1 - camY / (course.h - H), 0, 1); // 0 at the bottom, 1 at the top
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, mix('#2f6b6a', '#120d2b', t));
+    sky.addColorStop(0.65, mix('#87a35b', '#2a1d55', t));
+    sky.addColorStop(1, mix('#f0a050', '#4b2d63', t));
     g.fillStyle = sky;
-    g.fillRect(0, camY, W, H);
-    g.fillStyle = 'rgba(255, 255, 255, .035)'; // wallpaper stripes
-    for (let x = 40; x < W; x += 80) g.fillRect(x, camY, 26, H);
-    g.font = '24px ' + FONT;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    for (const f of tower.frames) {
-      if (f.y + f.h < camY || f.y - f.h > camY + H) continue;
-      g.fillStyle = 'rgba(30, 18, 40, .45)';
-      g.fillRect(f.x - f.w / 2 - 5, f.y - f.h / 2 - 5, f.w + 10, f.h + 10);
-      g.fillStyle = 'rgba(255, 240, 210, .18)';
-      g.fillRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
-      g.globalAlpha = 0.5;
-      g.fillText(f.e, f.x, f.y + 1);
+    g.fillRect(0, 0, W, H);
+    if (t > 0.3) { // stars
+      g.fillStyle = '#fff';
+      for (const [x, y, r] of STARS) { g.globalAlpha = (t - 0.3) * (0.5 + 0.5 * Math.sin(now / 700 + x)); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); }
       g.globalAlpha = 1;
     }
-    g.fillStyle = '#21182f'; // the side walls
-    g.fillRect(0, camY, 20, H);
-    g.fillRect(940, camY, 20, H);
+    g.fillStyle = mix('#fff4cf', '#f4f1ff', t); // the moon
+    g.beginPath(); g.arc(760 - camX * 0.05, 110 + camY * 0.02 - 40 * t, 34, 0, Math.PI * 2); g.fill();
+    const below = course.h - H - camY; // (how far you've climbed: the hills and the lighthouse sink out of sight)
+    const hills = (k, color, baseY, amp, len) => {
+      const ox = -camX * k, oy = below * k;
+      g.fillStyle = color;
+      g.beginPath();
+      g.moveTo(0, H);
+      for (let x = 0; x <= W; x += 24) g.lineTo(x, baseY + oy + Math.sin((x - ox) / len) * amp + Math.sin((x - ox) / (len * 0.37)) * amp * 0.35);
+      g.lineTo(W, H);
+      g.closePath();
+      g.fill();
+    };
+    hills(0.16, mix('#3f5d4a', '#1f1b3d', t), 330, 34, 140);
+    // the lighthouse, on the far hills
+    const lx = 250 - camX * 0.16, ly = 300 + below * 0.16;
+    g.fillStyle = mix('#53616a', '#2a2748', t);
+    g.beginPath(); g.moveTo(lx - 16, ly + 40); g.lineTo(lx - 10, ly - 90); g.lineTo(lx + 10, ly - 90); g.lineTo(lx + 16, ly + 40); g.fill();
+    g.fillRect(lx - 14, ly - 104, 28, 14);
+    g.fillStyle = 'rgba(255, 236, 160, ' + (0.35 + 0.35 * t) + ')';
+    const beam = Math.sin(now / 1400);
+    g.beginPath(); g.moveTo(lx, ly - 97); g.lineTo(lx + beam * 260, ly - 125); g.lineTo(lx + beam * 260, ly - 70); g.closePath(); g.fill();
+    g.fillStyle = '#ffe9a0';
+    g.fillRect(lx - 6, ly - 101, 12, 7);
+    hills(0.3, mix('#2c4436', '#171430', t), 410, 46, 190);
   }
 
-  function drawRect(b) {
-    const w = b.x2 - b.x1, h = b.y2 - b.y1;
-    if (b.floor) {
-      g.fillStyle = '#7a4a6a';
-      g.fillRect(b.x1, b.y1, w, h);
-      g.fillStyle = '#93597f';
-      g.fillRect(b.x1, b.y1, w, 8);
-      return;
-    }
+  function shapePath(s) {
+    g.beginPath();
+    g.moveTo(s.pts[0][0], s.pts[0][1]);
+    for (let i = 1; i < s.pts.length; i++) g.lineTo(s.pts[i][0], s.pts[i][1]);
+    g.closePath();
+  }
+
+  function drawShape(s) {
+    const w = s.x2 - s.x1, h = s.y2 - s.y1;
     g.save();
-    if (b.m === 'wood') {
-      g.fillStyle = '#5b3a1f';
-      if (b.x1 > 20) { g.beginPath(); g.moveTo(b.x1 + 14, b.y2); g.lineTo(b.x1 + 26, b.y2); g.lineTo(b.x1 + 14, b.y2 + 16); g.fill(); }
-      if (b.x2 < 940) { g.beginPath(); g.moveTo(b.x2 - 14, b.y2); g.lineTo(b.x2 - 26, b.y2); g.lineTo(b.x2 - 14, b.y2 + 16); g.fill(); }
-      g.fillStyle = '#8a5a32';
-      roundRect(b.x1, b.y1, w, h, 4); g.fill();
-      g.fillStyle = '#a8743f';
-      g.fillRect(b.x1 + 3, b.y1 + 2, w - 6, 4);
-      g.strokeStyle = 'rgba(60, 35, 15, .35)';
-      g.lineWidth = 1;
+    g.lineJoin = 'round';
+    if (s.look === 'ground') {
+      g.fillStyle = '#4a3426';
+      g.fillRect(s.x1, s.y1, w, h);
+      g.fillStyle = '#5f9e3f';
+      g.fillRect(s.x1, s.y1, w, 9);
+      g.strokeStyle = '#6fb34a';
+      g.lineWidth = 2;
       g.beginPath();
-      for (let x = b.x1 + 30; x < b.x2 - 10; x += 47) { g.moveTo(x, b.y1 + 8); g.lineTo(x + 18, b.y1 + 8); }
+      for (let x = Math.max(s.x1, camX - 20); x < Math.min(s.x2, camX + W + 20); x += 13) { const k = (x * 7) % 5; g.moveTo(x, s.y1 + 2); g.lineTo(x + k - 2, s.y1 - 5 - k); }
       g.stroke();
-    } else if (b.m === 'carpet') {
-      g.fillStyle = 'rgba(120, 80, 50, .5)'; // (a cat-tree post behind it)
-      g.fillRect((b.x1 + b.x2) / 2 - 12, b.y2, 24, 70);
-      g.fillStyle = '#c9b48f';
-      roundRect(b.x1, b.y1 + 2, w, h - 2, 10); g.fill();
-      g.fillStyle = '#e9d7b5';
-      roundRect(b.x1, b.y1, w, h - 6, 10); g.fill();
-    } else if (b.m === 'box') {
-      g.fillStyle = '#a87842';
-      g.fillRect(b.x1, b.y1, w, h);
-      g.fillStyle = '#c8955a';
-      g.fillRect(b.x1 + 2, b.y1 + 2, w - 4, h - 6);
-      g.fillStyle = '#e6c48a';
-      g.fillRect((b.x1 + b.x2) / 2 - 10, b.y1 + 2, 20, h - 6);
-    } else if (b.m === 'metal') {
-      const gr = g.createLinearGradient(0, b.y1, 0, b.y2);
-      gr.addColorStop(0, '#f1f5fa');
-      gr.addColorStop(1, '#8d99a8');
+    } else if (s.look === 'rock') {
+      const gr = g.createRadialGradient(s.cx - w * 0.15, s.cy - h * 0.2, 4, s.cx, s.cy, Math.max(w, h) * 0.6);
+      gr.addColorStop(0, '#b7b8ad');
+      gr.addColorStop(1, '#6d6f6a');
+      shapePath(s); g.fillStyle = gr; g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#45463f'; g.stroke();
+      g.fillStyle = 'rgba(60, 62, 55, .35)';
+      for (let k = 0; k < 7; k++) { g.beginPath(); g.arc(s.cx + Math.sin(s.seed * 9 + k * 2.1) * w * 0.3, s.cy + Math.cos(s.seed * 5 + k * 1.7) * h * 0.3, 2 + (k % 3), 0, Math.PI * 2); g.fill(); }
+      g.fillStyle = 'rgba(120, 160, 80, .55)'; // a bit of moss on top
+      g.beginPath(); g.ellipse(s.cx - w * 0.08, s.y1 + 6, w * 0.22, 5, 0, 0, Math.PI * 2); g.fill();
+    } else if (s.look === 'towel') { // red and white checks
+      g.fillStyle = '#f4ece0';
+      roundRect(s.x1, s.y1 - 1, w, h + 2, 3); g.fill();
+      g.fillStyle = '#d6402f';
+      for (let x = s.x1, k = 0; x < s.x2; x += 10, k++) g.fillRect(x, s.y1 - 1 + (k % 2) * (h + 2) / 2, Math.min(10, s.x2 - x), (h + 2) / 2);
+    } else if (['plank', 'pallet', 'rung', 'crate'].includes(s.look)) {
+      shapePath(s); g.fillStyle = s.look === 'crate' ? '#b47b45' : '#8a5a32'; g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#5b3a1f'; g.stroke();
+      const P = s.pts;
+      g.strokeStyle = 'rgba(70, 40, 18, .55)';
+      g.lineWidth = 2;
+      g.beginPath();
+      if (s.look === 'crate' && P.length === 4) { // the braces across a crate
+        g.moveTo(P[0][0], P[0][1]); g.lineTo(P[2][0], P[2][1]);
+        g.moveTo(P[1][0], P[1][1]); g.lineTo(P[3][0], P[3][1]);
+      } else { // wood grain along the plank
+        let a = 0, best = 0;
+        for (let i = 0; i < P.length; i++) { const q = P[(i + 1) % P.length], l = Math.hypot(q[0] - P[i][0], q[1] - P[i][1]); if (l > best) { best = l; a = i; } }
+        const p0 = P[a], p1 = P[(a + 1) % P.length];
+        for (const f of [0.3, 0.6]) {
+          g.moveTo(p0[0] + (s.cx - p0[0]) * f * 1.6, p0[1] + (s.cy - p0[1]) * f * 1.6);
+          g.lineTo(p1[0] + (s.cx - p1[0]) * f * 1.6, p1[1] + (s.cy - p1[1]) * f * 1.6);
+        }
+      }
+      g.stroke();
+      if (s.look === 'pallet') { g.fillStyle = '#5b3a1f'; for (const f of [0.25, 0.5, 0.75]) { const x = P[0][0] + (P[1][0] - P[0][0]) * f, y = P[0][1] + (P[1][1] - P[0][1]) * f; g.fillRect(x - 3, y, 6, 14); } }
+    } else if (s.look === 'tires') {
+      g.fillStyle = '#26262b';
+      for (let y = s.y1; y < s.y2 - 4; y += 30) {
+        roundRect(s.x1, y, w, Math.min(30, s.y2 - y), 12); g.fill();
+        g.strokeStyle = '#4a4a52'; g.lineWidth = 2;
+        g.beginPath(); for (let x = s.x1 + 10; x < s.x2 - 6; x += 12) { g.moveTo(x, y + 6); g.lineTo(x + 6, y + Math.min(30, s.y2 - y) - 6); } g.stroke();
+      }
+    } else if (['seat', 'chair', 'chairback'].includes(s.look)) {
+      g.fillStyle = '#9e3b32';
+      roundRect(s.x1, s.y1, w, h, 10); g.fill();
+      g.fillStyle = '#c4544a';
+      roundRect(s.x1 + 3, s.y1 + 3, w - 6, Math.min(h - 6, 18), 8); g.fill();
+      if (s.look === 'chair') { g.fillStyle = '#5b2a20'; g.fillRect(s.x1 + 6, s.y2 - 10, 10, 10); g.fillRect(s.x2 - 16, s.y2 - 10, 10, 10); }
+    } else if (s.look === 'suitcase') {
+      g.fillStyle = '#7a4b2a';
+      roundRect(s.x1, s.y1, w, h, 8); g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#4e2e17'; g.stroke();
+      g.fillStyle = '#c9a45c';
+      g.fillRect(s.x1 + w * 0.25 - 4, s.y1, 8, h);
+      g.fillRect(s.x1 + w * 0.75 - 4, s.y1, 8, h);
+      g.strokeStyle = '#4e2e17'; g.lineWidth = 5;
+      g.beginPath(); g.moveTo((s.x1 + s.x2) / 2 - 16, s.y1); g.quadraticCurveTo((s.x1 + s.x2) / 2, s.y1 - 16, (s.x1 + s.x2) / 2 + 16, s.y1); g.stroke();
+    } else if (s.look === 'fridge' || s.look === 'washer') {
+      const gr = g.createLinearGradient(s.x1, 0, s.x2, 0);
+      gr.addColorStop(0, '#f4f7fb');
+      gr.addColorStop(1, '#b9c3cf');
       g.fillStyle = gr;
-      roundRect(b.x1, b.y1, w, h, 5); g.fill();
-      g.strokeStyle = 'rgba(255, 255, 255, .8)';
-      g.lineWidth = 2;
-      g.beginPath();
-      for (let x = b.x1 + 16; x < b.x2 - 16; x += 38) { g.moveTo(x, b.y1 + h - 5); g.lineTo(x + 10, b.y1 + 5); }
-      g.stroke();
-    } else if (b.m === 'glass') {
-      g.fillStyle = 'rgba(170, 225, 255, .5)';
-      roundRect(b.x1, b.y1, w, h, 4); g.fill();
-      g.strokeStyle = 'rgba(235, 250, 255, .95)';
-      g.lineWidth = 2;
-      g.stroke();
-      g.beginPath();
-      g.moveTo(b.x1 + 12, b.y2 - 4); g.lineTo(b.x1 + 26, b.y1 + 4);
-      g.moveTo(b.x1 + 34, b.y2 - 4); g.lineTo(b.x1 + 42, b.y1 + 4);
-      g.stroke();
-    } else if (b.m === 'gold') {
-      const gr = g.createLinearGradient(0, b.y1, 0, b.y2);
+      roundRect(s.x1, s.y1, w, h, 10); g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#7d8896'; g.stroke();
+      if (s.look === 'fridge') {
+        g.beginPath(); g.moveTo(s.x1, s.y1 + 170); g.lineTo(s.x2, s.y1 + 170); g.stroke();
+        g.fillStyle = '#8c97a5'; g.fillRect(s.x1 + 14, s.y1 + 40, 6, 90); g.fillRect(s.x1 + 14, s.y1 + 200, 6, 120);
+      } else {
+        g.fillStyle = '#c9d6e3'; g.fillRect(s.x1 + 6, s.y1 + 6, w - 12, 22);
+        g.beginPath(); g.arc((s.x1 + s.x2) / 2, s.y1 + 85, 38, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(120, 180, 230, .6)'; g.fill(); g.lineWidth = 6; g.strokeStyle = '#8c97a5'; g.stroke();
+      }
+      g.strokeStyle = 'rgba(255, 255, 255, .7)'; g.lineWidth = 2; // (shiny: slippery)
+      g.beginPath(); g.moveTo(s.x2 - 18, s.y1 + 12); g.lineTo(s.x2 - 28, s.y1 + 44); g.stroke();
+    } else if (s.look === 'magnet') {
+      g.fillStyle = ['#ff5a78', '#ffd23f', '#5ad1ff'][Math.round(s.y1) % 3];
+      roundRect(s.x1, s.y1, w, h, 4); g.fill();
+      g.lineWidth = 2; g.strokeStyle = 'rgba(0, 0, 0, .35)'; g.stroke();
+    } else if (s.look === 'gold') {
+      const gr = g.createLinearGradient(0, s.y1, 0, s.y2);
       gr.addColorStop(0, '#fff1a8');
       gr.addColorStop(1, '#d9a300');
       g.fillStyle = gr;
-      roundRect(b.x1, b.y1, w, h, 6); g.fill();
+      roundRect(s.x1, s.y1, w, h, 6); g.fill();
+    } else {
+      shapePath(s); g.fillStyle = '#777'; g.fill();
     }
     g.restore();
   }
 
+  // Things that are only there to look at: the ladder's rails, the sign at the start.
+  function drawDecor(front) {
+    for (const d of course.decor) {
+      if (d.k === 'ladder' && !front) {
+        g.strokeStyle = '#6b4424';
+        g.lineWidth = 8;
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(d.a[0], d.a[1]); g.lineTo(d.b[0], d.b[1]);
+        g.moveTo(d.a[0] + 60, d.a[1]); g.lineTo(d.b[0] + 60, d.b[1]);
+        g.stroke();
+      } else if (d.k === 'sign' && !front) {
+        g.fillStyle = '#6b4424';
+        g.fillRect(d.x - 4, d.y - 70, 8, 70);
+        g.fillStyle = '#c99a5e';
+        roundRect(d.x - 42, d.y - 92, 84, 32, 6); g.fill();
+        g.lineWidth = 2; g.strokeStyle = '#6b4424'; g.stroke();
+        g.fillStyle = '#4a2c12';
+        g.font = '900 16px ' + FONT;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(d.text, d.x, d.y - 75);
+      }
+    }
+  }
+
   function drawFinish(now) {
-    const f = tower.finish;
+    const f = course.finish;
     if (f.y1 > camY + H + 60 || f.y1 < camY - 200) return;
     const cx = (f.x1 + f.x2) / 2;
     g.fillStyle = '#ffd23f'; // the trophy: a golden fish on a cup
@@ -1037,7 +1241,7 @@ function play(ctx) {
         const a = pts[i], b = pts[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01, f = (d - seg) / d;
         if (i === 0) { b.x -= dx * f; b.y -= dy * f; } else { a.x += dx * f / 2; a.y += dy * f / 2; b.x -= dx * f / 2; b.y -= dy * f / 2; }
       }
-      for (let i = 1; i < pts.length; i++) pushOut(pts[i], 4, tower.rects, 0);
+      for (let i = 1; i < pts.length; i++) pushOut(pts[i], 4, shapes, 0);
     }
   }
   function stepLimbs(c, v, dt) {
@@ -1156,12 +1360,12 @@ function play(ctx) {
   }
 
   function drawHud(now, mv, tv) {
-    // how high you both are
+    // how far along the course you both are
     const x = W - 34, top = 70, bottom = H - 70;
     g.fillStyle = 'rgba(15, 10, 25, .55)';
     roundRect(x - 7, top - 8, 14, bottom - top + 16, 7); g.fill();
     label('🏁', x, top - 24, 18, '#fff');
-    const mark = (v, color, size) => { const y = bottom - height(v) * (bottom - top); g.fillStyle = color; dot(x, y, size); g.lineWidth = 2; g.strokeStyle = '#1c1530'; g.stroke(); };
+    const mark = (v, color, size) => { const y = bottom - progress(v) * (bottom - top); g.fillStyle = color; dot(x, y, size); g.lineWidth = 2; g.strokeStyle = '#1c1530'; g.stroke(); };
     mark(tv, '#ffffff', 7);
     mark(mv, '#ffd23f', 8);
     // your fish
@@ -1180,7 +1384,7 @@ function play(ctx) {
     if (phase === 'over' && winner) {
       const w = winner.w;
       bigText(winner.timeout ? "Time's up!" : w < 0 ? "It's a draw!" : w === meI ? 'You made it! 🏆' : them.name + ' made it first!', H / 2 - 20, 46, w === meI ? '#7dff8a' : '#fff', 1);
-      if (winner.timeout && w >= 0) bigText(w === meI ? 'You got higher!' : them.name + ' got higher', H / 2 + 30, 26, '#fff', 1);
+      if (winner.timeout && w >= 0) bigText(w === meI ? 'You got further!' : them.name + ' got further', H / 2 + 30, 26, '#fff', 1);
     }
   }
 
@@ -1193,12 +1397,12 @@ function play(ctx) {
     else if (fine && !locked && !everLocked) text = 'Click the game, then move your mouse: the paw follows it';
     else if (me.stun > 0) text = 'Slapped! 🐟';
     else if (me.fish) text = '🐟 Swing the fish fast at ' + them.name + '! Your other paw keeps holding on. V puts the fish away';
-    else if (clock < 15) text = 'Press your paw on a ledge, then ' + (fine ? 'move the mouse' : 'drag') + ' down to push yourself up. No jumping: just your arm!';
-    else text = 'Push off ledges · fast moves fling you · metal and glass are slippery · V: 🐟 fish (' + me.uses + ' slap' + (me.uses === 1 ? '' : 's') + ' left)';
+    else if (clock < 15) text = 'Press your paw on the boulder, then ' + (fine ? 'move the mouse' : 'drag') + ' down to push yourself up. No jumping: just your arm!';
+    else text = 'Push off things · fast moves fling you · shiny metal is slippery · V: 🐟 fish (' + me.uses + ' slap' + (me.uses === 1 ? '' : 's') + ' left)';
     if ($('ccMsg').textContent !== text) setMsg('ccMsg', text);
   }
 }
 
-CA.games.climb = { makeTower, makeGrid, findPath, pushOut }; // (for the tests)
+CA.games.climb = { theCourse, makeGrid, courseGrid, findPath, courseRoute, progressAt, pushOut, polyDist, bodyClear }; // (for the tests)
 
 })();
