@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
-<link rel="stylesheet" href="style.css?v=35">
-<link rel="stylesheet" href="pieces.css?v=35">
+<link rel="stylesheet" href="style.css?v=36">
+<link rel="stylesheet" href="pieces.css?v=36">
 </head>
 <body>
 
@@ -18,6 +18,7 @@
   <a class="logo" href="#/menu"><span class="logo-mark">🐱</span><span class="logo-text">Cam<b>Arcade</b></span></a>
   <nav class="topnav">
     <a href="#/menu" data-nav="menu">🏠 Home</a>
+    <a href="#/leaders" data-nav="leaders">🏆 Leaderboard</a>
     <a href="#/pass" data-nav="pass">🎟️ Streak Pass</a>
     <a href="#/cat" data-nav="cat">🐱 My Cat</a>
   </nav>
@@ -30,6 +31,7 @@
       <button class="user-btn" id="userBtn"><span id="userName"></span> ▾</button>
       <div class="user-pop hidden" id="userPop">
         <button class="btn small danger" id="logoutBtn">Log out</button>
+        <button class="btn small ghost" id="deleteAccountBtn">Delete my account</button>
       </div>
     </div>
   </div>
@@ -61,6 +63,15 @@
           <span>Type the password again</span>
           <input id="authPass2" type="password" maxlength="64" autocomplete="new-password">
         </label>
+        <div class="field" id="authBirthRow">
+          <span>When were you born?</span>
+          <div class="birth-row">
+            <select id="authMonth" aria-label="Month you were born"></select>
+            <select id="authYear" aria-label="Year you were born"></select>
+          </div>
+          <small class="field-note">You have to be 13 or older. Under 18, other players only ever see and hear your cat.</small>
+        </div>
+        <label class="check" id="authRulesRow"><input type="checkbox" id="authRules"> <span>I'll be kind to other players, and I won't show or say anything rude.</span></label>
         <label class="check" id="rememberRow"><input type="checkbox" id="authRemember"> Keep me logged in on this computer</label>
         <p class="msg" id="authMsg" role="alert"></p>
         <button class="btn go big wide" id="authSubmit" type="submit">Create account</button>
@@ -68,6 +79,7 @@
       <p class="hint small center" id="authHint"></p>
     </div>
   </div>
+  <p class="auth-links"><a href="#/leaders">🏆 Leaderboard</a> · <a href="#/stats">📊 How many people play</a></p>
 </main>
 
 <!-- ================= CAMERA + MICROPHONE ================= -->
@@ -103,6 +115,7 @@
         <span class="stat-chip">🎟️ Tier <b id="menuTier">0</b></span>
       </div>
       <p class="muted menu-mic" id="menuMic"></p>
+      <p class="online-note hidden" id="menuOnline"></p>
     </div>
   </section>
 
@@ -199,9 +212,11 @@
   </section>
 
   <div class="menu-links">
+    <a class="link-card" href="#/leaders"><span>🏆</span><b>Leaderboard</b><small id="menuRankNote">Who has the longest win streak?</small></a>
     <a class="link-card" href="#/cat"><span>🐱</span><b>My Cat &amp; Shop</b><small>Spend your fish on hats, glasses and more</small></a>
     <a class="link-card" href="#/pass"><span>🎟️</span><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
   </div>
+  <p class="menu-foot"><a href="#/stats">📊 How many people play CamArcade</a></p>
 </main>
 
 <!-- ================= CLASSIC GAMES (Solos + practice matches) ================= -->
@@ -242,8 +257,10 @@
       <button class="btn" id="faceBtn">🐱 Show my cat</button>
       <button class="btn" id="hideThemBtn">🙈 Hide their camera</button>
       <button class="btn" id="muteThemBtn">🔈 Mute them</button>
+      <button class="btn" id="reportBtn">🚩 Report</button>
       <button class="btn danger" id="skipBtn">⏭ Skip</button>
     </div>
+    <p class="m-safety hidden" id="safetyNote"></p>
   </div>
 
   <div class="overlay hidden" id="searchView">
@@ -251,6 +268,7 @@
       <div class="radar"><div class="radar-cat" id="searchCat"></div></div>
       <h2 id="searchTitle">Looking for a player…</h2>
       <p class="muted" id="searchSub">Searching…</p>
+      <p class="muted small" id="searchOnline"></p>
       <p class="search-tip hidden" id="searchTip">Nobody else is searching right now. Stay here and you'll be matched as soon as someone joins, or invite a friend to open CamArcade too.</p>
       <div class="row center">
         <button class="btn hidden" id="retryBtn">↻ Try again</button>
@@ -270,6 +288,7 @@
       <div class="f2f-intro" id="vsIntro">
         <div class="vs-word">VS</div>
         <div class="vs-game"><span class="vs-icon" id="vsIcon"></span><b id="vsGame"></b><small id="vsBlurb"></small></div>
+        <div class="vs-note hidden" id="vsNote"></div>
         <div class="vs-count" id="vsCount">5</div>
       </div>
       <div class="f2f-react hidden" id="vsReact">
@@ -277,7 +296,7 @@
         <h2 id="rxTitle"></h2>
         <p class="rx-reward" id="rxReward"></p>
         <div class="rx-btns"><button class="btn big primary" id="rematchBtn">🔁 Rematch</button><button class="btn big solos-btn" id="nextBtn">⏭ Next</button></div>
-        <button class="btn ghost small" id="rxMenuBtn">🏠 Menu</button>
+        <div class="rx-small"><button class="btn ghost small" id="rxMenuBtn">🏠 Menu</button><button class="btn ghost small" id="rxReportBtn">🚩 Report</button></div>
         <p class="rx-note" id="rxNote"></p>
         <div class="timer"><i id="rxTimer"></i></div>
       </div>
@@ -473,6 +492,56 @@
   </div>
 </main>
 
+<!-- ================= LEADERBOARD ================= -->
+<main class="screen hidden" id="scr-leaders">
+  <div class="board-page">
+    <div class="board-head">
+      <h1>🏆 Leaderboard</h1>
+      <p class="muted">The longest win streaks in Classic Games. Only games the server saw count, and nobody can change their own streak.</p>
+    </div>
+    <div class="row board-tabs">
+      <div class="seg" id="lbTabs" role="group" aria-label="Which streaks">
+        <button data-lb="best" class="active">🏆 Best ever</button>
+        <button data-lb="hot">🔥 Right now</button>
+      </div>
+      <button class="btn small ghost" id="lbRefresh">↻ Refresh</button>
+    </div>
+    <p class="board-me hidden" id="lbMe"></p>
+    <div class="card board-card">
+      <ol class="board-list" id="lbList"></ol>
+      <p class="muted center" id="lbMsg">Loading…</p>
+    </div>
+    <details class="card board-rules">
+      <summary>What counts?</summary>
+      <ul>
+        <li>Wins in Classic Games against real players. Practice and bots don't count.</li>
+        <li>Both players' browsers report every game, and the server only counts it when they agree.</li>
+        <li>Games against someone on the same internet connection (like your own second window, or someone in your house) are friendly games and don't count.</li>
+        <li>The same two players count for up to 3 games a day. After that, rematches are just for fun.</li>
+        <li>If the two reports disagree, nobody's streak goes up. Three disagreements during one streak end that streak.</li>
+        <li>Leaving in the middle of a game counts as a loss.</li>
+      </ul>
+    </details>
+  </div>
+</main>
+
+<!-- ================= HOW MANY PEOPLE PLAY ================= -->
+<main class="screen hidden" id="scr-stats">
+  <div class="board-page">
+    <div class="board-head">
+      <h1>📊 How many people play</h1>
+      <p class="muted" id="stSince">Counted by CamArcade's server.</p>
+    </div>
+    <div class="stat-tiles" id="stTiles"></div>
+    <div class="card board-card">
+      <h3>The last 14 days</h3>
+      <table class="day-table" id="stDays"></table>
+      <p class="muted center" id="stMsg">Loading…</p>
+    </div>
+    <p class="muted small center">A visitor is one browser on one day. "Internet connections" counts different homes, schools and phones, which is harder to fake. Days are in UTC.</p>
+  </div>
+</main>
+
 <!-- ================= MY CAT + SHOP ================= -->
 <main class="screen hidden" id="scr-cat">
   <div class="char-page">
@@ -510,6 +579,7 @@
     <div class="modal-icon" id="caModalIcon"></div>
     <h2 id="caModalTitle"></h2>
     <p id="caModalText"></p>
+    <input class="modal-input hidden" id="caModalInput" maxlength="72">
     <div class="row center" id="caModalBtns"></div>
   </div>
 </div>
@@ -518,25 +588,28 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="common.js?v=35"></script>
-<script src="solos.js?v=35"></script>
-<script src="games-quick.js?v=35"></script>
-<script src="games-words.js?v=35"></script>
-<script src="games-board.js?v=35"></script>
-<script src="games-world.js?v=35"></script>
+<script src="config.js?v=36"></script>
+<script src="server.js?v=36"></script>
+<script src="common.js?v=36"></script>
+<script src="solos.js?v=36"></script>
+<script src="games-quick.js?v=36"></script>
+<script src="games-words.js?v=36"></script>
+<script src="games-board.js?v=36"></script>
+<script src="games-world.js?v=36"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=35"></script>
-<script src="games-quiz.js?v=35"></script>
-<script src="games-mind.js?v=35"></script>
-<script src="games-pose.js?v=35"></script>
-<script src="games-floppy.js?v=35"></script>
-<script src="games-barrel.js?v=35"></script>
-<script src="games-hoops.js?v=35"></script>
-<script src="games-simon.js?v=35"></script>
-<script src="games-climb.js?v=35"></script>
-<script src="chess.js?v=35"></script>
-<script src="pass.js?v=35"></script>
-<script src="character.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="games-action.js?v=36"></script>
+<script src="games-quiz.js?v=36"></script>
+<script src="games-mind.js?v=36"></script>
+<script src="games-pose.js?v=36"></script>
+<script src="games-floppy.js?v=36"></script>
+<script src="games-barrel.js?v=36"></script>
+<script src="games-hoops.js?v=36"></script>
+<script src="games-simon.js?v=36"></script>
+<script src="games-climb.js?v=36"></script>
+<script src="chess.js?v=36"></script>
+<script src="pass.js?v=36"></script>
+<script src="character.js?v=36"></script>
+<script src="leaders.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

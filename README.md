@@ -4,20 +4,25 @@ A browser game site for 1v1 games over webcam. Show your camera, or play as a ca
 
 ## Start it
 
+CamArcade needs its free online server (Supabase) for accounts, matchmaking, streaks and the leaderboard. **Setting it up takes about 10 minutes: follow [SETUP.md](SETUP.md).** After that:
+
 - Double-click **start.bat**. Your browser opens the site. Keep the black window open while you play.
 - Or double-click **index.html**. This works in Edge and Chrome too, but the browser may ask about the microphone more often.
 
 ## How it works
 
-1. **Sign up** with a username and password. Next time, just **log in**. Accounts are saved in this browser on this computer.
-2. **Allow camera & microphone**, or press **No thanks**. If you allow them, your camera turns on by itself in every game (Classic Games, Chess, Practice and Chess vs Computer) and turns off when you leave the game. With the microphone on, other players hear you and your cat's mouth moves when you talk. If you press **No thanks**, you play as your cat.
+1. **Sign up** with a username, a password and the month and year you were born. Next time, just **log in**. Accounts are saved online, so you can log in on any device. You have to be 13 or older. Players under 18 always play as their cat: other players never see or hear them, and they never see or hear other players.
+2. **Allow camera & microphone**, or press **No thanks**. If you allow them, your camera turns on in games (Classic Games, Chess, Practice and Chess vs Computer) and turns off when you leave the game. In Classic Games, every new player sees your cat until you press **📷 Show my face**. With the microphone on, the other player hears you (18 and over only) and your cat's mouth moves when you talk. If you press **No thanks**, you play as your cat.
 3. Pick from the menu:
    - **⚡ Classic Games** (left): starts searching for a random player right away. Every round goes like this:
      1. **Match found:** 5 seconds face to face (big cameras, or cats), while the game's rules show.
      2. **The game:** one of 42 quick mini-games, picked at random. Most take about 30 seconds; a few (like Stack Tower, Remember the Sequence, Barrel Brawl and Simon Says) keep going until someone wins, and Claw Climb is a race of a few minutes. See the list below.
      3. **After the game:** a few seconds face to face again to react, with **🔁 Rematch** and **⏭ Next**. If you both press Rematch, you play each other again with a new game. Otherwise you're matched with someone new right away. (If nobody new turns up for about 20 seconds, you can get the same player again.)
 
-     Every win adds 🔥 to your streak and catches 🐟 fish, and the longer your streak, the more fish each win gives. A loss resets your streak. Your camera is on the left and the other player is on the right. The first time you search with your camera on, a reminder says that other players will see you.
+     Every win adds 🔥 to your streak and catches 🐟 fish, and the longer your streak, the more fish each win gives. A loss resets your streak. Your camera is on the left and the other player is on the right. The first time you search, a reminder explains how cameras and the 🚩 Report button work.
+
+     **What counts for your streak:** both players' apps report every game to the server, and it only counts when they agree. Games against someone on the same internet connection (your own second window, or someone in your house) are friendly games and don't count. The same two players count for up to 3 games a day; after that, rematches are just for fun. Leaving in the middle of a game counts as a loss.
+   - **🏆 Leaderboard**: the longest win streaks ever, and the longest streaks going on right now. It works without logging in, so you can share the link (`…/#/leaders`).
    - **♞ Chess** (right): create a room and send the code to a friend. Your cameras turn on when the game starts.
    - **🎯 Practice mode** (underneath): press **🎲 Classic mode vs bots** to play random games one after another against bots (face to face with each bot, then Rematch or a new bot), or pick one game to practice. There's also **Chess vs Computer**. Choose Easy, Medium or Hard bots. Practice doesn't change your streak or fish. **Math Sprint** practice lets you choose which kinds of problems, the number ranges, and the time limit.
    - **🐱 My Cat & Shop**: spend fish on fur colors, hats, glasses, shirts, collars, things to hold and backgrounds.
@@ -104,23 +109,26 @@ During a game:
 - **🙈 Hide their camera** shows the other player's cat instead of their camera. **🔈 Mute them** turns their voice off.
 - **⏭ Skip** finds a new player. Skipping or closing the page in the middle of a Classic Games match counts as a loss.
 
-## Test it by yourself
+## Test it
 
-Open CamArcade in two *different* browsers (for example Edge and Chrome), make a different account in each, and click **Classic Games** in both. They'll find each other in a few seconds. (Two tabs in the same browser share one computer ID, so those matches count as practice.) If you hear a loud echo, mute one of them with 🎤 at the top.
+- **Automatic tests:** double-click `tools\test-server.bat` (checks the server the way a cheater would try it) and `tools\test-browsers.bat` (two hidden browsers play real matches through your server). [SETUP.md](SETUP.md) explains what they check.
+- **By yourself:** open CamArcade in two *different* browsers (for example Edge and Chrome), make a different account in each, and click **Classic Games** in both. They'll find each other in a few seconds. Those games are friendly (same internet connection), so they don't change your streak. If you hear a loud echo, mute one of them with 🎤 at the top.
+- **A game that counts:** play from your phone on mobile data (Wi-Fi off) against your computer, or with a friend at their house.
 
 ## Playing with people on other computers
 
-The other players need the site too. Either put this folder online (GitHub Pages or Netlify are free) and share the link, or send them the folder (zip it) and they double-click `index.html`. Games connect over the internet through the free PeerJS service, so you don't need to be on the same Wi-Fi.
+The other players need the site too. Either put this folder online (GitHub Pages or Netlify are free) and share the link, or send them the folder (zip it) and they double-click `index.html`. Games connect over the internet through the free PeerJS service, so you don't need to be on the same Wi-Fi. There's no limit on how many people can look for a match at the same time.
 
-Accounts only live on the computer where they were made. Logging in from other computers would need an online server.
+**How many people play:** the `…/#/stats` page shows visitors, accounts and games played, counted by the server.
 
 ## Safety
 
-Classic Games matches you with strangers. They see you if your camera is on, and they hear you if your microphone is on. Don't share personal info. You can use these buttons at any time:
+Classic Games matches you with strangers. Every new player sees your cat until you press **📷 Show my face**, and under 18 nobody ever sees or hears you. Don't share personal info. You can use these buttons at any time:
 
-- **🐱 Show my cat** hides your face.
+- **🐱 Hide my face** goes back to your cat.
 - **🙈 Hide their camera** hides theirs.
 - **🔈 Mute them** turns off their voice.
+- **🚩 Report** tells CamArcade what happened, hides their camera and voice right away, and you're never matched with them again. You can also just block them. When 3 different players report the same person in a day, that person can't play Classic Games for a day. Reports are kept on the server for you to look at (see [SETUP.md](SETUP.md)).
 - **⏭ Skip** leaves the match.
 
 ## If something goes wrong
@@ -135,15 +143,22 @@ Classic Games matches you with strangers. They see you if your camera is on, and
 | Simon Says (or Pose Match) doesn't see my pose | Step back until your head, shoulders and both hands fit in the camera, with some room above your head. A bright room helps. In Simon Says, the "Simon sees" label on your camera shows which pose he thinks you're doing. |
 | My cat doesn't move its mouth | Check that 🎤 at the top isn't crossed out, and click anywhere on the page once (browsers keep sound paused until you click). |
 | Classic Games keeps searching | Nobody else is searching right now. Keep it open, or use Practice mode. |
+| "CamArcade isn't connected to its server yet" | Follow [SETUP.md](SETUP.md) and fill in `config.js`. |
+| My streak didn't go up after a win | It was a friendly game: same internet connection, or the 4th game against the same player today. Or the two apps reported different results. A message says which. |
 | Chess: "Room not found" | Check the code. Your friend must keep their game open. |
-| Forgot my password | Accounts are only on this computer and can't be reset. Make a new account. |
+| Forgot my password | There's no email, so it can't be reset by itself. The owner can set a new one in Supabase (see [SETUP.md](SETUP.md)). |
+| I played before accounts went online | Press **Sign up** and use the same username and password as before. Your cat, fish and items come along (your old streak doesn't, because the server didn't see those games). |
 
 ## Files
 
 - `index.html`: the whole app (all the screens)
+- `config.js`: the address of your Supabase server (see [SETUP.md](SETUP.md))
+- `server.js`: talks to the server
+- `server/schema.sql`: the server itself: accounts, matchmaking, settling results, streaks, the leaderboard, reports, visitor counts and a self-test. Paste it into Supabase's SQL Editor.
 - `app.js`: sign up / log in, the camera and microphone question, the menu, the top bar
 - `common.js`: accounts, your saved cat and fish, the cat drawing, the shop items, the Streak Pass, the microphone and camera
-- `solos.js`: Classic Games matchmaking, the first 5 mini-games, Practice mode
+- `solos.js`: Classic Games matchmaking, reporting results, report and block, the first 5 mini-games, Practice mode
+- `leaders.js`: the leaderboard and the "how many people play" page
 - `games-quick.js`: Memory Match, Aim Targets, Higher or Lower
 - `games-words.js`: Word Scramble, Type Race
 - `games-board.js`: Connect Four, Speed Chess
@@ -162,6 +177,7 @@ Classic Games matches you with strangers. They see you if your camera is on, and
 - `style.css`, `pieces.css`: how everything looks
 - `lib/`: chess rules ([chess.js](https://github.com/jhlywa/chess.js), BSD), connections between players ([PeerJS](https://peerjs.com), MIT), the world map and country outlines (`world-map.js`, `countries.js`), the word list (`words.js`) and the rhyme families (`rhymes.js`)
 - `tools/make-rhymes.ps1`: rebuilds `lib/rhymes.js` (only needed if you change the rhyme lists)
+- `tools/test-server.bat`, `tools/test-browsers.bat` (with `test-server.ps1`, `test-browsers.ps1`, `autotest.js`): the automatic tests
 - `start.bat`, `serve.ps1`: the small local web server
 
 Chess pieces: the "cburnett" set by Colin M.L. Burnett (GPLv2+), the same pieces lichess.org uses. World map and country outlines: [Natural Earth](https://www.naturalearthdata.com) (public domain), via the [world-atlas](https://github.com/topojson/world-atlas) package (ISC). Word list: ENABLE (public domain). Pronunciations for Rhyme Race: the [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) (BSD-style license, notice in `lib/rhymes.js`). Pose detection: [MediaPipe](https://developers.google.com/mediapipe) (Apache 2.0), loaded from the internet.

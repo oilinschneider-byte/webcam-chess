@@ -15,14 +15,14 @@ function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* igno
 function ssDel(k) { try { sessionStorage.removeItem(k); } catch (e) { /* ignore */ } }
 function readJSON(k) { try { return JSON.parse(lsGet(k)); } catch (e) { return null; } }
 
-const ACCOUNTS_KEY = 'camarcade-accounts-v1';
-const SESSION_KEY = 'camarcade-session';
-const REMEMBER_KEY = 'camarcade-remember';
+const ACCOUNTS_KEY = 'camarcade-accounts-v1';      // (accounts from before they moved online: only read, to bring a cat along)
+const PROFILE_PREFIX = 'camarcade-profile-v2:';
+const TOKEN_KEY = 'camarcade-token';
+const REMEMBER_KEY = 'camarcade-token-remember';
+const CACHE_KEY = 'camarcade-me';
 const LAST_USER_KEY = 'camarcade-last-user';
 const MEDIA_KEY = 'camarcade-media';
 const CAMERA_KEY = 'camarcade-camera';
-const PROFILE_PREFIX = 'camarcade-profile-v2:';
-const OLD_PROFILE_KEY = 'camarcade-profile-v1';
 const DEVICE_KEY = 'camarcade-device';
 const PBKDF2_ROUNDS = 150000;
 
@@ -404,20 +404,20 @@ function previewSVG(id, skin) {
 }
 
 /* ================= ACCOUNTS ================= */
+// Accounts live on CamArcade's server (server.js), so you can log in on any device and nobody can edit a streak.
+// This browser keeps your login token, plus a copy of your account so pages show up right away.
 
 const enc = new TextEncoder();
 function toB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
 function fromB64(s) { return Uint8Array.from(atob(s), ch => ch.charCodeAt(0)); }
 
 async function hashPassword(password, saltB64, rounds) {
-  if (!window.crypto || !crypto.subtle) throw new Error('This browser can only make accounts on secure pages. Start CamArcade with start.bat.');
   const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: fromB64(saltB64), iterations: rounds }, key, 256);
   return toB64(bits);
 }
 
-function accounts() { const a = readJSON(ACCOUNTS_KEY); return a && typeof a === 'object' ? a : {}; }
-function hasAccounts() { return Object.keys(accounts()).length > 0; }
+function oldAccounts() { const a = readJSON(ACCOUNTS_KEY); return a && typeof a === 'object' ? a : {}; }
 function keyOf(name) { return String(name || '').trim().toLowerCase(); }
 function cleanName(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 16); }
 
@@ -426,72 +426,102 @@ function checkUsername(name) {
   return '';
 }
 
-async function signUp(name, password) {
+// Before accounts moved online, they were saved in this browser. Signing up with the same name and password
+// brings that cat, its fish and items along (but not the streak: streaks only count when the server saw the games).
+async function oldProfile(name, password) {
+  const acc = oldAccounts()[keyOf(name)];
+  if (!acc || !window.crypto || !crypto.subtle) return null;
+  try {
+    if (await hashPassword(password, acc.salt, acc.rounds || PBKDF2_ROUNDS) !== acc.hash) return null;
+  } catch (e) {
+    return null;
+  }
+  return looks(normalize(readJSON(PROFILE_PREFIX + keyOf(name)), name));
+}
+
+// birth: { year, month } (month 1–12). Under 13 can't sign up; 13–17 play as their cat only.
+async function signUp(name, password, birth) {
   name = String(name || '').trim();
   const bad = checkUsername(name);
   if (bad) throw new Error(bad);
   if (String(password).length < 4) throw new Error('Pick a password with at least 4 characters.');
-  const all = accounts();
-  const key = keyOf(name);
-  if (all[key]) throw new Error('The username "' + name + '" is already taken on this computer. Log in, or pick another name.');
-  const salt = toB64(crypto.getRandomValues(new Uint8Array(16)));
-  const hash = await hashPassword(password, salt, PBKDF2_ROUNDS);
-  all[key] = { name, salt, hash, rounds: PBKDF2_ROUNDS, created: Date.now() };
-  if (!lsSet(ACCOUNTS_KEY, JSON.stringify(all))) throw new Error("Your browser won't let this page save anything. Turn off private browsing and try again.");
-  let p = fresh(name);
-  const old = readJSON(OLD_PROFILE_KEY);
-  if (old && Object.keys(all).length === 1) { // progress from before accounts existed goes to the first account
-    p = normalize(Object.assign({}, old, { name, fish: old.coins }), name);
-    if (p.equip.skin === 'skin-lime') p.equip.skin = 'skin-orange';
-    lsDel(OLD_PROFILE_KEY);
-  }
-  lsSet(PROFILE_PREFIX + key, JSON.stringify(p));
-  startSession(key, false);
+  const old = await oldProfile(name, password);
+  const r = await CAServer.call('ca_sign_up', {
+    p_name: name, p_pass: password, p_year: birth.year, p_month: birth.month, p_profile: old || looks(fresh(name)),
+  });
+  startSession(r.token, r.me, false);
+  return { imported: !!old };
 }
 
 async function logIn(name, password, remember) {
-  const key = keyOf(name);
-  const acc = accounts()[key];
-  if (!acc) throw new Error('There is no account called "' + String(name).trim() + '" on this computer. Check the spelling, or sign up.');
-  const hash = await hashPassword(password, acc.salt, acc.rounds || PBKDF2_ROUNDS);
-  if (hash !== acc.hash) throw new Error('That password is not right. Try again.');
-  startSession(key, remember);
+  const r = await CAServer.call('ca_log_in', { p_name: String(name || '').trim(), p_pass: password });
+  startSession(r.token, r.me, remember);
 }
 
-function startSession(key, remember) {
-  ssSet(SESSION_KEY, key);
-  if (remember) lsSet(REMEMBER_KEY, key); else lsDel(REMEMBER_KEY);
-  lsSet(LAST_USER_KEY, accounts()[key].name);
-  loadProfile(key);
+function startSession(t, me, remember) {
+  token = t;
+  remembered = !!remember;
+  ssSet(TOKEN_KEY, t);
+  if (remember) lsSet(REMEMBER_KEY, t); else { lsDel(REMEMBER_KEY); lsDel(CACHE_KEY); }
+  lsSet(LAST_USER_KEY, me.name);
+  useAccount(me);
+  startPing();
 }
 
 function logOut() {
-  ssDel(SESSION_KEY);
+  flushProfile();
+  if (token) CAServer.call('ca_log_out', { p_token: token }).catch(() => {});
+  ssDel(TOKEN_KEY);
+  ssDel(CACHE_KEY);
   ssDel(MEDIA_KEY);
   ssDel(CAMERA_KEY);
   lsDel(REMEMBER_KEY);
+  lsDel(CACHE_KEY);
+  clearInterval(pingTimer);
   voice.stop();
+  token = null;
   user = null;
   profile = null;
   emitChange();
 }
 
+// The server says the login token doesn't work any more (it ran out, or the account was deleted).
+function sessionLost() {
+  if (!token) return;
+  logOut();
+  toast('You were logged out. Please log in again.');
+  if (location.hash !== '#/auth') location.hash = '#/auth';
+}
+
+async function deleteAccount(password) {
+  await CAServer.call('ca_delete_account', { p_token: token, p_pass: password });
+  token = null; // (already gone on the server)
+  logOut();
+}
+
 /* ================= YOUR PROFILE ================= */
 
-let user = null;     // account key of whoever is logged in
+let user = null;     // your username in lower case, while you're logged in
 let profile = null;
+let token = null;    // proves to the server who you are
+let remembered = false;
+let pingTimer = null;
+let pushTimer = null;
+
+const STATS = ['streak', 'best', 'wins', 'losses', 'draws', 'friendly'];
 
 function fresh(name) {
   return {
-    v: 2, name, fish: 30, xp: 0, streak: 0, best: 0, wins: 0, losses: 0, draws: 0,
-    owned: ['skin-orange', 'bg-space'], equip: { skin: 'skin-orange', bg: 'bg-space' }, claimed: [], mathBest: 0,
+    v: 3, name, fish: 30, xp: 0, streak: 0, best: 0, wins: 0, losses: 0, draws: 0, friendly: 0,
+    owned: ['skin-orange', 'bg-space'], equip: { skin: 'skin-orange', bg: 'bg-space' }, claimed: [], mathBest: 0, savedAt: 0,
+    id: 0, adult: false, bannedUntil: null, banReason: null,
   };
 }
 
 function normalize(p, name) {
   const out = fresh(name);
   if (!p || typeof p !== 'object') return out;
-  for (const k of ['fish', 'xp', 'streak', 'best', 'wins', 'losses', 'draws', 'mathBest']) out[k] = Math.max(0, Math.floor(Number(p[k]) || 0));
+  for (const k of ['fish', 'xp', 'streak', 'best', 'wins', 'losses', 'draws', 'friendly', 'mathBest', 'savedAt']) out[k] = Math.max(0, Math.floor(Number(p[k]) || 0));
   if (Array.isArray(p.owned)) for (const id of p.owned) if (ITEM[id] && !out.owned.includes(id)) out.owned.push(id);
   if (p.equip && typeof p.equip === 'object') {
     for (const s of SLOTS) {
@@ -503,41 +533,124 @@ function normalize(p, name) {
   return out;
 }
 
-function loadProfile(key) {
-  const acc = accounts()[key];
-  if (!acc) { user = null; profile = null; return; }
-  user = key;
-  profile = normalize(readJSON(PROFILE_PREFIX + key), acc.name);
-  save();
+// The part of your profile your own browser saves to the server: only looks (cat, fish, items), never streaks.
+function looks(p) {
+  return { fish: p.fish, xp: p.xp, owned: p.owned, equip: p.equip, claimed: p.claimed, mathBest: p.mathBest, savedAt: p.savedAt || 0 };
 }
 
-function save() {
-  if (user && profile) lsSet(PROFILE_PREFIX + user, JSON.stringify(profile));
+// me: your account as the server sends it ({ id, name, adult, streak, best, …, profile }).
+function useAccount(me) {
+  user = keyOf(me.name);
+  profile = normalize(me.profile, me.name);
+  applyStats(me);
+  writeCache();
   emitChange();
 }
 
+function applyStats(me) {
+  for (const k of STATS) profile[k] = Math.max(0, Math.floor(Number(me[k]) || 0));
+  profile.id = Number(me.id) || 0;
+  profile.adult = !!me.adult;
+  profile.bannedUntil = me.banned_until || null;
+  profile.banReason = me.ban_reason || null;
+}
+
+// Fresh numbers from the server (after a game, or every minute). Streaks always come from the server.
+function setStats(me) {
+  if (!profile || !me || Number(me.id) !== profile.id) return;
+  applyStats(me);
+  if (me.profile && Number(me.profile.savedAt) > profile.savedAt) { // (you changed your cat on another device since)
+    const theirs = normalize(me.profile, profile.name);
+    for (const k of ['fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'savedAt']) profile[k] = theirs[k];
+  }
+  writeCache();
+  emitChange();
+}
+
+function cacheOf() {
+  return {
+    id: profile.id, name: profile.name, adult: profile.adult, banned_until: profile.bannedUntil, ban_reason: profile.banReason,
+    streak: profile.streak, best: profile.best, wins: profile.wins, losses: profile.losses, draws: profile.draws,
+    friendly: profile.friendly, profile: looks(profile),
+  };
+}
+
+function writeCache() {
+  if (!profile) return;
+  const s = JSON.stringify(cacheOf());
+  ssSet(CACHE_KEY, s);
+  if (remembered) lsSet(CACHE_KEY, s);
+}
+
+function save() {
+  if (!user || !profile) return;
+  profile.savedAt = Date.now();
+  writeCache();
+  emitChange();
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushProfile, 800);
+}
+
+function pushProfile(keepalive) {
+  clearTimeout(pushTimer);
+  pushTimer = null;
+  if (!token || !profile) return;
+  CAServer.call('ca_save_profile', { p_token: token, p_profile: looks(profile) }, { keepalive }).catch(err => {
+    if (err.code === 'not_logged_in') sessionLost();
+    else console.warn('Could not save your cat:', err.message);
+  });
+}
+
+function flushProfile() { if (pushTimer) pushProfile(true); }
+window.addEventListener('pagehide', flushProfile);
+
 function emitChange() { window.dispatchEvent(new CustomEvent('ca:change')); }
 
-function restoreSession() {
-  const key = ssGet(SESSION_KEY) || lsGet(REMEMBER_KEY);
-  if (key && accounts()[key]) {
-    ssSet(SESSION_KEY, key);
-    loadProfile(key);
+async function refresh() {
+  if (!token) return;
+  try {
+    const me = await CAServer.call('ca_me', { p_token: token });
+    if (!profile || Number(me.id) !== profile.id) useAccount(me);
+    else setStats(me);
+  } catch (err) {
+    if (err.code === 'not_logged_in') sessionLost();
   }
 }
 
-window.addEventListener('storage', e => {
-  if (user && e.key === PROFILE_PREFIX + user) {
-    profile = normalize(readJSON(e.key), profile ? profile.name : '');
-    emitChange();
+// Every minute: keeps you counted as "online" and your streak in step with the server.
+function startPing() {
+  clearInterval(pingTimer);
+  pingTimer = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 60000);
+}
+
+// Logged in earlier (this tab, or "Keep me logged in")? Show your account from the copy right away, then check it.
+// Resolves once you're known to be logged in or out.
+function restoreSession() {
+  const t = ssGet(TOKEN_KEY) || lsGet(REMEMBER_KEY);
+  if (!t) return Promise.resolve();
+  token = t;
+  remembered = lsGet(REMEMBER_KEY) === t;
+  ssSet(TOKEN_KEY, t);
+  let cached = null;
+  try { cached = JSON.parse(ssGet(CACHE_KEY) || (remembered ? lsGet(CACHE_KEY) : null)); } catch (e) { /* no copy */ }
+  if (cached && cached.name) {
+    user = keyOf(cached.name);
+    profile = normalize(cached.profile, cached.name);
+    applyStats(cached);
   }
-});
+  startPing();
+  const check = refresh();
+  return profile ? Promise.resolve() : check;
+}
 
 function deviceId() {
   let id = lsGet(DEVICE_KEY);
   if (!id) { id = Math.random().toString(36).slice(2, 12); lsSet(DEVICE_KEY, id); }
   return id;
 }
+
+// Under 18, other players never see or hear you: they see your cat. (Your camera still works for pose games.)
+function canVideoChat() { return !!(profile && profile.adult); }
 
 function tierOf(xp) { return Math.min(PASS.length, Math.floor(xp / TIER_XP)); }
 
@@ -549,6 +662,7 @@ function rewardFor(outcome, streakAfter) {
   return { fish: 0, xp: 25 };
 }
 
+// Shows a game's result straight away. The server settles the real streak a moment later (setStats).
 function applyResult(outcome) {
   const p = profile;
   const before = { streak: p.streak, best: p.best, xp: p.xp, tier: tierOf(p.xp), fish: p.fish };
@@ -764,11 +878,13 @@ const voice = {
     emitMedia();
   },
 
-  // The stream to send to another player: your microphone, plus your camera if it's on.
-  outgoing() {
+  // The stream to send to another player: your microphone, plus your camera if it's on (and opts.video isn't false).
+  // Under 18: nothing at all, so other players only ever see and hear your cat.
+  outgoing(opts) {
+    if (!canVideoChat()) return null;
     const tracks = [];
     if (this.stream) tracks.push(...this.stream.getAudioTracks().filter(t => t.readyState === 'live'));
-    if (this.camera) tracks.push(...this.camera.getVideoTracks().filter(t => t.readyState === 'live'));
+    if (this.camera && !(opts && opts.video === false)) tracks.push(...this.camera.getVideoTracks().filter(t => t.readyState === 'live'));
     return tracks.length ? new MediaStream(tracks) : null;
   },
 
@@ -877,16 +993,26 @@ function modal(o) {
   $('caModalTitle').textContent = o.title || '';
   $('caModalText').textContent = o.text || '';
   $('caModalText').classList.toggle('hidden', !o.text);
+  const input = $('caModalInput'); // o.input: { type, placeholder } adds a text box; each button's fn gets what was typed
+  input.classList.toggle('hidden', !o.input);
+  input.value = '';
+  if (o.input) {
+    input.type = o.input.type || 'text';
+    input.placeholder = o.input.placeholder || '';
+    input.autocomplete = o.input.type === 'password' ? 'current-password' : 'off';
+  }
   const box = $('caModalBtns');
   box.innerHTML = '';
+  box.classList.toggle('stack', !!o.stack); // o.stack: one button per line (for a list of choices)
   for (const b of o.buttons || [{ label: 'OK', primary: true }]) {
     const el = document.createElement('button');
-    el.className = 'btn' + (b.primary ? ' primary' : '');
+    el.className = 'btn' + (b.primary ? ' primary' : '') + (b.danger ? ' danger' : '');
     el.textContent = b.label;
-    el.addEventListener('click', () => { closeModal(); if (b.fn) b.fn(); });
+    el.addEventListener('click', () => { const v = input.value; closeModal(); if (b.fn) b.fn(v); });
     box.appendChild(el);
   }
   $('caModal').classList.remove('hidden');
+  if (o.input) setTimeout(() => input.focus(), 30);
 }
 
 function closeModal() { modalState = null; $('caModal').classList.add('hidden'); }
@@ -973,16 +1099,21 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
 
-restoreSession();
+const restoring = restoreSession();
+
+// Count this visit (once a day per browser), so you can show how many people play. (Not the automated tests.)
+if (CAServer.configured && !/[?&]autotest=/.test(location.search)) CAServer.call('ca_visit', { p_visitor: deviceId() }).catch(() => {});
 
 window.CA = {
   get user() { return user; },
   get profile() { return profile; },
+  get token() { return token; },
   get soundOn() { return soundOn; },
+  restoring,
   ITEMS, ITEM, SLOTS, PASS, TIER_XP,
-  catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, claimTier, buy, equip, unequip, setMathBest,
-  hasAccounts, signUp, logIn, logOut, checkUsername, cleanName, lastUser: () => lsGet(LAST_USER_KEY) || '',
-  deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
+  catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest,
+  signUp, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
+  server: CAServer, deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
   register, go, render, resume, showScreen, requestLeave,
   get route() { return current ? current.name : null; },
 };

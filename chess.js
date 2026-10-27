@@ -668,7 +668,7 @@ function updateControls() {
   setShown('undoBtn', local || bot);
   setShown('rematchBtn', local || bot || (online && !!result));
   setShown('micBtn', online);
-  setShown('faceBtn', !!mode);
+  setShown('faceBtn', !!mode && (!online || CA.canVideoChat())); // (under 18: your friend always sees your cat)
 
   const rb = $('rematchBtn');
   rb.textContent = local || bot ? '↻ New game' : rematchOffered ? '⏳ Waiting…' : '↻ Rematch';
@@ -700,6 +700,10 @@ function renderLobby() {
   const on = CA.voice.micOn();
   $('chessMicPill').className = 'pill ' + (on ? 'on' : 'off');
   $('chessMicPill').textContent = on ? '🎤 Mic on' : '🔇 Mic off';
+  if (!CA.canVideoChat()) {
+    $('lobbyMicHint').textContent = "You're under 18, so your friend sees your cat and can't hear you. Your cat's mouth still moves when you talk.";
+    return;
+  }
   const cam = CA.voice.camWanted()
     ? ' Your camera turns on when the game starts (press 🐱 Show my cat to hide it).'
     : ' You play as your cat.';
@@ -708,7 +712,8 @@ function renderLobby() {
     : 'Your microphone is off. Turn it on with 🎤 at the top.') + cam;
 }
 
-function faceOn() { return CA.voice.cameraOn(); }
+// Is your camera showing? (Under 18, online: never. Your friend sees your cat.)
+function faceOn() { return CA.voice.cameraOn() && (mode !== 'online' || CA.canVideoChat()); }
 
 function updateMediaButtons() {
   const mic = $('micBtn');
@@ -1069,7 +1074,7 @@ function callOpponent() {
 }
 
 function onIncomingCall(call) {
-  if (!conn || call.peer !== conn.peer) { call.close(); return; }
+  if (!conn || call.peer !== conn.peer || !CA.canVideoChat()) { call.close(); return; } // (under 18: no voices or cameras)
   if (inCall) { const o = inCall; inCall = null; o.close(); }
   inCall = call;
   call.on('stream', stream => {

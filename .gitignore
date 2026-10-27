@@ -1,0 +1,2 @@
+# Your Supabase secret key, for tools/test-server.ps1. Never upload it.
+tools/secret-key.txt
