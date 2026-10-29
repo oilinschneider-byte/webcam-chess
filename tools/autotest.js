@@ -69,7 +69,7 @@ CAServer.call = async function (fn, args, opts) {
   try {
     const r = await realCall.call(CAServer, fn, args, opts);
     if (fn === 'ca_mm_poll' && r && r.match) seen.match = r.match;
-    if (fn === 'ca_report') seen.report = r;
+    if (fn === 'ca_report') { seen.report = r; seen.reportArgs = args; }
     if (fn === 'ca_report_player') seen.reported = r;
     return r;
   } catch (err) {
@@ -173,7 +173,11 @@ async function main() {
     await check('leaving mid-game reports a loss', r.status === 'pending' || (r.status === 'done' && r.result === 'lose'), r);
     await sleep(4000); // (let b report and look around before this account goes away)
   } else {
-    const r = await until(() => seen.report, 30000, 'my win to be reported');
+    let r = await until(() => seen.report, 30000, 'my win to be reported');
+    for (let k = 0; k < 10 && r.status === 'pending'; k++) { // (my report got there first: the server waits for theirs, like the app does)
+      await sleep(1000);
+      r = await CAServer.call('ca_report', seen.reportArgs);
+    }
     await check('the other player left: I get the win', r.status === 'done' && r.result === 'win', r);
     await check("but it didn't count, because we're on the same internet connection", r.ranked === false && r.why === 'same_net', r);
     await sleep(500);

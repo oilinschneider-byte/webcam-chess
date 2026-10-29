@@ -155,7 +155,9 @@ end $$;
 
 create or replace function camarcade.pair_limit() returns int language sql immutable as 'select 3';
 
--- The visitor's IP address, as the Supabase proxy saw it.
+-- The visitor's IP address, as the Supabase proxy saw it. Supabase's own gateway sets sb-forwarded-for, and a visitor
+-- can't change it (the test script checks); the other headers are only used if that one is missing, because some of
+-- them pass through whatever the visitor sends.
 create or replace function camarcade.client_ip() returns text
 language plpgsql stable set search_path = '' as $$
 declare
@@ -163,6 +165,7 @@ declare
 begin
   if h is null then return 'no-request'; end if;
   return coalesce(
+    nullif(trim(split_part(h->>'sb-forwarded-for', ',', 1)), ''),
     nullif(trim(h->>'cf-connecting-ip'), ''),
     nullif(trim(h->>'x-real-ip'), ''),
     nullif(trim(split_part(h->>'x-forwarded-for', ',', 1)), ''),
@@ -771,6 +774,7 @@ declare
 begin
   return jsonb_build_object(
     'net', camarcade.net(),
+    'sb', case when h ? 'sb-forwarded-for' then left(camarcade.sha((h->>'sb-forwarded-for') || ':' || salt), 24) end,
     'cf', case when h ? 'cf-connecting-ip' then left(camarcade.sha((h->>'cf-connecting-ip') || ':' || salt), 24) end,
     'real', case when h ? 'x-real-ip' then left(camarcade.sha((h->>'x-real-ip') || ':' || salt), 24) end,
     'xff', (select jsonb_agg(left(camarcade.sha(trim(x) || ':' || salt), 24)) from unnest(string_to_array(h->>'x-forwarded-for', ',')) x),

@@ -38,12 +38,12 @@ function Headers($key, $extra) {
 }
 
 # Calls one of the server's functions. Returns @{ status; data; text }.
-function Rpc($fn, $body, $extra, $key) {
-  if (-not $key) { $key = $Key }
+function Rpc($fn, $body, $extra, $asKey) {
+  $useKey = if ($asKey) { $asKey } else { $script:Key } # (not $key: PowerShell names ignore case, so it would be $Key)
   if ($null -eq $body) { $body = @{} }
   $json = $body | ConvertTo-Json -Depth 10 -Compress
   try {
-    $r = Invoke-WebRequest -Uri "$Url/rest/v1/rpc/$fn" -Method Post -Headers (Headers $key $extra) -ContentType 'application/json' `
+    $r = Invoke-WebRequest -Uri "$Url/rest/v1/rpc/$fn" -Method Post -Headers (Headers $useKey $extra) -ContentType 'application/json' `
       -Body ([Text.Encoding]::UTF8.GetBytes($json)) -UseBasicParsing -TimeoutSec 60
     $data = $null
     if ($r.Content) { try { $data = $r.Content | ConvertFrom-Json } catch { $data = $r.Content } }
@@ -126,10 +126,10 @@ Section "Your internet connection can't be faked"
 $base = (Rpc 'ca_net_check').data
 $fake = '203.0.113.' + (Get-Random -Minimum 1 -Maximum 250)
 $spoofed = @()
-foreach ($h in 'X-Forwarded-For', 'X-Real-IP', 'CF-Connecting-IP', 'True-Client-IP', 'Forwarded') {
+foreach ($h in 'X-Forwarded-For', 'X-Real-IP', 'CF-Connecting-IP', 'True-Client-IP', 'Forwarded', 'SB-Forwarded-For') {
   $v = if ($h -eq 'Forwarded') { "for=$fake" } else { $fake }
-  $n = (Rpc 'ca_net_check' $null @{ $h = $v }).data
-  if ($n.net -ne $base.net) { $spoofed += $h }
+  $n = Rpc 'ca_net_check' $null @{ $h = $v }
+  if ($n.status -eq 200 -and $n.data.net -ne $base.net) { $spoofed += $h } # (a request that gets refused outright, like Cloudflare does with a made-up CF-Connecting-IP, faked nothing)
 }
 Check 'sending made-up IP headers does not change who the server thinks you are' ($spoofed.Count -eq 0) ("these headers changed it: " + ($spoofed -join ', ') + "  (headers the server sees: " + ($base.headers -join ', ') + ')')
 
