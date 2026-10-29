@@ -1,6 +1,7 @@
 # Small local web server for CamArcade.
 # Browsers only allow the camera on http://localhost or https:// pages, so start the site through this.
-param([int]$Port = 8080, [switch]$NoBrowser)
+# (-TestLog is for tools/test-browsers.ps1: the test browsers write what happened to that file.)
+param([int]$Port = 8080, [switch]$NoBrowser, [string]$TestLog = '')
 
 $root = (Resolve-Path $PSScriptRoot).Path.TrimEnd('\') + '\'
 
@@ -39,6 +40,13 @@ while ($listener.IsListening) {
   try { $ctx = $listener.GetContext() } catch { break }
   $res = $ctx.Response
   try {
+    if ($TestLog -and $ctx.Request.HttpMethod -eq 'POST' -and $ctx.Request.Url.AbsolutePath -eq '/__testlog') {
+      $reader = New-Object IO.StreamReader($ctx.Request.InputStream, [Text.Encoding]::UTF8)
+      $line = $reader.ReadToEnd() -replace "[\r\n]+", ' '
+      [IO.File]::AppendAllText($TestLog, $line + "`n", (New-Object Text.UTF8Encoding($false)))
+      $res.StatusCode = 204
+      continue
+    }
     $rel = [Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath).TrimStart('/')
     if ($rel -eq '' -or $rel.EndsWith('/')) { $rel += 'index.html' }
     $file = [IO.Path]::GetFullPath([IO.Path]::Combine($root, $rel))

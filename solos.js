@@ -1,4 +1,6 @@
-/* Classic Games: random 1v1 matchmaking over PeerJS, five mini-games, talking cats, streaks and fish.
+/* Classic Games: random 1v1 matches with real players, talking cats, streaks and fish.
+   CamArcade's server (server.js) pairs players up and settles every game's result; the game itself, your voice and
+   your camera go straight between the two browsers over PeerJS.
    Also runs Practice mode: the same games against a bot, with nothing counted. */
 (() => {
 'use strict';
@@ -7,12 +9,12 @@ const playRoot = document.getElementById('scr-play');
 const practiceRoot = document.getElementById('scr-practice');
 const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('#' + id);
 
-// Matchmaking without a server of our own: waiting players hold one of these PeerJS ids ("slots"),
-// and searching players knock on the lower-numbered slots until someone answers.
-const SLOT_PREFIX = 'camarcade-solos-v31-'; // bump when the games or the match flow change, so old and new versions don't meet
-const SLOT_COUNT = 10;
-const PEER_OPTS = { debug: 0 }; // probing slots causes expected "taken"/"unavailable" errors; we handle them ourselves
+const PROTOCOL = 37;              // bump when the games or the match flow change, so old and new versions don't meet
+const PEER_PREFIX = 'camarcade-';
+const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
 const CONN_OPTS = { reliable: true, serialization: 'json' };
+const POLL_MS = 1500;             // how often a searching player asks the server for a match
+const PAIR_LIMIT = 3;             // games a day between the same two players that count (the server decides; this is for messages)
 const BOT_NAMES = ['Whiskers', 'Mittens', 'Biscuit', 'Pumpkin', 'Noodle', 'Pickles', 'Muffin', 'Nugget', 'Tofu', 'Waffles'];
 const BOT_LEVEL = { easy: 1, medium: 5, hard: 9 };
 const DEFAULT_MATH = {
@@ -26,21 +28,46 @@ const DEFAULT_MATH = {
 };
 const CLASSIC_MATH = Object.assign({}, DEFAULT_MATH, { duration: 35 });
 
+// The game covers the screen while you play (see "PLAYING" in style.css). The arcade games' canvases grow to fit by
+// themselves; the other games are scaled up (--fit, used as their zoom) so they fill a big screen too, up to 1.6 times.
+if (window.ResizeObserver) {
+  const stageEl = $('stage');
+  new ResizeObserver(() => {
+    const r = stageEl.getBoundingClientRect();
+    const fit = Math.max(1, Math.min(r.width / 1000, r.height / 640, 1.6));
+    stageEl.style.setProperty('--fit', fit.toFixed(3));
+    fitCams();
+  }).observe(stageEl);
+  setInterval(fitCams, 300); // (a new game's canvas can appear, or move, at any time)
+}
+// The camera blocks cover an arcade game's camera walls exactly (its top corners: see cam-walls.js), so nothing in the
+// game can be hidden behind a camera. In the other games they just sit in the top corners (see style.css).
+function fitCams() {
+  const match = $('matchView'), cv = $('stage').querySelector('.bb-canvas');
+  const blocks = [match.querySelector('.m-player.me'), match.querySelector('.m-player.them')];
+  const onSides = getComputedStyle(blocks[0]).position === 'absolute'; // (not on a phone held upright: there they sit above the game)
+  const fit = !!cv && onSides && !match.classList.contains('cams-in-stage') && playRoot.offsetParent !== null;
+  blocks.forEach(b => b.classList.toggle('fit', fit));
+  if (!fit) { blocks.forEach(b => { b.style.width = b.style.height = ''; }); return; }
+  const r = cv.getBoundingClientRect(), m = match.getBoundingClientRect(), k = r.width / CA.camWalls.W;
+  const cw = CA.camWalls.CAM_W * k, bottom = r.top + CA.camWalls.CAM_H * k;
+  blocks[0].style.width = Math.round(r.left - m.left + cw) + 'px';
+  blocks[1].style.width = Math.round(m.right - r.right + cw) + 'px';
+  blocks.forEach(b => { b.style.height = Math.round(bottom - b.getBoundingClientRect().top) + 'px'; });
+}
+
 let mode = 'solos';      // 'solos' = real players, 'practice' = bots
 let practiceGame = null;
 let practiceMix = false; // "Classic mode vs bots": a random game every time
 let mathSettings = DEFAULT_MATH;
 
 let peer = null;
-let mySlot = -1;
 let searching = false;
-let busySlots = {};      // slot -> time until which we won't knock there again
-let reserved = null;
-let reservedInfo = null;
-let reserveTimer = null;
+let pollInFlight = null;
 let searchStarted = 0;
 let searchTick = null;
 let searchGen = 0;       // counts searches, so leftovers from an older search know to stop
+let pairing = null;      // who the server paired us with: { id, role, opp, oppPeer, catsOnly, sameNet, rankedLeft, played, gameNo, … }
 let conn = null;
 let isHost = false;
 let opp = null;
@@ -48,8 +75,10 @@ let outCall = null;
 let inCall = null;
 let lastSeen = 0;
 let pingTimer = null;
-let recentDevice = '';
+let avoidId = 0;         // the player we just left: the server won't pair us again right away
+let avoidUntil = 0;
 let recentUntil = 0;
+let showFace = false;    // does this opponent see your camera? Every new opponent starts out seeing your cat.
 let talkOff = null;
 let lastTalk = -1;
 let lastTalkAt = 0;
@@ -62,6 +91,11 @@ let lastCallSig = '';     // which of mic ('a') / camera ('v') the call to the o
 let match = null;        // { ctx, gameId, started, over }
 let lastGame = null;
 let gameBag = [];        // the games still to come in this round of "every game once"
+// The games in the Classic Games mix (and "Classic mode vs bots"): the ones that take skill. Every other game can
+// still be played on its own in Practice.
+const MIX_GAMES = ['barrel', 'hoops', 'walls', 'climb', 'speedchess', 'c4', 'simon', 'draw', 'aim', 'dodge',
+  'memory', 'sequence', 'spot', 'type', 'scramble',
+  'trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'blocks', 'swords', 'stare', 'boxing'];
 let nextTimer = null;    // the countdown to the next opponent after a game
 let recentName = '';
 
@@ -711,13 +745,13 @@ GAMES.ttt = {
   },
 };
 
-// Every game gets exactly the same chance: all of them come up once, in a random order, before any game repeats.
-// Games that need cameras (Pose Match) are only picked when opts.camera says everyone's camera is on.
+// Every game in the mix gets exactly the same chance: all of them come up once, in a random order, before any game
+// repeats. Games that need cameras (Pose Match) are only picked when opts.camera says everyone's camera is on.
 function pickGame(opts) {
   const forced = window.__forceGame; // lets the automated tests pick a game
   if (forced && GAMES[forced]) return forced;
   const ok = id => !GAMES[id].camera || !!(opts && opts.camera);
-  if (!gameBag.some(ok)) gameBag = shuffle(Object.keys(GAMES), Math.random);
+  if (!gameBag.some(ok)) gameBag = shuffle(MIX_GAMES.filter(id => GAMES[id]), Math.random);
   const allowed = gameBag.map((id, i) => i).filter(i => ok(gameBag[i]));
   let i = allowed[allowed.length - 1];
   if (gameBag[i] === lastGame && allowed.length > 1) i = allowed[Math.floor(Math.random() * (allowed.length - 1))]; // not the same game twice in a row
@@ -1100,7 +1134,9 @@ function beginMatch(gameId, seed, extra) {
   lastGame = gameId;
   const ctx = makeCtx(gameId, seed, extra);
   const solo = !!(extra && extra.solo);
-  match = { ctx, gameId, started: false, over: false, solo };
+  const online = mode === 'solos' && !!pairing && !!opp && !opp.bot;
+  if (online) pairing.gameNo++; // (both players count the games of a match the same way: the server checks the numbers)
+  match = { ctx, gameId, started: false, over: false, solo, gameNo: online ? pairing.gameNo : 0, counted: online && counts() };
   const g = GAMES[gameId];
   CA.voice.setInGame(true); // your camera turns on for every game (if you allowed it)
   CA.showScreen('scr-play');
@@ -1151,7 +1187,7 @@ function showFaces() {
 
 function syncFaceVideos() {
   const mv = $('vsMeVideo');
-  const mine = CA.voice.cameraOn();
+  const mine = myVideoShown();
   if (mine && mv.srcObject !== CA.voice.camera) { mv.srcObject = CA.voice.camera; mv.play().catch(() => {}); }
   if (!mine) mv.srcObject = null;
   mv.classList.toggle('hidden', !mine);
@@ -1174,6 +1210,9 @@ function faceToFace(ctx, g, then) {
   setMsg('vsIcon', g.icon);
   setMsg('vsGame', g.name);
   setMsg('vsBlurb', g.blurb);
+  const note = mode === 'solos' && !match.counted ? '🤝 ' + friendlyText() : '';
+  setMsg('vsNote', note);
+  $('vsNote').classList.toggle('hidden', !note);
   $('vsIntro').classList.remove('hidden');
   $('vsReact').classList.add('hidden');
   const len = window.__introMs != null ? window.__introMs : 5000; // (the tests make this shorter)
@@ -1212,15 +1251,20 @@ function startReaction(outcome, res, opts) {
       (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
   } else if (mode === 'practice') {
     reward = '🎯 Practice: nothing is counted';
+  } else {
+    reward = '🤝 Friendly game: nothing is counted';
   }
   $('rxReward').innerHTML = reward;
   const rb = $('rematchBtn');
   const gone = online && (!conn || !conn.open || !opp || opp.gone);
-  rb.disabled = gone || noRematch;
+  const blocked = online && !!opp && !!opp.blocked;
+  rb.disabled = gone || noRematch || blocked;
   rb.classList.remove('chosen');
   rb.textContent = '🔁 Rematch';
   setMsg('nextBtn', online ? '⏭ Next player' : '⏭ New bot');
-  setMsg('rxNote', gone ? opp.name + ' has left.' : noRematch ? '3 ties in a row: on to ' + (online ? 'someone new' : 'a new bot') + '!' : '');
+  $('rxReportBtn').classList.toggle('hidden', !online || blocked);
+  setMsg('rxNote', gone ? opp.name + ' has left.' : blocked ? "You blocked " + opp.name + ", so you'll get someone new."
+    : noRematch ? '3 ties in a row: on to ' + (online ? 'someone new' : 'a new bot') + '!' : '');
   $('vs').classList.remove('hidden');
   startTimer('rxTimer', ms); // (after showing it: a hidden bar doesn't animate)
   react.iv = setInterval(reactTick, 150);
@@ -1245,10 +1289,10 @@ function stopReaction(keepOverlay) {
 }
 
 function maybeRematch() {
-  if (!react || !react.mine || !react.theirs || !isHost) return;
-  const game = pickGame({ camera: CA.voice.cameraOn() && !!opp && opp.face });
+  if (!react || !react.mine || !react.theirs || !isHost || (opp && opp.blocked)) return;
+  const game = pickGame({ camera: CA.voice.cameraOn() && !!opp && opp.cam });
   const seed = randSeed();
-  send({ t: 'start', game, seed });
+  send({ t: 'start', game, seed, no: pairing ? pairing.gameNo + 1 : 0 });
   beginMatch(game, seed);
 }
 
@@ -1268,6 +1312,7 @@ $('rematchBtn').addEventListener('click', () => {
 });
 $('nextBtn').addEventListener('click', () => { if (react) goNext(mode === 'solos' ? 'next' : 'bot'); });
 $('rxMenuBtn').addEventListener('click', () => { stopReaction(); CA.go('menu'); });
+$('rxReportBtn').addEventListener('click', () => reportPressed());
 
 function endMatch(outcome, reason, opts) {
   if (!match || match.over) return;
@@ -1278,8 +1323,15 @@ function endMatch(outcome, reason, opts) {
     showNoContest(opp.name + ' left before the game started. Nothing was counted.');
     return;
   }
-  const counted = mode === 'solos' && !opp.bot && !(opp.device && opp.device === CA.deviceId());
-  const res = counted ? CA.applyResult(outcome) : null;
+  const online = mode === 'solos' && !opp.bot;
+  const res = match.counted ? CA.applyResult(outcome) : null; // (shown right away; the server settles the real streak)
+  if (online) {
+    if (match.counted) {
+      pairing.played++;
+      if (outcome === 'win') opp.streak = 0; else if (outcome === 'lose') opp.streak++;
+    }
+    reportResult(match, outcome);
+  }
   send({ t: 'card', card: myCard() });
   showResult(outcome, reason, res, opts);
   sound(outcome === 'win' ? 'win' : outcome === 'lose' ? 'lose' : 'draw');
@@ -1322,7 +1374,7 @@ function showResult(outcome, reason, res, opts) {
   if (mode === 'practice') {
     body = '<div class="streak-change">🎯 Practice game: your streak and fish stay the same.</div>';
   } else if (!res) {
-    body = '<div class="streak-change">🧪 Practice match against your own other window, so nothing is counted.</div>';
+    body = '<div class="streak-change">🤝 ' + esc(friendlyText()) + '</div>';
   } else {
     let streakLine;
     if (outcome === 'win') {
@@ -1418,13 +1470,17 @@ function skipPressed() {
   nextOpponent();
 }
 
-function forfeitIfPlaying() {
+// keepalive: the page is closing (the report still gets to the server).
+function forfeitIfPlaying(keepalive) {
   if (!match || !match.started || match.over) return;
   match.over = true;
   match.ctx.cleanup();
-  if (mode === 'solos' && opp && !opp.bot && !(opp.device && opp.device === CA.deviceId())) {
-    CA.applyResult('lose');
-    CA.toast('You left the match, so it counted as a loss.');
+  if (mode === 'solos' && opp && !opp.bot) {
+    if (match.counted) {
+      CA.applyResult('lose');
+      CA.toast('You left the match, so it counted as a loss.');
+    }
+    reportResult(match, 'lose', keepalive);
   }
 }
 
@@ -1436,10 +1492,52 @@ function nextOpponent() {
 
 // Don't get matched with the same person again right away (unless nobody else turns up for a while).
 function rememberOpponent() {
-  if (!opp || opp.bot || !opp.device) return;
-  recentDevice = opp.device;
+  if (!opp || opp.bot || !opp.id) return;
+  avoidId = opp.id;
+  avoidUntil = Date.now() + 120000; // (the server lifts it after 20 seconds of nobody else turning up)
   recentName = opp.name;
   recentUntil = Date.now() + (window.__recentMs != null ? window.__recentMs : 20000);
+}
+
+/* ================= RESULTS ================= */
+// Both players' browsers tell the server how every game ended. It only counts a game when the two agree,
+// the two players are on different internet connections, and they haven't already played 3 counted games today.
+
+// Will the game that's starting count for streaks? (The server has the last word.)
+function counts() {
+  return mode === 'solos' && !!pairing && !pairing.sameNet && pairing.played < pairing.rankedLeft && !!opp && !opp.bot;
+}
+
+function friendlyText() {
+  const name = opp ? opp.name : 'them';
+  if (pairing && pairing.sameNet) return "Friendly game: you're on the same internet connection as " + name + ", so it doesn't change your streak.";
+  return "Friendly game: you've already played " + PAIR_LIMIT + ' games with ' + name + " today that counted, so this one doesn't change your streak.";
+}
+
+function reportResult(m, outcome, keepalive) {
+  const pr = pairing;
+  if (!pr || !m.gameNo || !CA.token) return;
+  const args = { p_token: CA.token, p_match: pr.id, p_game_no: m.gameNo, p_game: m.gameId, p_outcome: outcome };
+  const name = opp ? opp.name : 'the other player';
+  const attempt = n => CA.server.call('ca_report', args, { keepalive }).then(r => settled(r, m, name)).catch(err => {
+    if (err.code === 'offline' && n < 3) setTimeout(() => attempt(n + 1), 1500 * n);
+    else console.warn('Could not report the result:', err.message);
+  });
+  attempt(1);
+}
+
+function settled(r, m, name) {
+  if (r.status !== 'done') { // (the other player's report is on its way: get the settled streak in a moment)
+    setTimeout(() => CA.refresh(), 4000);
+    return;
+  }
+  if (r.me) CA.setStats(r.me);
+  if (r.result === 'disputed') CA.toast('You and ' + name + " reported different results, so that game didn't count.");
+  else if (m.counted && !r.ranked && r.result !== 'void') {
+    CA.toast(r.why === 'pair_limit' ? "You've played " + name + ' ' + PAIR_LIMIT + " times today, so that game didn't count."
+      : r.why === 'same_net' ? "You're on the same internet connection as " + name + ", so that game didn't count."
+      : "That game didn't count.");
+  }
 }
 
 /* ================= PLAYERS ON SCREEN ================= */
@@ -1454,35 +1552,61 @@ function renderPlayers() {
 
 function updateTiles() {
   const human = !!opp && !opp.bot;
+  const share = canShare();
   if (opp) {
     setMsg('themName', opp.name + (opp.bot ? ' 🤖' : ''));
-    setMsg('themMic', human && !opp.gone && !opp.mic ? ' 🔇' : '');
+    setMsg('themMic', human && share && !opp.gone && !opp.mic ? ' 🔇' : '');
     setMsg('themStreak', opp.bot ? '🤖 ' + practiceLevel() : '🔥 ' + opp.streak);
     $('oppDot').className = 'dot ' + (opp.bot ? 'on' : opp.gone ? 'off' : 'on');
   }
   setMsg('meStreak', mode === 'practice' ? '🎯' : '🔥 ' + CA.profile.streak);
   setMsg('meMic', CA.voice.micOn() ? '' : ' 🔇');
-  $('muteThemBtn').classList.toggle('hidden', !human);
+  $('muteThemBtn').classList.toggle('hidden', !human || !share);
   setMsg('muteThemBtn', muteThem ? '🔊 Unmute them' : '🔈 Mute them');
   if ($('unmuteBtn').classList.contains('hidden')) $('themVideo').muted = muteThem; // (stays muted until "Tap to hear them")
   setMsg('skipBtn', mode === 'practice' ? '✕ Quit' : '⏭ Skip');
+  $('reportBtn').classList.toggle('hidden', !human || !!opp.blocked);
   const mic = $('micBtn');
   mic.textContent = CA.voice.micOn() ? '🎤 Mic on' : CA.voice.hasMic() ? '🔇 Mic off' : '🎤 Turn on mic';
   mic.classList.toggle('off', CA.voice.hasMic() && !CA.voice.micOn());
 
-  // Your camera (while it's on) and theirs (while they show it and you haven't hidden it); otherwise the cats.
+  // Your camera (only while the other player sees it, or against a bot) and theirs (while they show it and you
+  // haven't hidden it); otherwise the cats.
   const meVideo = $('meVideo');
-  const myCam = CA.voice.cameraOn();
-  if (myCam && meVideo.srcObject !== CA.voice.camera) { meVideo.srcObject = CA.voice.camera; meVideo.play().catch(() => {}); }
-  if (!myCam) meVideo.srcObject = null;
-  meVideo.classList.toggle('hidden', !myCam);
-  setMsg('faceBtn', myCam || CA.voice.camPending ? '🐱 Show my cat' : '📷 Show my face');
-  const showThem = human && !opp.gone && opp.face && remoteHasVideo && !hideThem;
+  const mine = myVideoShown();
+  if (mine && meVideo.srcObject !== CA.voice.camera) { meVideo.srcObject = CA.voice.camera; meVideo.play().catch(() => {}); }
+  if (!mine) meVideo.srcObject = null;
+  meVideo.classList.toggle('hidden', !mine);
+  const face = $('faceBtn');
+  if (!human) {
+    face.disabled = false;
+    face.textContent = CA.voice.cameraOn() || CA.voice.camPending ? '🐱 Show my cat' : '📷 Show my face';
+  } else {
+    face.disabled = !share;
+    face.textContent = !CA.canVideoChat() ? '🐱 Cats only (under 18)' : !share ? '🐱 Cats-only match' : showFace ? '🐱 Hide my face' : '📷 Show my face';
+  }
+  const showThem = human && share && !opp.gone && opp.face && remoteHasVideo && !hideThem;
   $('themVideo').classList.toggle('hidden', !showThem);
-  $('hideThemBtn').classList.toggle('hidden', !human || !opp.face);
+  $('hideThemBtn').classList.toggle('hidden', !human || !share || !opp.face);
   setMsg('hideThemBtn', hideThem ? '👀 Show their camera' : '🙈 Hide their camera');
+  const note = !human ? ''
+    : !CA.canVideoChat() ? "🐱 You're under 18, so other players never see or hear you: they see your cat."
+    : !share ? '🐱 Cats-only match: no cameras or voices with this player.'
+    : showFace ? '📷 ' + opp.name + ' can see you. Press 🐱 Hide my face any time.'
+    : '🐱 ' + opp.name + ' sees your cat. Press 📷 Show my face if you want them to see you.';
+  setMsg('safetyNote', note);
+  $('safetyNote').classList.toggle('hidden', !note);
   syncFaceVideos();
 }
+
+/* ================= CAMERA + VOICE RULES ================= */
+// Under 18: other players never see or hear you, and you never see or hear them.
+// When either player is under 18, the server makes the match "cats only" for both.
+// 18 and over: every new opponent sees your cat until you press 📷 Show my face. They hear your voice.
+
+function canShare() { return CA.canVideoChat() && !!pairing && !pairing.catsOnly && !!opp && !opp.bot; }
+function sendingVideo() { return canShare() && showFace && CA.voice.cameraOn(); }
+function myVideoShown() { return mode === 'practice' ? CA.voice.cameraOn() : sendingVideo(); }
 
 // The bot "meows" (moves its mouth) now and then.
 let botTalkTimer = null;
@@ -1534,6 +1658,7 @@ function hideSearch() {
 }
 
 function searchFailed(text) {
+  if (searching && !pairing && CA.token) CA.server.call('ca_mm_leave', { p_token: CA.token }).catch(() => {});
   searching = false;
   clearInterval(searchTick);
   releasePeer();
@@ -1543,11 +1668,30 @@ function searchFailed(text) {
   $('retryBtn').classList.remove('hidden');
 }
 
+// Several players reported you: no Classic Games for a while (Practice mode still works).
+function showBanned(until) {
+  searching = false;
+  clearInterval(searchTick);
+  releasePeer();
+  const when = until ? new Date(until) : null;
+  setMsg('searchTitle', "You can't play Classic Games right now");
+  setMsg('searchSub', 'Several players reported you, so you are taking a break' +
+    (when && !isNaN(when) ? ' until ' + when.toLocaleString([], { weekday: 'long', hour: 'numeric', minute: '2-digit' }) : '') +
+    '. You can still play Practice mode.');
+  setMsg('searchOnline', '');
+  $('searchTip').classList.add('hidden');
+  $('retryBtn').classList.add('hidden');
+}
+
 /* ================= MATCHMAKING ================= */
+// 1. You open a PeerJS connection with a random id, and ask the server for a match every second or so.
+// 2. The server pairs you with someone. The one who waited longer is the "host"; the other one connects to them.
+// 3. The host only lets in the player the server paired them with, and picks the first game.
+// Nothing here limits how many people can search at once.
 
 function myCard() {
   const p = CA.profile;
-  return { name: p.name, streak: p.streak, equip: p.equip, device: CA.deviceId(), mic: CA.voice.micOn(), face: CA.voice.cameraOn() };
+  return { name: p.name, streak: p.streak, equip: p.equip, mic: canShare() && CA.voice.micOn(), face: sendingVideo(), cam: CA.voice.cameraOn() };
 }
 
 function readCard(c) {
@@ -1561,11 +1705,14 @@ function readCard(c) {
   }
   return {
     name: CA.cleanName(card.name) || 'Player', streak: Math.max(0, Math.floor(Number(card.streak) || 0)), equip,
-    device: String(card.device || '').slice(0, 20), mic: !!card.mic, face: !!card.face, bot: false, gone: false,
+    mic: !!card.mic, face: !!card.face, cam: !!card.cam, bot: false, gone: false,
   };
 }
 
-function isRecent(device) { return !!device && device === recentDevice && Date.now() < recentUntil; }
+function randomId() {
+  const b = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(b, x => x.toString(36).padStart(2, '0')).join('');
+}
 
 function startSearch() {
   hangUp();
@@ -1578,62 +1725,51 @@ function startSearch() {
   CA.showScreen('scr-play');
   $('matchView').classList.remove('solo-run');
   $('stage').innerHTML = '';
+  setMsg('searchOnline', '');
   showSearch();
-  claimSlot(gen)
-    .then(() => { if (searching && gen === searchGen) scanLoop(gen); })
+  const p = CA.profile;
+  if (p.bannedUntil && new Date(p.bannedUntil) > new Date()) { showBanned(p.bannedUntil); return; }
+  if (!CA.server.configured) { searchFailed(CA.server.message('not_configured')); return; }
+  openPeer(gen)
+    .then(() => { if (searching && gen === searchGen) pollLoop(gen); })
     .catch(err => {
       if (!searching || gen !== searchGen) return;
-      console.warn('Matchmaking failed:', err);
-      searchFailed("Can't reach the matchmaking server. Check your internet connection.");
+      console.warn('PeerJS failed:', err);
+      searchFailed("Can't reach the video connection server. Check your internet connection.");
     });
 }
 
-// Take the lowest free slot so other searchers can find us. Waiting players pile up at the
-// bottom, so a newcomer's first knock (on the slot just below) usually lands on someone waiting.
-function claimSlot(gen) {
+function openPeer(gen) {
   return new Promise((resolve, reject) => {
-    let slot = 0;
-    const tryNext = () => {
-      if (!searching || gen !== searchGen) { reject(new Error('cancelled')); return; }
-      if (slot >= SLOT_COUNT) { // every slot is busy: wait a moment and try again
-        slot = 0;
-        setTimeout(tryNext, 2000);
-        return;
-      }
-      const mine = slot++;
-      const p = new Peer(SLOT_PREFIX + mine, PEER_OPTS);
-      let settled = false;
-      p.on('open', () => {
-        if (settled) return;
-        settled = true;
-        if (!searching || gen !== searchGen) { p.destroy(); reject(new Error('cancelled')); return; }
-        peer = p;
-        mySlot = mine;
-        wirePeer(p);
-        resolve();
-      });
-      p.on('error', err => {
-        if (settled) return;
-        settled = true;
-        try { p.destroy(); } catch (e) { /* ignore */ }
-        if (err.type === 'unavailable-id') tryNext();
-        else reject(err);
-      });
-    };
-    tryNext();
+    const p = new Peer(PEER_PREFIX + randomId(), PEER_OPTS);
+    let settled = false;
+    p.on('open', () => {
+      if (settled) return;
+      settled = true;
+      if (!searching || gen !== searchGen) { p.destroy(); reject(new Error('cancelled')); return; }
+      peer = p;
+      wirePeer(p);
+      resolve();
+    });
+    p.on('error', err => {
+      if (settled) return;
+      settled = true;
+      try { p.destroy(); } catch (e) { /* ignore */ }
+      reject(err);
+    });
   });
 }
 
 // (After you move on, your old peer lingers for a moment before it's destroyed. It must not start a new match:
-// that match would die the moment the peer goes. So only the current peer takes knocks and calls.)
+// that match would die the moment the peer goes. So only the current peer takes connections and calls.)
 function wirePeer(p) {
   p.on('connection', c => { if (peer === p) onIncoming(c, p); else { try { c.close(); } catch (e) { /* ignore */ } } });
   p.on('call', call => { if (peer === p) onIncomingCall(call); else { try { call.close(); } catch (e) { /* ignore */ } } });
   p.on('error', err => {
-    if (peer !== p || err.type === 'peer-unavailable') return; // empty slots are expected while searching
+    if (peer !== p || err.type === 'peer-unavailable') return; // (the player we were paired with just left: handled in knock)
     console.warn('PeerJS error:', err.type, err);
     if (searching && ['network', 'server-error', 'socket-error', 'socket-closed'].includes(err.type)) {
-      searchFailed('Lost the connection to the matchmaking server.');
+      searchFailed('Lost the connection to the video connection server.');
     }
   });
   p.on('disconnected', () => {
@@ -1641,117 +1777,149 @@ function wirePeer(p) {
   });
 }
 
-// Knock on the lower-numbered slots. (Only the higher slot knocks, so two waiting players never both knock at once.)
-async function scanLoop(gen) {
+async function pollLoop(gen) {
+  let fails = 0;
   while (searching && !conn && gen === searchGen) {
-    for (let s = mySlot - 1; s >= 0; s--) {
-      if (!searching || conn || gen !== searchGen) return;
-      if (reserved) break;
-      if ((busySlots[s] || 0) > Date.now()) continue; // they're mid-game; don't bother them for a bit
-      if (await tryMatch(s)) return;
+    if (!pairing) {
+      try {
+        await pollOnce(gen);
+        fails = 0;
+      } catch (err) {
+        if (!searching || gen !== searchGen) return;
+        if (err.code === 'not_logged_in') { CA.sessionLost(); return; }
+        if (++fails >= 4) { searchFailed(err.message); return; }
+      }
     }
-    await sleep(900 + Math.random() * 900);
+    await sleep(pairing ? 400 : POLL_MS + Math.random() * 500);
   }
 }
 
-function tryMatch(slot) {
-  return new Promise(resolve => {
+// One question to the server at a time (the loop and an early knock can both ask).
+function pollOnce(gen) {
+  if (!pollInFlight) {
     const p = peer;
-    if (!p || p.destroyed || p.disconnected) { resolve(false); return; }
-    const target = SLOT_PREFIX + slot;
-    let finished = false;
-    let c = null;
-    const onErr = err => {
-      if (err.type === 'peer-unavailable' && String(err.message || '').includes(target)) done(false);
-    };
-    // No answer at all usually means a stale slot from a closed tab: skip it for a while.
-    const timer = setTimeout(() => { busySlots[slot] = Date.now() + 30000; done(false); }, 7000);
-    function done(ok) {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      p.off('error', onErr);
-      if (!ok && c && conn !== c) { try { c.close(); } catch (e) { /* ignore */ } }
-      resolve(ok);
-    }
-    p.on('error', onErr);
-    try { c = p.connect(target, CONN_OPTS); } catch (e) { done(false); return; }
-    if (!c) { done(false); return; }
-    c.on('open', () => { if (!finished) c.send({ t: 'hi', card: myCard() }); });
-    c.on('data', msg => {
-      if (conn === c) { onNet(msg); return; }
-      if (finished || !msg) return;
-      // (They're in a game. Games are short and everyone looks again afterwards, so check back soon.)
-      if (msg.t === 'busy') { busySlots[slot] = Date.now() + 8000; done(false); return; }
-      if (msg.t === 'welcome') {
-        const card = readCard(msg.card);
-        if (peer !== p || !searching || conn || reserved || isRecent(card.device) || !GAMES[msg.game]) {
-          try { c.send({ t: 'cancel' }); } catch (e) { /* ignore */ }
-          setTimeout(() => done(false), 200);
-          return;
-        }
-        c.send({ t: 'go' });
-        done(true);
-        commit(c, false, card, msg.game, msg.seed >>> 0);
-      }
-    });
-    c.on('close', () => { if (conn === c) onConnClosed(); else done(false); });
-    c.on('error', () => done(false));
-  });
+    if (!p) return Promise.resolve(null);
+    const avoid = Date.now() < avoidUntil ? avoidId : null;
+    pollInFlight = CA.server.call('ca_mm_poll', { p_token: CA.token, p_peer: p.id, p_avoid: avoid })
+      .then(r => { gotPoll(r, gen, p); return r; })
+      .finally(() => { pollInFlight = null; });
+  }
+  return pollInFlight;
 }
 
+function gotPoll(r, gen, p) {
+  if (!r || !searching || gen !== searchGen || conn || pairing || peer !== p) return;
+  if (r.banned) { showBanned(r.until); return; }
+  if (r.match) { startPairing(r.match); return; }
+  if (r.online) setMsg('searchOnline', '🟢 ' + r.online + ' player' + (r.online === 1 ? '' : 's') + ' online now');
+}
+
+function startPairing(m) {
+  pairing = {
+    id: m.id, role: m.role, opp: m.opp || {}, oppPeer: m.opp_peer, catsOnly: !!m.cats_only, sameNet: !!m.same_net,
+    rankedLeft: Math.max(0, m.ranked_left | 0), played: 0, gameNo: 0, timer: null, conn: null,
+  };
+  setMsg('searchTitle', 'Found ' + (pairing.opp.name || 'a player') + '! Connecting…');
+  if (m.role === 'guest') knock(pairing);
+  else pairing.timer = setTimeout(() => { if (!conn) pairingFailed(pairing); }, 15000); // (they connect to us)
+}
+
+// Their browsers couldn't connect: tell the server, and look again.
+function pairingFailed(pr) {
+  if (!pr || pairing !== pr || pr.live) return; // (once the match has started, a closed connection is handled by onConnClosed)
+  clearTimeout(pr.timer);
+  pairing = null;
+  if (pr.conn && pr.conn !== conn) { try { pr.conn.close(); } catch (e) { /* ignore */ } }
+  CA.server.call('ca_mm_fail', { p_token: CA.token, p_match: pr.id }).catch(() => {});
+  if (searching) setMsg('searchTitle', 'Looking for a player…');
+}
+
+// The guest connects to the host the server paired us with.
+function knock(pr) {
+  const p = peer;
+  if (!p || p.destroyed) { pairingFailed(pr); return; }
+  let done = false;
+  let c = null;
+  const onErr = err => { if (err.type === 'peer-unavailable' && String(err.message || '').includes(pr.oppPeer)) giveUp(); };
+  const timer = setTimeout(giveUp, 12000);
+  function finish() {
+    done = true;
+    clearTimeout(timer);
+    p.off('error', onErr);
+  }
+  function giveUp() {
+    if (done) return;
+    finish();
+    if (c) { try { c.close(); } catch (e) { /* ignore */ } }
+    pairingFailed(pr);
+  }
+  p.on('error', onErr);
+  try { c = p.connect(pr.oppPeer, CONN_OPTS); } catch (e) { giveUp(); return; }
+  if (!c) { giveUp(); return; }
+  pr.conn = c;
+  c.on('open', () => { if (!done) c.send({ t: 'hi', v: PROTOCOL, match: pr.id, card: myCard() }); });
+  c.on('data', msg => {
+    if (conn === c) { onNet(msg); return; }
+    if (done || !msg) return;
+    if (msg.t === 'busy') { giveUp(); return; }
+    if (msg.t === 'welcome' && msg.match === pr.id && GAMES[msg.game]) {
+      if (pairing !== pr || !searching || conn || peer !== p) { giveUp(); return; }
+      finish();
+      c.send({ t: 'go' });
+      commit(c, false, readCard(msg.card), msg.game, msg.seed >>> 0);
+    }
+  });
+  c.on('close', () => { if (conn === c) onConnClosed(); else giveUp(); });
+  c.on('error', () => giveUp());
+}
+
+// The host lets in only the player the server paired it with.
 function onIncoming(c, p) {
   let greeted = false;
-  c.on('data', msg => {
+  c.on('data', async msg => {
     if (conn === c) { onNet(msg); return; }
     if (!msg) return;
     if (!greeted) {
       if (msg.t !== 'hi') return;
       greeted = true;
-      const card = readCard(msg.card);
-      // (Being mid-knock ourselves is fine: if that knock also gets a welcome, we cancel it because we're reserved.)
-      if (peer !== p || !searching || conn || reserved || isRecent(card.device)) {
+      // (They can find us a moment before our own next question to the server tells us about them.)
+      if (!pairing && searching && peer === p) await pollOnce(searchGen).catch(() => null);
+      const pr = pairing;
+      if (peer !== p || !searching || conn || !pr || pr.role !== 'host' || pr.conn || msg.match !== pr.id ||
+          c.peer !== pr.oppPeer || msg.v !== PROTOCOL) {
         try { c.send({ t: 'busy' }); } catch (e) { /* ignore */ }
         setTimeout(() => { try { c.close(); } catch (e) { /* ignore */ } }, 400);
         return;
       }
-      reserved = c;
-      reservedInfo = { card, game: pickGame({ camera: CA.voice.cameraOn() && card.face }), seed: randSeed() };
-      c.send({ t: 'welcome', card: myCard(), game: reservedInfo.game, seed: reservedInfo.seed });
-      clearTimeout(reserveTimer);
-      reserveTimer = setTimeout(() => {
-        if (reserved !== c) return;
-        reserved = null;
-        try { c.close(); } catch (e) { /* ignore */ }
-      }, 10000);
+      pr.conn = c;
+      pr.card = readCard(msg.card);
+      pr.game = pickGame({ camera: CA.voice.cameraOn() && pr.card.cam });
+      pr.seed = randSeed();
+      c.send({ t: 'welcome', match: pr.id, card: myCard(), game: pr.game, seed: pr.seed });
       return;
     }
-    if (reserved !== c) return;
-    if (msg.t === 'go') {
-      const info = reservedInfo;
-      clearTimeout(reserveTimer);
-      reserved = null;
-      if (peer !== p || !searching || conn) { try { c.send({ t: 'bye' }); c.close(); } catch (e) { /* ignore */ } return; }
-      commit(c, true, info.card, info.game, info.seed);
-    } else if (msg.t === 'cancel') {
-      clearTimeout(reserveTimer);
-      reserved = null;
-      try { c.close(); } catch (e) { /* ignore */ }
-    }
+    const pr = pairing;
+    if (!pr || pr.conn !== c || msg.t !== 'go') return;
+    if (peer !== p || !searching || conn) { try { c.send({ t: 'bye' }); c.close(); } catch (e) { /* ignore */ } return; }
+    commit(c, true, pr.card, pr.game, pr.seed);
   });
   c.on('close', () => {
-    if (reserved === c) { clearTimeout(reserveTimer); reserved = null; }
     if (conn === c) onConnClosed();
+    else if (pairing && pairing.conn === c) pairingFailed(pairing);
   });
   c.on('error', err => console.warn('Connection error:', err));
 }
 
 function commit(c, asHost, card, game, seed) {
+  clearTimeout(pairing.timer);
+  pairing.live = true;
   searching = false;
   hideSearch();
   conn = c;
   isHost = asHost;
-  opp = card;
+  // (Their name and streak come from the server, so nobody can pretend to be someone else.)
+  opp = Object.assign(card, { id: pairing.opp.id, name: pairing.opp.name || card.name, streak: pairing.opp.streak | 0 });
+  showFace = false; // every new opponent starts out seeing your cat
   muteThem = false;
   hideThem = false;
   lastSeen = Date.now();
@@ -1763,7 +1931,7 @@ function commit(c, asHost, card, game, seed) {
   beginMatch(game, seed);
 }
 
-function sendMediaState() { send({ t: 'media', mic: CA.voice.micOn(), face: CA.voice.cameraOn() }); }
+function sendMediaState() { send({ t: 'media', mic: canShare() && CA.voice.micOn(), face: sendingVideo(), cam: CA.voice.cameraOn() }); }
 
 function send(msg) {
   if (conn && conn.open) {
@@ -1784,10 +1952,10 @@ function onNet(msg) {
       if (match && !match.over) match.ctx.deliver(msg.m);
       return;
     case 'media':
-      if (opp) { opp.mic = !!msg.mic; opp.face = !!msg.face; updateTiles(); }
+      if (opp) { opp.mic = !!msg.mic; opp.face = !!msg.face; opp.cam = !!msg.cam; updateTiles(); }
       return;
     case 'again': // they pressed Rematch
-      if (react && opp) {
+      if (react && opp && !opp.blocked) {
         react.theirs = true;
         setMsg('rxNote', opp.name + ' wants a rematch! 🔁');
         if (react.mine) setMsg('rematchBtn', '🔁 Starting…');
@@ -1796,14 +1964,14 @@ function onNet(msg) {
       }
       return;
     case 'start': // both pressed Rematch, and the host picked the next game
-      if (!isHost && GAMES[msg.game] && react && react.mine) beginMatch(msg.game, msg.seed >>> 0);
+      if (!isHost && GAMES[msg.game] && react && react.mine && pairing) {
+        if (msg.no > 0) pairing.gameNo = (msg.no | 0) - 1;
+        beginMatch(msg.game, msg.seed >>> 0);
+      }
       return;
-    case 'card':
+    case 'card': // (their cat's outfit; their name and streak come from the server)
       if (opp) {
-        const c = readCard(msg.card);
-        opp.name = c.name;
-        opp.streak = c.streak;
-        opp.equip = c.equip;
+        opp.equip = readCard(msg.card).equip;
         updateTiles();
       }
       return;
@@ -1859,13 +2027,17 @@ function onConnClosed() {
   }
 }
 
-// Leave the current opponent and free our slot.
+// Leave the current opponent (or stop searching).
 function hangUp() {
   cancelNext();
   stopReaction();
+  if (searching && !conn && CA.token) {
+    if (pairing) pairingFailed(pairing);
+    else CA.server.call('ca_mm_leave', { p_token: CA.token }).catch(() => {});
+  }
   searching = false;
-  clearTimeout(reserveTimer);
-  reserved = null;
+  if (pairing) clearTimeout(pairing.timer);
+  pairing = null;
   clearInterval(pingTimer);
   stopTalking();
   if (match) { match.over = true; match.ctx.cleanup(); }
@@ -1881,20 +2053,79 @@ function hangUp() {
 function releasePeer(c) {
   const p = peer;
   peer = null;
-  mySlot = -1;
   setTimeout(() => {
     try { if (c) c.close(); } catch (e) { /* ignore */ }
     try { if (p) p.destroy(); } catch (e) { /* ignore */ }
   }, 250);
 }
 
+/* ================= REPORT + BLOCK ================= */
+
+function reportPressed() {
+  if (!opp || opp.bot || !pairing || opp.blocked) return;
+  const target = opp;
+  const pr = pairing;
+  const pick = reason => () => sendReport(target, pr, reason);
+  CA.modal({
+    icon: '🚩', title: 'Report ' + target.name + '?', stack: true,
+    text: "Pick what happened. Their camera and voice are hidden right away, and you won't be matched with " + target.name + ' again.',
+    buttons: [
+      { label: '🔞 Showed or said something sexual', fn: pick('nudity') },
+      { label: '🧒 Looks younger than 13', fn: pick('young') },
+      { label: '😠 Bullying, hate or threats', fn: pick('hate') },
+      { label: '🃏 Cheating', fn: pick('cheating') },
+      { label: '❓ Something else', fn: pick('other') },
+      { label: '🚫 Just block them', fn: () => blockOnly(target) },
+      { label: 'Cancel' },
+    ],
+  });
+}
+
+// Right away: hide their camera, mute them, and no rematches. (A game that's going on can still be finished, or skipped.)
+function protectFrom(target) {
+  target.blocked = true;
+  if (opp !== target) return;
+  hideThem = true;
+  muteThem = true;
+  updateTiles();
+  if (react) startReactionAgain();
+}
+
+async function sendReport(target, pr, reason) {
+  protectFrom(target);
+  try {
+    await CA.server.call('ca_report_player', { p_token: CA.token, p_match: pr.id, p_reason: reason });
+    CA.toast("Thanks for telling us. You won't be matched with " + target.name + ' again.');
+  } catch (err) {
+    CA.toast(err.message);
+  }
+}
+
+async function blockOnly(target) {
+  protectFrom(target);
+  try {
+    await CA.server.call('ca_block', { p_token: CA.token, p_player: target.id });
+    CA.toast("Blocked. You won't be matched with " + target.name + ' again.');
+  } catch (err) {
+    CA.toast(err.message);
+  }
+}
+
+// (After a report on the reaction screen: no rematch, and on to someone new.)
+function startReactionAgain() {
+  $('rematchBtn').disabled = true;
+  $('rxReportBtn').classList.add('hidden');
+  setMsg('rxNote', 'On to someone new…');
+  setTimeout(() => { if (react) goNext('next'); }, 1200);
+}
+
 /* ================= VOICE + CAMERA ================= */
 
-function callSig() { return (CA.voice.hasMic() ? 'a' : '') + (CA.voice.cameraOn() ? 'v' : ''); }
+function callSig() { return (canShare() && CA.voice.hasMic() ? 'a' : '') + (sendingVideo() ? 'v' : ''); }
 
-// Sends your microphone (and camera, if it's on). Called again whenever either one starts or stops.
+// Sends your microphone (and camera, if you pressed 📷 Show my face). Called again whenever either one starts or stops.
 function callOpponent() {
-  const stream = CA.voice.outgoing();
+  const stream = canShare() ? CA.voice.outgoing({ video: showFace }) : null;
   if (outCall) { const o = outCall; outCall = null; o.close(); }
   lastCallSig = callSig();
   if (!peer || !conn || !conn.open || !stream || !opp || opp.bot) return;
@@ -1906,7 +2137,8 @@ function callOpponent() {
 }
 
 function onIncomingCall(call) {
-  if (!conn || call.peer !== conn.peer) { call.close(); return; }
+  // (Under 18, or a cats-only match: their voice and camera are never taken in, whatever their browser sends.)
+  if (!conn || call.peer !== conn.peer || !canShare()) { call.close(); return; }
   if (inCall) { const o = inCall; inCall = null; o.close(); }
   inCall = call;
   call.on('stream', stream => {
@@ -1973,7 +2205,7 @@ function startSolo() {
   practiceMix = false;
   practiceGame = 'math';
   opp = null;
-  beginMatch('math', randSeed(), { solo: true, math: mathSettings });
+  beginMatch(randSeed(), { solo: true, math: mathSettings });
 }
 
 function randomOutfit() {
@@ -2035,11 +2267,26 @@ $('micBtn').addEventListener('click', async () => {
   else CA.toast('The microphone is blocked. Allow it with the lock icon in the address bar.');
 });
 $('muteThemBtn').addEventListener('click', () => { muteThem = !muteThem; updateTiles(); });
-$('faceBtn').addEventListener('click', () => {
-  const on = !(CA.voice.cameraOn() || CA.voice.camPending);
-  CA.voice.setCamWanted(on);
-  if (!on) CA.toast('Now showing your cat. 🐱');
+$('faceBtn').addEventListener('click', async () => {
+  if (!opp || opp.bot) { // against a bot: just your camera on or off
+    const on = !(CA.voice.cameraOn() || CA.voice.camPending);
+    CA.voice.setCamWanted(on);
+    if (!on) CA.toast('Now showing your cat. 🐱');
+    return;
+  }
+  if (!canShare()) return;
+  if (showFace) {
+    showFace = false;
+    CA.toast('Now ' + opp.name + ' sees your cat. 🐱');
+  } else {
+    if (!CA.voice.cameraOn()) await CA.voice.setCamWanted(true);
+    if (!CA.voice.cameraOn() || !canShare()) { updateTiles(); return; } // (the camera is blocked: that has its own message)
+    showFace = true;
+    CA.toast(opp.name + ' can see you now. 📷');
+  }
+  mediaChanged();
 });
+$('reportBtn').addEventListener('click', () => reportPressed());
 $('hideThemBtn').addEventListener('click', () => { hideThem = !hideThem; updateTiles(); });
 function unmuteThem() {
   const v = $('themVideo');
@@ -2057,19 +2304,21 @@ $('unmuteBtn').addEventListener('click', unmuteThem);
   if (!$('unmuteBtn').classList.contains('hidden')) unmuteThem();
 }, { capture: true }));
 
-window.addEventListener('ca:media', () => {
+function mediaChanged() {
   if (CA.route !== 'solos' && CA.route !== 'practice') return;
   updateTiles();
   if (conn && conn.open && opp && !opp.bot) {
     sendMediaState();
     if (callSig() !== lastCallSig) callOpponent(); // the microphone or camera just started or stopped
   }
-});
+}
+window.addEventListener('ca:media', mediaChanged);
 window.addEventListener('ca:change', () => {
   if ((CA.route === 'solos' || CA.route === 'practice') && CA.profile) setMsg('meStreak', mode === 'practice' ? '🎯' : '🔥 ' + CA.profile.streak);
 });
 window.addEventListener('pagehide', () => {
-  forfeitIfPlaying(); // closing the page in the middle of a game counts as a loss, same as pressing Skip
+  forfeitIfPlaying(true); // closing the page in the middle of a game counts as a loss, same as pressing Skip
+  if (searching && !conn && CA.token) CA.server.call('ca_mm_leave', { p_token: CA.token }, { keepalive: true }).catch(() => {});
   if (conn && conn.open) { try { conn.send({ t: 'bye' }); } catch (e) { /* ignore */ } }
   if (peer) { try { peer.destroy(); } catch (e) { /* ignore */ } }
 });
@@ -2097,29 +2346,32 @@ const screenDef = {
   },
 };
 
-// The first time you look for strangers with your camera on, say so once.
+// The first time you look for strangers, explain how cameras and reports work.
+const TIP_KEY = 'camarcade-safety-tip-v2';
 function enterSolos() {
   let seen = false;
-  try { seen = localStorage.getItem('camarcade-camera-tip') === '1'; } catch (e) { /* ignore */ }
-  if (seen || !CA.voice.camWanted()) { startSearch(); return; }
+  try { seen = localStorage.getItem(TIP_KEY) === '1'; } catch (e) { /* ignore */ }
+  if (seen) { startSearch(); return; }
   CA.showScreen('scr-play');
   showSearch();
   clearInterval(searchTick); // nothing runs until you answer
   setMsg('searchSub', '');
+  const adult = CA.canVideoChat();
   CA.modal({
-    icon: '📷', locked: true,
-    title: 'Other players will see you',
-    text: "Classic Games matches you with people you don't know, and your camera will be on. Never share personal things like your real name, school or address. " +
-      'Press 🐱 Show my cat to hide your face, or ⏭ Skip to leave any match.',
+    icon: '🐱', locked: true,
+    title: adult ? 'Everyone starts out as a cat' : 'You play as your cat',
+    text: (adult
+      ? "Classic Games matches you with people you don't know. Each new player sees your cat. Press 📷 Show my face if you want that player to see you, and they can hear you. "
+      : "Classic Games matches you with people you don't know. You're under 18, so they never see you or hear you: they see your cat. ") +
+      'Never share personal things like your real name, school or address. Press 🚩 Report if someone is mean or rude, and ⏭ Skip to leave any match.',
     buttons: [
       { label: 'Got it, find a match', primary: true, fn: () => { rememberTip(); startSearch(); } },
-      { label: 'Play as my cat', fn: () => { rememberTip(); CA.voice.setCamWanted(false); startSearch(); } },
       { label: 'Cancel', fn: () => CA.go('menu') },
     ],
   });
 }
 
-function rememberTip() { try { localStorage.setItem('camarcade-camera-tip', '1'); } catch (e) { /* ignore */ } }
+function rememberTip() { try { localStorage.setItem(TIP_KEY, '1'); } catch (e) { /* ignore */ } }
 
 CA.register('solos', Object.assign({ enter: enterSolos }, screenDef));
 CA.register('practice', Object.assign({

@@ -8,7 +8,7 @@
    crooked crates, right up a leaning ladder, over a suitcase on a washing machine and a plank bridge, up a wobbly tower
    of tires, and across stepping stones to the finish. Fall, and you land wherever you land.
 
-   V takes out a giant fish in your other paw (V again puts it away). While it's out, the mouse swings the fish, and
+   Space takes out a giant fish in your other paw (Space again puts it away). While it's out, the mouse swings the fish, and
    your climbing paw just keeps holding on where it is. A fast swing that hits the other cat knocks them loose, but
    the fish only lasts 2 slaps. First to the top wins (after 4 minutes, whoever got further wins).
 
@@ -53,7 +53,7 @@ const START_X = [150, 265];      // where the cats start (the host's on the left
 CA.games.add('climb', {
   name: 'Claw Climb', icon: '🧗',
   blurb: 'Race up the junk mountain! Move the mouse and your long claw arm follows: press the paw on things to push ' +
-    'and pull yourself up (no jumping!). V takes out a giant fish: swing it fast to slap the other cat down (2 slaps). V puts it away.',
+    'and pull yourself up (no jumping!). Space takes out a giant fish: swing it fast to slap the other cat down (2 slaps). Space puts it away.',
   prepare() { setTimeout(() => courseRoute(theCourse()), 30); }, // (the route is worked out while you look at each other)
   start(ctx) { play(ctx); },
 });
@@ -465,7 +465,7 @@ function play(ctx) {
   ctx.listen($('ccFish'), 'click', () => toggleFish());
   ctx.listen(document, 'keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.code === 'KeyV' || (e.key || '').toLowerCase() === 'v') { e.preventDefault(); if (!e.repeat) toggleFish(); }
+    if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); if (!e.repeat) toggleFish(); }
   });
   ctx.onEnd(() => { if (document.pointerLockElement === cv) document.exitPointerLock(); });
 
@@ -1372,9 +1372,10 @@ function play(ctx) {
     g.font = '22px ' + FONT;
     g.textAlign = 'left';
     g.textBaseline = 'middle';
-    for (let k = 0; k < FISH_USES; k++) { g.globalAlpha = k < me.uses ? 1 : 0.25; g.fillText('🐟', 18 + k * 28, 28); }
+    const fx = W / 2 - 300; // (left of the clock: the top corners are under the cameras)
+    for (let k = 0; k < FISH_USES; k++) { g.globalAlpha = k < me.uses ? 1 : 0.25; g.fillText('🐟', fx + k * 28, 28); }
     g.globalAlpha = 1;
-    label(me.fish ? 'V: put it away' : 'V', 18 + FISH_USES * 28 + (me.fish ? 62 : 14), 28, 15, me.fish ? '#7dd3ff' : '#ffd23f');
+    label(me.fish ? 'Space: put it away' : 'Space', fx + FISH_USES * 28 + (me.fish ? 80 : 28), 28, 15, me.fish ? '#7dd3ff' : '#ffd23f');
     // the clock
     const left = Math.max(0, LIMIT - clock), s = Math.ceil(left);
     label(Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'), W / 2, 26, 22, left < 30 && phase === 'play' ? '#ff8a8a' : '#ffffff');
@@ -1396,9 +1397,9 @@ function play(ctx) {
     else if (me.done) text = 'You made it! Checking who was first…';
     else if (fine && !locked && !everLocked) text = 'Click the game, then move your mouse: the paw follows it';
     else if (me.stun > 0) text = 'Slapped! 🐟';
-    else if (me.fish) text = '🐟 Swing the fish fast at ' + them.name + '! Your other paw keeps holding on. V puts the fish away';
+    else if (me.fish) text = '🐟 Swing the fish fast at ' + them.name + '! Your other paw keeps holding on. Space puts the fish away';
     else if (clock < 15) text = 'Press your paw on the boulder, then ' + (fine ? 'move the mouse' : 'drag') + ' down to push yourself up. No jumping: just your arm!';
-    else text = 'Push off things · fast moves fling you · shiny metal is slippery · V: 🐟 fish (' + me.uses + ' slap' + (me.uses === 1 ? '' : 's') + ' left)';
+    else text = 'Push off things · fast moves fling you · shiny metal is slippery · Space: 🐟 fish (' + me.uses + ' slap' + (me.uses === 1 ? '' : 's') + ' left)';
     if ($('ccMsg').textContent !== text) setMsg('ccMsg', text);
   }
 }
