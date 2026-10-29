@@ -42,7 +42,7 @@ function Stop-Browsers($list, $dir) {
     Where-Object { $_.CommandLine -like "*$dir*" } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch { } }
 }
 
-function Run-Round($mode, $title, $whoA, $whoB) {
+function Run-Round($mode, $title, $whoA, $whoB, $limit = $TimeoutSec) {
   Write-Host ''
   Write-Host "  $title" -ForegroundColor Cyan
   $run = -join ((1..6) | ForEach-Object { [char[]]'abcdefghijkmnpqrstuvwxyz23456789' | Get-Random })
@@ -55,7 +55,7 @@ function Run-Round($mode, $title, $whoA, $whoB) {
       "--user-data-dir=$dir\profile-$role", "http://localhost:$port/?autotest=$role&mode=$mode&run=$run")
   }
   $done = @{}
-  $deadline = (Get-Date).AddSeconds($TimeoutSec)
+  $deadline = (Get-Date).AddSeconds($limit)
   while ((Get-Date) -lt $deadline -and $done.Count -lt 2) {
     Start-Sleep -Milliseconds 400
     $lines = @(Get-Content $log -Encoding UTF8)
@@ -78,7 +78,7 @@ function Run-Round($mode, $title, $whoA, $whoB) {
   }
   if ($done.Count -lt 2) {
     $script:failed++
-    Write-Host "  [FAIL] This round didn't finish within $TimeoutSec seconds." -ForegroundColor Red
+    Write-Host "  [FAIL] This round didn't finish within $limit seconds." -ForegroundColor Red
   }
   Stop-Browsers $list $dir
 }
@@ -87,6 +87,8 @@ Write-Host ''
 Write-Host '  Two hidden browsers are playing Classic Games against each other through your server...' -ForegroundColor Cyan
 Run-Round 'teen' 'Round 1: an adult and a 15-year-old (cats only)' 'A (adult)' 'B (15)   '
 Run-Round 'cam' 'Round 2: two adults with cameras (each starts out as a cat)' 'A (adult)' 'B (adult)'
+Run-Round 'walls' 'Round 3: Wall Duel (A checks the rules and the bot first, then both play it online)' 'A' 'B' ($TimeoutSec + 200)
+Run-Round 'duels' 'Round 4: the 14 arcade duels (A plays each one against the bot, then both play Sumo Cats online)' 'A' 'B' ($TimeoutSec + 900)
 
 try { Stop-Process -Id $server.Id -Force -ErrorAction Stop } catch { }
 Start-Sleep -Milliseconds 800

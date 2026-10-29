@@ -1,7 +1,7 @@
 /* Classic Games: Cat Hoops. 1v1 basketball with the long-armed cats (see games-floppy.js). Hold W to jump and shoot:
    a bar fills up next to you, and letting go in the green usually goes in (less often with someone right in your
-   face). Close to the hoop, W dunks instead, and V is a quick shot without the bar. Without the ball: jump with W and
-   press S to swat a shot away, and V (or S on the ground) slaps the ball out of their hands. Tap A or D twice to dash.
+   face). Close to the hoop, W dunks instead, and Space is a quick shot without the bar. Without the ball: jump with W and
+   press S to swat a shot away, and Space (or S on the ground) slaps the ball out of their hands. Tap A or D twice to dash.
    You pick the ball up just by touching it. Most points in 60 seconds wins; a tie goes to overtime, and the next
    basket wins.
 
@@ -42,8 +42,8 @@ const VIEW_DELAY = 110;          // the other player's cat is drawn this many ms
 
 CA.games.add('hoops', {
   name: 'Cat Hoops', icon: '🏀',
-  blurb: 'Hold W to jump and shoot: let go when the bar is in the green! Near the hoop, W dunks. V is a quick shot. ' +
-    'On defense, jump with W and press S to block, or slap the ball away with V. Tap A or D twice to dash. Most points in 60 seconds wins!',
+  blurb: 'Hold W to jump and shoot: let go when the bar is in the green! Near the hoop, W dunks. Space is a quick shot. ' +
+    'On defense, jump with W and press S to block, or slap the ball away with Space. Tap A or D twice to dash. Most points in 60 seconds wins!',
   start(ctx) { play(ctx); },
 });
 
@@ -62,7 +62,7 @@ function play(ctx) {
     '<div class="g-barrel"><canvas class="bb-canvas" id="hbCanvas" width="' + W + '" height="' + H + '"></canvas>' +
     '<div class="bb-pad" id="hbPad"><div><button data-k="l" aria-label="Move left (tap twice to dash)">◀</button><button data-k="r" aria-label="Move right (tap twice to dash)">▶</button></div>' +
     '<div><button data-k="j" aria-label="Jump and shoot">W</button><button data-k="s" aria-label="Block or slap">S</button>' +
-    '<button class="bb-v" data-k="v" aria-label="Quick shot, or slap">V</button></div></div>' +
+    '<button class="bb-v" data-k="v" aria-label="Quick shot, or slap">🏀</button></div></div>' +
     '<p class="g-msg" id="hbMsg"></p></div>';
   const cv = $('hbCanvas');
   const g = cv.getContext('2d');
@@ -109,8 +109,8 @@ function play(ctx) {
   /* ---------- controls ---------- */
 
   const input = F.controls(ctx,
-    { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j', ArrowDown: 's', KeyS: 's', KeyV: 'v' },
-    { a: 'l', d: 'r', w: 'j', ' ': 'j', s: 's', v: 'v' }, $('hbPad'));
+    { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', ArrowDown: 's', KeyS: 's', Space: 'v' },
+    { a: 'l', d: 'r', w: 'j', s: 's', ' ': 'v' }, $('hbPad'));
   const keys = input.keys;
   function myInput() { // (the guest's screen is mirrored)
     const d = input.takeDash();
@@ -181,6 +181,14 @@ function play(ctx) {
     c.y += c.vy * dt;
     if (c.x < EDGE) { c.x = EDGE; c.vx = 0; }
     if (c.x > W - EDGE) { c.x = W - EDGE; c.vx = 0; }
+    for (const [dy, r] of [[-62, 24], [-14, 14]]) { // the camera walls in the top corners: head and feet bump off them
+      const p = CA.camWalls.push(c.x, c.y + dy, r);
+      if (!p) continue;
+      c.x = p.x;
+      c.y = p.y - dy;
+      const vn = c.vx * p.nx + c.vy * p.ny;
+      if (vn < 0) { c.vx -= vn * p.nx; c.vy -= vn * p.ny; }
+    }
     c.ground = false;
     if (c.y >= FLOOR) {
       if (c.vy > 520) { c.squash = 1; puff(c.x, FLOOR, 5); }
@@ -197,7 +205,7 @@ function play(ctx) {
         if (jRelease || c.meter >= 1 || (c.ground && c.meter > 0.2)) shoot(c, c.meter);
       }
     }
-    // V: a quick shot with the ball, a slap without it. S: a swat in the air, a slap on the ground.
+    // Space: a quick shot with the ball, a slap without it. S: a swat in the air, a slap on the ground.
     if (vPress && free) {
       if (c.hold && c.meter < 0) shoot(c, null);
       else if (!c.hold && c.slapCd <= 0) slap(c);
@@ -250,7 +258,7 @@ function play(ctx) {
     return f;
   }
 
-  // Let go of the ball towards your hoop. m: where the bar was (0 to 1), or null for a quick shot (V).
+  // Let go of the ball towards your hoop. m: where the bar was (0 to 1), or null for a quick shot (Space).
   function shoot(c, m) {
     const h = goal(c.i);
     if (m === null && c.ground) { c.vy = -380; c.ground = false; } // (a little hop)
@@ -349,7 +357,7 @@ function play(ctx) {
     else guestEvent('grab', null);
   }
 
-  // V (or S on the ground) without the ball: a slap with those long arms. The other cat is stunned for a moment and
+  // Space (or S on the ground) without the ball: a slap with those long arms. The other cat is stunned for a moment and
   // the ball rolls away from it: then it's a race for the loose ball. (Online, the slapper's app decides whether the
   // slap reached.)
   function slap(c) {
@@ -453,6 +461,7 @@ function play(ctx) {
     let touched = false;
     if (b.x < BALL_R) { b.x = BALL_R; b.vx = Math.abs(b.vx) * 0.7; touched = true; }
     if (b.x > W - BALL_R) { b.x = W - BALL_R; b.vx = -Math.abs(b.vx) * 0.7; touched = true; }
+    if (CA.camWalls.bounce(b, BALL_R, 0.7)) touched = true; // (the camera walls in the top corners)
     for (let h = 0; h < 2; h++) {
       // the backboard: a solid block, so the ball bounces off it from any side (its front, edges or top). It reaches
       // back to the wall, so the ball can't get wedged in a gap behind it.
@@ -1120,6 +1129,7 @@ function play(ctx) {
     drawFx();
     drawTags(now);
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
     drawHud(now);
     updateMsg();
   }
@@ -1335,7 +1345,7 @@ function play(ctx) {
     const clock = overtime ? 'OT' : Math.floor(timeLeft / 60) + ':' + String(Math.floor(timeLeft % 60)).padStart(2, '0');
     label(clock, x, 34, 24, timeLeft <= 10 && !overtime ? '#ff5a5a' : '#7dff8a');
     if (phase === 'ready' || now - goAt < 4000) { // which hoop is yours
-      label('YOUR HOOP →', W - 150, 132, 16, '#ffd23f', phase === 'ready' ? 1 : clamp(1 - (now - goAt - 3000) / 1000, 0, 1));
+      label('YOUR HOOP →', W - 260, 132, 16, '#ffd23f', phase === 'ready' ? 1 : clamp(1 - (now - goAt - 3000) / 1000, 0, 1));
     }
     if (phase === 'ready' && count > 0) bigText(String(count), H / 2 - 30, 110, '#ffd23f', 1);
     if (phase !== 'ready' && now - goAt < 700) bigText('TIP-OFF!', H / 2 - 30, 80, '#7dff8a', 1 - (now - goAt) / 700);
@@ -1353,8 +1363,8 @@ function play(ctx) {
     else if (!playing()) text = '';
     else if (me.meter >= 0) text = 'Let go of W when the bar is in the green!';
     else if (me.hold && canDunk(me)) text = 'Press W to DUNK!';
-    else if (me.hold) text = 'Hold W to jump and shoot, let go in the green · V quick shot · tap A or D twice to dash';
-    else if (shown.h === themI) text = 'Defend! Jump with W and press S to block · V slaps the ball away';
+    else if (me.hold) text = 'Hold W to jump and shoot, let go in the green · Space quick shot · tap A or D twice to dash';
+    else if (shown.h === themI) text = 'Defend! Jump with W and press S to block · Space slaps the ball away';
     else text = 'Get the ball! Just touch it to pick it up';
     if ($('hbMsg').textContent !== text) setMsg('hbMsg', text);
   }

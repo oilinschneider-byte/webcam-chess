@@ -9,7 +9,7 @@ const playRoot = document.getElementById('scr-play');
 const practiceRoot = document.getElementById('scr-practice');
 const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('#' + id);
 
-const PROTOCOL = 32;              // bump when the games or the match flow change, so old and new versions don't meet
+const PROTOCOL = 37;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
 const CONN_OPTS = { reliable: true, serialization: 'json' };
@@ -27,6 +27,34 @@ const DEFAULT_MATH = {
   ],
 };
 const CLASSIC_MATH = Object.assign({}, DEFAULT_MATH, { duration: 35 });
+
+// The game covers the screen while you play (see "PLAYING" in style.css). The arcade games' canvases grow to fit by
+// themselves; the other games are scaled up (--fit, used as their zoom) so they fill a big screen too, up to 1.6 times.
+if (window.ResizeObserver) {
+  const stageEl = $('stage');
+  new ResizeObserver(() => {
+    const r = stageEl.getBoundingClientRect();
+    const fit = Math.max(1, Math.min(r.width / 1000, r.height / 640, 1.6));
+    stageEl.style.setProperty('--fit', fit.toFixed(3));
+    fitCams();
+  }).observe(stageEl);
+  setInterval(fitCams, 300); // (a new game's canvas can appear, or move, at any time)
+}
+// The camera blocks cover an arcade game's camera walls exactly (its top corners: see cam-walls.js), so nothing in the
+// game can be hidden behind a camera. In the other games they just sit in the top corners (see style.css).
+function fitCams() {
+  const match = $('matchView'), cv = $('stage').querySelector('.bb-canvas');
+  const blocks = [match.querySelector('.m-player.me'), match.querySelector('.m-player.them')];
+  const onSides = getComputedStyle(blocks[0]).position === 'absolute'; // (not on a phone held upright: there they sit above the game)
+  const fit = !!cv && onSides && !match.classList.contains('cams-in-stage') && playRoot.offsetParent !== null;
+  blocks.forEach(b => b.classList.toggle('fit', fit));
+  if (!fit) { blocks.forEach(b => { b.style.width = b.style.height = ''; }); return; }
+  const r = cv.getBoundingClientRect(), m = match.getBoundingClientRect(), k = r.width / CA.camWalls.W;
+  const cw = CA.camWalls.CAM_W * k, bottom = r.top + CA.camWalls.CAM_H * k;
+  blocks[0].style.width = Math.round(r.left - m.left + cw) + 'px';
+  blocks[1].style.width = Math.round(m.right - r.right + cw) + 'px';
+  blocks.forEach(b => { b.style.height = Math.round(bottom - b.getBoundingClientRect().top) + 'px'; });
+}
 
 let mode = 'solos';      // 'solos' = real players, 'practice' = bots
 let practiceGame = null;
@@ -63,6 +91,11 @@ let lastCallSig = '';     // which of mic ('a') / camera ('v') the call to the o
 let match = null;        // { ctx, gameId, started, over }
 let lastGame = null;
 let gameBag = [];        // the games still to come in this round of "every game once"
+// The games in the Classic Games mix (and "Classic mode vs bots"): the ones that take skill. Every other game can
+// still be played on its own in Practice.
+const MIX_GAMES = ['barrel', 'hoops', 'walls', 'climb', 'speedchess', 'c4', 'simon', 'draw', 'aim', 'dodge',
+  'memory', 'sequence', 'spot', 'type', 'scramble',
+  'trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'blocks', 'swords', 'stare', 'boxing'];
 let nextTimer = null;    // the countdown to the next opponent after a game
 let recentName = '';
 
@@ -712,13 +745,13 @@ GAMES.ttt = {
   },
 };
 
-// Every game gets exactly the same chance: all of them come up once, in a random order, before any game repeats.
-// Games that need cameras (Pose Match) are only picked when opts.camera says everyone's camera is on.
+// Every game in the mix gets exactly the same chance: all of them come up once, in a random order, before any game
+// repeats. Games that need cameras (Pose Match) are only picked when opts.camera says everyone's camera is on.
 function pickGame(opts) {
   const forced = window.__forceGame; // lets the automated tests pick a game
   if (forced && GAMES[forced]) return forced;
   const ok = id => !GAMES[id].camera || !!(opts && opts.camera);
-  if (!gameBag.some(ok)) gameBag = shuffle(Object.keys(GAMES), Math.random);
+  if (!gameBag.some(ok)) gameBag = shuffle(MIX_GAMES.filter(id => GAMES[id]), Math.random);
   const allowed = gameBag.map((id, i) => i).filter(i => ok(gameBag[i]));
   let i = allowed[allowed.length - 1];
   if (gameBag[i] === lastGame && allowed.length > 1) i = allowed[Math.floor(Math.random() * (allowed.length - 1))]; // not the same game twice in a row
@@ -2172,7 +2205,7 @@ function startSolo() {
   practiceMix = false;
   practiceGame = 'math';
   opp = null;
-  beginMatch('math', randSeed(), { solo: true, math: mathSettings });
+  beginMatch(randSeed(), { solo: true, math: mathSettings });
 }
 
 function randomOutfit() {

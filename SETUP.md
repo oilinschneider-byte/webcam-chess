@@ -61,6 +61,8 @@ Running `server/schema.sql` again later is safe. It updates the code and keeps e
 2. Double-click `tools\test-browsers.bat`. Two hidden browsers play real Classic Games matches against each other through your server:
    - **Round 1:** an adult and a 15-year-old. It checks the match is cats-only, that leaving in the middle counts as a loss, that the game doesn't change any streak (same internet connection), and that the 🚩 Report button works.
    - **Round 2:** two adults with pretend webcams. It checks each one first sees the other's cat, and that pressing **📷 Show my face** shows only that player's camera.
+   - **Round 3:** 🚧 Wall Duel. One browser checks every rule against the bot (building, dots joining up, the "can't build" messages, walls opening and breaking, getting knocked out by the other cat's wall) and lets the bot play on all three levels. Then both play it online and check they see the same walls and the same winner. This round takes about 4 minutes.
+   - **Round 4:** the 14 arcade duels. One browser plays a whole game of each against the bot (sped up, pressing random keys) and checks every one ends with a result. Then both play Sumo Cats online and check the guest gets the host's game and they agree who won. This round takes about 10 minutes.
 
    It should end with **ALL … BROWSER CHECKS PASSED**.
 

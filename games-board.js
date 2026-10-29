@@ -219,13 +219,19 @@ function fenOk(fen, strict) {
 }
 
 CA.games.add('speedchess', {
-  name: 'Speed Chess', icon: '♟️', blurb: '8 seconds per move. No winner after 40 seconds? 💣 The board gets nuked, and you play on with the few pieces left!',
+  name: 'Speed Chess', icon: '♟️', blurb: '8 seconds per move. No winner after 40 seconds? 💣 A nuke hits the middle of the board: it glows red with a warning first, so get your pieces out of the middle!',
   start(ctx) {
     if (typeof window.Chess !== 'function') { ctx.stage.innerHTML = '<div class="stage-wait">Chess could not load.</div>'; ctx.later(() => ctx.finish('draw'), 1500); return; }
     const PHASES = window.__chessPhases || [40000, 25000]; // (the tests make these shorter)
     const MOVE_MS = window.__chessMoveMs || 8000;
     const hostWhite = ctx.rng() < 0.5;
     const myColor = hostWhite === ctx.isHost ? 'w' : 'b';
+    // The nuke hits the middle of the board (files c to f, ranks 3 to 6): everything there but the kings goes. From 15
+    // seconds before, the middle glows red and you're told to get out of it.
+    const inZone = sq => { const f = FILES.indexOf(sq[0]), r = +sq[1] - 1; return f >= 2 && f <= 5 && r >= 2 && r <= 5; };
+    const zoneName = 'middle';
+    const WARN = 15000;
+    const warning = () => phase === 1 && !over && phaseEnds - performance.now() <= WARN;
     const theirColor = myColor === 'w' ? 'b' : 'w';
     const chess = new Chess();
     let ply = 0;          // counts moves across the nuke (loading the new position resets chess.js's own history)
@@ -277,7 +283,8 @@ CA.games.add('speedchess', {
           (lastMove && (sq === lastMove.from || sq === lastMove.to) ? ' last' : '') +
           (sq === selected ? ' sel' : '') +
           (tset.has(sq) ? (p ? ' capture' : ' target') : '') +
-          (sq === check ? ' check' : '');
+          (sq === check ? ' check' : '') +
+          (warning() && inZone(sq) ? ' danger' : '');
         const want = p ? p.color + p.type.toUpperCase() : '';
         if (el.dataset.p !== want) {
           el.dataset.p = want;
@@ -292,7 +299,11 @@ CA.games.add('speedchess', {
 
     function tick() {
       const left = Math.max(0, phaseEnds - performance.now());
-      setMsg('scClock', over ? (phase === 1 ? '♟️ Game over' : '💥 Game over') : phase === 1 ? '💣 Nuke in ' + fmtTime(left) : '⏱ ' + fmtTime(left) + ' left');
+      setMsg('scClock', over ? (phase === 1 ? '♟️ Game over' : '💥 Game over') : phase === 1 ? '💣 Nuke on the ' + zoneName + ' in ' + fmtTime(left) : '⏱ ' + fmtTime(left) + ' left');
+      if (warning()) {
+        setMsg('scMsg', '⚠️ Get out of the ' + zoneName + '! It gets nuked in ' + Math.ceil(left / 1000) + 's');
+        render(); // (the zone glows red)
+      }
     }
 
     // Click a piece and then a square, or drag the piece there.
@@ -418,7 +429,17 @@ CA.games.add('speedchess', {
       return true;
     }
 
-    function makeNuke() { // keep both kings and up to 3 random pieces per side
+    function makeNuke() { // everything in the zone goes, except the kings
+      const kings = {}, keep = [];
+      for (const sq of ALL_SQUARES) {
+        const p = chess.get(sq);
+        if (!p) continue;
+        if (p.type === 'k') kings[p.color] = sq; else if (!inZone(sq)) keep.push({ sq, p });
+      }
+      const fen = toFen(kings, keep, chess.turn());
+      return fenOk(fen, false) ? fen : randomNuke();
+    }
+    function randomNuke() { // (if that leaves an impossible position: keep both kings and up to 3 random pieces per side)
       const kings = {};
       const rest = { w: [], b: [] };
       for (const sq of ALL_SQUARES) {
@@ -449,7 +470,7 @@ CA.games.add('speedchess', {
       render();
       boom(before.filter(sq => !chess.get(sq)));
       sound('boom');
-      setMsg('scMsg', '💥 NUKED! Only a few pieces survived. Play on!');
+      setMsg('scMsg', '💥 The ' + zoneName + ' got NUKED! Play on!');
       ctx.note('After the nuke · more pieces left wins');
       startPhase(PHASES[1], () => { endDue = true; tryEnd(); });
       if (chess.in_checkmate() || chess.in_draw()) { byMaterial('Not much survived!'); return; }

@@ -1,6 +1,6 @@
-/* Classic Games: Barrel Brawl. Two cats with very long, floppy arms and one barrel. Press V next to it to pick it
-   up: it hangs low behind you. Hold V to wind up and let go to throw it: it swings up over your head and shoots off
-   (the longer you hold V, the further it goes). With no barrel nearby, V is a slap with those long arms: it knocks the
+/* Classic Games: Barrel Brawl. Two cats with very long, floppy arms and one barrel. Press Space next to it to pick it
+   up: it hangs low behind you. Hold Space to wind up and let go to throw it: it swings up over your head and shoots off
+   (the longer you hold Space, the further it goes). With no barrel nearby, Space is a slap with those long arms: it knocks the
    other cat back and makes it drop the barrel, but doesn't cost a life. Tap left or right twice, fast, to dash. 3
    lives each and no clock, but after a while a few tiles of ground fall into the lava.
 
@@ -30,7 +30,7 @@ const FOOT = 9;                  // a cat stands on the ground while either foot
 const EDGE = 30;                 // how near the sides of the arena a cat can go
 const PIVOT = 60, ORBIT = 52;    // the barrel swings in a circle of radius ORBIT around (x, y - PIVOT)
 const CARRY = 48, WOUND = 95, TOP = 200; // where on that circle (degrees from your feet: behind you at 90, above your head at 180) you carry it, wind it up to, and let go
-const WIND = 1.1;                // seconds of holding V for a full-power throw
+const WIND = 1.1;                // seconds of holding Space for a full-power throw
 const THROW_UP = 26 * Math.PI / 180; // every throw leaves from above your head, at this angle
 const GRAB = 80;                 // how near the barrel has to be to pick it up
 const SLAP_REACH = 108, SLAP_WAIT = 0.65; // how far a slap reaches in front of you, and how often you can slap
@@ -47,8 +47,8 @@ const BANNERS = {
 
 CA.games.add('barrel', {
   name: 'Barrel Brawl', icon: '🛢️',
-  blurb: 'V picks up the barrel. Hold V and let go to shoot it over your head at the other cat (hold longer to throw further). ' +
-    'No barrel nearby? V slaps with your long arms: it knocks them back and makes them drop the barrel. Tap A or D twice to dash. 3 lives each!',
+  blurb: 'Space picks up the barrel. Hold Space and let go to shoot it over your head at the other cat (hold longer to throw further). ' +
+    'No barrel nearby? Space slaps with your long arms: it knocks them back and makes them drop the barrel. Tap A or D twice to dash. 3 lives each!',
   start(ctx) { play(ctx); },
 });
 
@@ -64,7 +64,7 @@ function play(ctx) {
     '<div class="g-barrel"><canvas class="bb-canvas" id="bbCanvas" width="' + W + '" height="' + H + '"></canvas>' +
     '<div class="bb-pad" id="bbPad"><div><button data-k="l" aria-label="Move left (tap twice to dash)">◀</button><button data-k="r" aria-label="Move right (tap twice to dash)">▶</button></div>' +
     '<div><button data-k="j" aria-label="Jump">⤒</button>' +
-    '<button class="bb-v" data-k="v" aria-label="Pick up, throw or slap">V</button></div></div>' +
+    '<button class="bb-v" data-k="v" aria-label="Pick up, throw or slap">🛢️</button></div></div>' +
     '<p class="g-msg" id="bbMsg"></p></div>';
   const cv = $('bbCanvas');
   const g = cv.getContext('2d');
@@ -116,8 +116,8 @@ function play(ctx) {
   /* ---------- controls ---------- */
 
   const input = F.controls(ctx,
-    { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', Space: 'j', KeyB: 'b', KeyV: 'v' },
-    { a: 'l', d: 'r', w: 'j', ' ': 'j', b: 'b', v: 'v' }, $('bbPad'));
+    { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'j', KeyW: 'j', KeyB: 'b', Space: 'v' },
+    { a: 'l', d: 'r', w: 'j', b: 'b', ' ': 'v' }, $('bbPad'));
   const keys = input.keys;
   function myInput() { // (the guest's screen is mirrored)
     const d = input.takeDash();
@@ -132,7 +132,7 @@ function play(ctx) {
     const a = phi * Math.PI / 180;
     return { x: x - face * ORBIT * Math.sin(a), y: Math.min(y - BR, y - PIVOT + ORBIT * Math.cos(a)) };
   }
-  // A held barrel hangs low behind the cat. Holding V pulls it further back, and letting go swings it over the head.
+  // A held barrel hangs low behind the cat. Holding Space pulls it further back, and letting go swings it over the head.
   function swingAngle(v) {
     if (v.toss >= 0) return v.toss;
     if (v.power >= 0) return CARRY + (WOUND - CARRY) * v.power;
@@ -170,6 +170,7 @@ function play(ctx) {
     b.rot += b.spin * dt;
     if (b.x < BR) { b.x = BR; b.vx = Math.abs(b.vx) * 0.6; b.spin *= -0.5; }
     if (b.x > W - BR) { b.x = W - BR; b.vx = -Math.abs(b.vx) * 0.6; b.spin *= -0.5; }
+    if (CA.camWalls.bounce(b, BR, 0.5)) b.spin *= -0.5; // (the camera walls in the top corners)
     if (b.y + BR > GY + 2) sideWalls(b, BR - 2, 0.3);
     if (b.vy >= 0 && b.y + BR >= GY && py + BR <= GY + 4 && solidAt(b.x)) {
       b.y = GY - BR;
@@ -239,6 +240,7 @@ function play(ctx) {
     c.y += c.vy * dt;
     if (c.x < EDGE) { c.x = EDGE; c.vx = 0; }
     if (c.x > W - EDGE) { c.x = W - EDGE; c.vx = 0; }
+    camWall(c, 0);
     if (c.y > GY + 1) sideWalls(c, 12, 0);
     c.ground = false;
     if (c.vy >= 0 && py <= GY + 1 && c.y >= GY && standable(c.x)) {
@@ -249,7 +251,7 @@ function play(ctx) {
       c.chute = false;
       c.airDash = false;
     }
-    // V does it all: next to the barrel it picks it up; holding it, hold V to wind up and let go to throw; otherwise
+    // Space does it all: next to the barrel it picks it up; holding it, hold Space to wind up and let go to throw; otherwise
     // it's a slap. (The bot also uses b, which only picks up.)
     const bPress = inp.b && !c.pb, vPress = inp.v && !c.pv, vRelease = !inp.v && c.pv;
     c.pb = inp.b;
@@ -275,6 +277,18 @@ function play(ctx) {
     if (c.y > LAVA + 30) loseLife(c, 'lava');
   }
 
+  // The camera walls in the top corners (see cam-walls.js): a cat's head and feet bump off them (k: how bouncy).
+  function camWall(c, k) {
+    for (const [dy, r] of [[-62, 24], [-14, 14]]) {
+      const p = CA.camWalls.push(c.x, c.y + dy, r);
+      if (!p) continue;
+      c.x = p.x;
+      c.y = p.y - dy;
+      const vn = c.vx * p.nx + c.vy * p.ny;
+      if (vn < 0) { c.vx -= (1 + k) * vn * p.nx; c.vy -= (1 + k) * vn * p.ny; }
+    }
+  }
+
   // A knocked-out cat goes flying.
   function tumble(c, dt) {
     if (c.y > LAVA + 60) return;
@@ -285,6 +299,7 @@ function play(ctx) {
     c.spin += c.spinV * dt;
     if (c.x < EDGE) { c.x = EDGE; c.vx = Math.abs(c.vx) * 0.5; }
     if (c.x > W - EDGE) { c.x = W - EDGE; c.vx = -Math.abs(c.vx) * 0.5; }
+    camWall(c, 0.5);
     if (c.y > GY + 1) sideWalls(c, 12, 0.3);
     if (c.vy > 0 && py <= GY + 1 && c.y >= GY && standable(c.x)) {
       c.y = GY;
@@ -328,7 +343,7 @@ function play(ctx) {
     return true;
   }
 
-  // Letting go of V: the barrel swings up over your head, and flies when it gets to the top.
+  // Letting go of Space: the barrel swings up over your head, and flies when it gets to the top.
   function startToss(c) {
     c.tossPow = Math.max(0, c.power);
     c.toss = swingAngle(c);
@@ -359,7 +374,7 @@ function play(ctx) {
     else guestEvent('drop', nb);
   }
 
-  // V without the barrel: a big slap with those long arms. It knocks the other cat back and makes it drop the
+  // Space without the barrel: a big slap with those long arms. It knocks the other cat back and makes it drop the
   // barrel, but doesn't cost a life. (Online, the slapper's app decides whether the slap reached.)
   function slap(c) {
     c.slapT = 0.28;
@@ -670,7 +685,7 @@ function play(ctx) {
     const inp = bot.inp;
     inp.b = false;
     inp.dash = 0;
-    if (c.power < 0) inp.v = false; // (V is a quick tap, except while winding up)
+    if (c.power < 0) inp.v = false; // (Space is a quick tap, except while winding up)
     if (c.out || c.respawn > 0 || c.stun > 0 || phase !== 'play') { inp.l = inp.r = inp.j = inp.v = false; bot.jumpT = 0; return inp; }
     bot.think -= dt;
     if (bot.think <= 0) { bot.think = 0.12 + (1 - skill) * 0.28 + Math.random() * 0.1; botThink(c); }
@@ -1059,6 +1074,7 @@ function play(ctx) {
     drawAim();
     drawTags(now);
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
     drawOverlay(now);
     updateMsg(now);
   }
@@ -1348,18 +1364,18 @@ function play(ctx) {
     const b = shown;
     const v = vw(me);
     if (phase === 'play' && !me.hold && !me.out && b.h < 0 && !b.live && !b.lava && Math.hypot(b.x - v.x, b.y - (v.y - 30)) < GRAB + 40) {
-      const X = sx(b.x), Y = b.y - BR - 22 + Math.sin(now / 150) * 2; // a little "V" key: pick it up!
+      const X = sx(b.x), Y = b.y - BR - 22 + Math.sin(now / 150) * 2; // a little Space key: pick it up!
       g.fillStyle = '#fff';
       g.strokeStyle = '#1c1714';
       g.lineWidth = 2;
-      roundRect(X - 12, Y - 12, 24, 24, 6);
+      roundRect(X - 30, Y - 12, 60, 24, 6);
       g.fill();
       g.stroke();
       g.fillStyle = '#1c1714';
-      g.font = '900 15px ' + FONT;
+      g.font = '900 12px ' + FONT;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillText('V', X, Y + 1);
+      g.fillText('SPACE', X, Y + 1);
     }
   }
 
@@ -1393,10 +1409,10 @@ function play(ctx) {
     else if (phase === 'ko') text = '';
     else if (me.out) text = 'K.O.! Better luck next time';
     else if (me.respawn > 0 || me.chute) text = 'Steer your parachute with ← →';
-    else if (me.power >= 0 || me.toss >= 0) text = 'Let go of V to throw it over your head! The longer you hold, the further it flies';
-    else if (me.hold) text = 'Hold V to wind up, then let go to throw the barrel';
-    else if (b.h < 0 && !b.live && !b.lava && Math.hypot(b.x - me.x, b.y - (me.y - 30)) < GRAB) text = 'Press V to pick up the barrel!';
-    else text = '← → move (tap twice to dash) · ↑ jump · V pick up, throw or slap';
+    else if (me.power >= 0 || me.toss >= 0) text = 'Let go of Space to throw it over your head! The longer you hold, the further it flies';
+    else if (me.hold) text = 'Hold Space to wind up, then let go to throw the barrel';
+    else if (b.h < 0 && !b.live && !b.lava && Math.hypot(b.x - me.x, b.y - (me.y - 30)) < GRAB) text = 'Press Space to pick up the barrel!';
+    else text = '← → move (tap twice to dash) · W or ↑ jump · Space pick up, throw or slap';
     if ($('bbMsg').textContent !== text) setMsg('bbMsg', text);
   }
 }
