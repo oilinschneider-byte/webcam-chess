@@ -1,4 +1,5 @@
-/* The leaderboard (longest win streaks, from the server) and the "how many people play" page.
+/* The leaderboard (longest win streaks, from the server: this week's race for the weekly prize, best ever, and right now)
+   and the "how many people play" page.
    Both work without logging in, so you can share the links. */
 (() => {
 'use strict';
@@ -9,7 +10,7 @@ const esc = s => CA.esc(s);
 /* ================= LEADERBOARD ================= */
 
 let lbData = null;
-let lbTab = 'best';
+let lbTab = 'week';
 let lbLoading = false;
 
 // Only items that exist, in the right slot (the list comes from other players' browsers).
@@ -43,33 +44,67 @@ async function loadBoard() {
 
 function renderBoard() {
   document.querySelectorAll('#lbTabs [data-lb]').forEach(b => b.classList.toggle('active', b.dataset.lb === lbTab));
+  renderPrize();
   if (!lbData) return;
   const rows = lbData[lbTab] || [];
   const myId = CA.profile ? CA.profile.id : 0;
-  const key = lbTab === 'best' ? 'best' : 'streak';
+  const key = lbTab === 'best' ? 'best' : lbTab === 'week' ? 'week_best' : 'streak';
+  const icon = lbTab === 'best' ? '🏆' : '🔥';
   $('lbList').innerHTML = rows.map(r => {
     const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : '#' + r.rank;
-    const other = lbTab === 'best' ? '🔥 ' + r.streak + ' now' : '🏆 ' + r.best + ' best';
+    const other = lbTab === 'best' ? '🔥 ' + r.streak + ' now' : lbTab === 'week' ? '🔥 ' + r.week_streak + ' now · 🏆 ' + r.best + ' best ever' : '🏆 ' + r.best + ' best';
     return '<li class="lb-row' + (r.id === myId ? ' me' : '') + '">' +
       '<span class="lb-rank">' + medal + '</span>' +
       '<span class="lb-cat">' + CA.catSVG(safeEquip(r.equip), { bg: false, anim: false, label: r.name }) + '</span>' +
       '<span class="lb-name"><b>' + esc(r.name) + '</b><small>' + other + ' · ' + r.wins + ' wins</small></span>' +
-      '<span class="lb-score">' + (lbTab === 'best' ? '🏆' : '🔥') + ' ' + r[key] + '</span></li>';
+      '<span class="lb-score">' + icon + ' ' + r[key] + '</span></li>';
   }).join('');
   $('lbMsg').textContent = rows.length ? '' : lbTab === 'best'
     ? 'Nobody has won a Classic Game yet. Be the first!'
+    : lbTab === 'week' ? 'Nobody has won a Classic Game this week yet. Be the first!'
     : 'Nobody is on a streak right now. Win a Classic Game to start one!';
   $('lbMsg').classList.toggle('hidden', !!rows.length);
   const me = lbData.me;
   if (me && CA.profile) {
-    const rank = lbTab === 'best' ? me.best_rank : me.streak_rank;
-    $('lbMe').innerHTML = rank
-      ? 'You: <b>#' + rank + '</b> with ' + (lbTab === 'best' ? '🏆 ' + me.best + ' best' : '🔥 ' + me.streak + ' in a row') + '.'
-      : lbTab === 'best' ? 'Win a Classic Game to get on the leaderboard!' : "You're not on a streak right now. Win a Classic Game to start one!";
+    let text;
+    if (lbTab === 'week') {
+      text = !me.adult ? 'The weekly prize is for players 18 and older, but your streak still counts on the other tabs.'
+        : me.week_rank ? 'You: <b>#' + me.week_rank + '</b> this week with 🔥 ' + me.week_best + ' in a row.'
+        : 'Win a Classic Game to get into this week\'s race!';
+    } else {
+      const rank = lbTab === 'best' ? me.best_rank : me.streak_rank;
+      text = rank
+        ? 'You: <b>#' + rank + '</b> with ' + (lbTab === 'best' ? '🏆 ' + me.best + ' best' : '🔥 ' + me.streak + ' in a row') + '.'
+        : lbTab === 'best' ? 'Win a Classic Game to get on the leaderboard!' : "You're not on a streak right now. Win a Classic Game to start one!";
+    }
+    $('lbMe').innerHTML = text;
     $('lbMe').classList.remove('hidden');
   } else {
     $('lbMe').classList.add('hidden');
   }
+}
+
+// The weekly $100 prize, above the list on the "This week" tab: coming soon (and how close), or how long is left.
+function renderPrize() {
+  const box = $('lbPrize'), p = lbData && lbData.prize;
+  if (lbTab !== 'week' || !p) { box.classList.add('hidden'); return; }
+  let html;
+  if (!p.on) {
+    html = '<b>💵 Win $100 every week: coming soon!</b><p>The weekly prize starts the first time ' + p.need +
+      ' players are online at the same time. Most at once so far: <b>' + p.peak + ' / ' + p.need + '</b> (' + p.online +
+      ' online now). Invite your friends! Meanwhile, here\'s this week\'s race for practice.</p>';
+  } else {
+    const left = Math.max(0, new Date(lbData.week_ends) - Date.now()), d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5);
+    html = '<b>💵 $100 to this week\'s longest win streak!</b><p>' + (d ? d + ' day' + (d === 1 ? '' : 's') + ' and ' : '') + h +
+      ' hour' + (h === 1 ? '' : 's') + ' left. 18+ only; see the rules below.</p>';
+  }
+  const last = lbData.last_week || [];
+  if (p.on && last.length) {
+    html += '<p class="prize-last">Last week: ' + last.map(r => (r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉') + ' <b>' + esc(r.name) + '</b> (🔥 ' + r.streak + ')').join(' · ') +
+      '. The winner is checked before the prize is paid.</p>';
+  }
+  box.innerHTML = html;
+  box.classList.remove('hidden');
 }
 
 $('lbTabs').addEventListener('click', e => {

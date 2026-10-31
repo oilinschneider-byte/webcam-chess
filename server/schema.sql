@@ -21,6 +21,11 @@ create table if not exists camarcade.settings (
   net_salt text not null default encode(extensions.gen_random_bytes(16), 'hex') -- makes the stored internet-connection ids unguessable
 );
 insert into camarcade.settings (id) values (1) on conflict (id) do nothing;
+-- The most players online at the same time, counting internet connections (so one person with lots of accounts or
+-- windows counts once). The weekly prize switches on for good the first time it reaches 30 (prize_from).
+alter table camarcade.settings add column if not exists peak_online int not null default 0;
+alter table camarcade.settings add column if not exists peak_at timestamptz;
+alter table camarcade.settings add column if not exists prize_from timestamptz;
 
 create table if not exists camarcade.players (
   id bigint generated always as identity primary key,
@@ -48,6 +53,16 @@ create table if not exists camarcade.players (
 create index if not exists players_best on camarcade.players (best desc, best_at);
 create index if not exists players_streak on camarcade.players (streak desc);
 create index if not exists players_seen on camarcade.players (last_seen);
+-- The weekly prize: the longest win streak played this week (Monday to Sunday, US Central time). Only wins in the week
+-- count, so it starts from 0 every Monday. Last week's is kept, for picking the winner.
+alter table camarcade.players add column if not exists week_start date;
+alter table camarcade.players add column if not exists week_streak int not null default 0;
+alter table camarcade.players add column if not exists week_best int not null default 0;
+alter table camarcade.players add column if not exists week_best_at timestamptz;
+alter table camarcade.players add column if not exists prev_week_start date;
+alter table camarcade.players add column if not exists prev_week_best int not null default 0;
+alter table camarcade.players add column if not exists prev_week_best_at timestamptz;
+create index if not exists players_week on camarcade.players (week_start, week_best desc, week_best_at);
 
 create table if not exists camarcade.sessions (
   token_hash text primary key,
@@ -216,6 +231,34 @@ begin
   return t;
 end $$;
 
+-- How many players are online right now, counting internet connections (one house = one).
+create or replace function camarcade.online_nets() returns int
+language sql stable set search_path = '' as $$
+  select count(distinct last_net)::int from camarcade.players where last_seen > now() - interval '2 minutes' and last_net is not null
+$$;
+
+-- The weekly prize needs this many players online at the same time (different internet connections) to switch on.
+create or replace function camarcade.prize_need() returns int language sql immutable as 'select 30';
+
+-- Keeps the record of the most players online at once, and switches the weekly prize on the first time it gets there.
+create or replace function camarcade.note_online() returns void
+language plpgsql set search_path = '' as $$
+declare n int := camarcade.online_nets();
+begin
+  update camarcade.settings
+  set peak_online = n, peak_at = now(),
+      prize_from = coalesce(prize_from, case when n >= camarcade.prize_need() then now() end)
+  where id = 1 and n > peak_online;
+end $$;
+
+-- The weekly prize, for the website: is it on yet, and how close is it?
+create or replace function camarcade.prize_json() returns jsonb
+language sql stable set search_path = '' as $$
+  select jsonb_build_object('on', s.prize_from is not null, 'from', s.prize_from, 'need', camarcade.prize_need(),
+                            'peak', s.peak_online, 'peak_at', s.peak_at, 'online', camarcade.online_nets())
+  from camarcade.settings s
+$$;
+
 -- Who is calling? (Their browser sends the token it got when they logged in.)
 create or replace function camarcade.auth(p_token text) returns bigint
 language plpgsql set search_path = '' as $$
@@ -231,6 +274,7 @@ begin
   end if;
   update camarcade.players set last_seen = now(), last_net = n
   where id = s.player_id and (last_seen < now() - interval '20 seconds' or last_net is distinct from n);
+  if found then perform camarcade.note_online(); end if; -- (about every 20 seconds per player)
   return s.player_id;
 end $$;
 
@@ -407,24 +451,45 @@ end $$;
 -- It only changes streaks when the two players are on different internet connections, and only for the first
 -- 3 games between the same two players each day.
 
-create or replace function camarcade.add_win(p bigint) returns void
+-- The prize week: it starts on Monday at midnight, US Central time.
+create or replace function camarcade.week_now() returns date
+language sql stable set search_path = '' as $$
+  select date_trunc('week', now() at time zone 'America/Chicago')::date
+$$;
+
+-- A new week since this player last played: last week's best moves to prev_week_*, and this week starts from 0.
+create or replace function camarcade.roll_week(p bigint) returns void
 language sql set search_path = '' as $$
   update camarcade.players
+  set prev_week_start = week_start, prev_week_best = week_best, prev_week_best_at = week_best_at,
+      week_start = camarcade.week_now(), week_streak = 0, week_best = 0, week_best_at = null
+  where id = p and week_start is distinct from camarcade.week_now()
+$$;
+
+create or replace function camarcade.add_win(p bigint) returns void
+language sql set search_path = '' as $$
+  select camarcade.roll_week(p);
+  update camarcade.players
   set streak = streak + 1, wins = wins + 1, best = greatest(best, streak + 1),
-      best_at = case when streak + 1 > best then now() else best_at end
+      best_at = case when streak + 1 > best then now() else best_at end,
+      week_streak = week_streak + 1, week_best = greatest(week_best, week_streak + 1),
+      week_best_at = case when week_streak + 1 > week_best then now() else week_best_at end
   where id = p
 $$;
 
 create or replace function camarcade.add_loss(p bigint) returns void
 language sql set search_path = '' as $$
-  update camarcade.players set streak = 0, streak_disputes = 0, losses = losses + 1 where id = p
+  select camarcade.roll_week(p);
+  update camarcade.players set streak = 0, streak_disputes = 0, week_streak = 0, losses = losses + 1 where id = p
 $$;
 
 create or replace function camarcade.add_dispute(p bigint) returns void
 language sql set search_path = '' as $$
+  select camarcade.roll_week(p);
   update camarcade.players
   set disputes = disputes + 1,
       streak = case when streak_disputes + 1 >= 3 then 0 else streak end,
+      week_streak = case when streak_disputes + 1 >= 3 then 0 else week_streak end,
       streak_disputes = case when streak_disputes + 1 >= 3 then 0 else streak_disputes + 1 end
   where id = p
 $$;
@@ -612,6 +677,8 @@ language plpgsql set search_path = '' as $$
 declare
   v_best jsonb;
   v_hot jsonb;
+  v_week jsonb;
+  v_last jsonb;
   v_me jsonb := null;
   p camarcade.players;
 begin
@@ -630,10 +697,37 @@ begin
     where pl.streak > 0 and not coalesce(pl.banned_until > now(), false)
     order by pl.streak desc, pl.best desc, pl.id
     limit 50) x;
+  -- this week's prize race: adults only (the prize is for 18+), and only wins played this week
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.rank), '[]'::jsonb) into v_week from (
+    select row_number() over (order by pl.week_best desc, pl.week_best_at nulls last, pl.id) as rank,
+           pl.id, pl.name, pl.week_best, pl.week_streak, pl.best, pl.streak, pl.wins, pl.profile->'equip' as equip
+    from camarcade.players pl
+    where pl.week_start = camarcade.week_now() and pl.week_best > 0 and pl.born + interval '18 years' <= current_date
+      and not coalesce(pl.banned_until > now(), false)
+    order by pl.week_best desc, pl.week_best_at nulls last, pl.id
+    limit 50) x;
+  -- last week's final top 3 (the winner is the first one who checks out)
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.rank), '[]'::jsonb) into v_last from (
+    select row_number() over (order by y.streak desc, y.reached_at nulls last, y.id) as rank, y.name, y.streak from (
+      select pl.id, pl.name,
+             case when pl.week_start = camarcade.week_now() - 7 then pl.week_best else pl.prev_week_best end as streak,
+             case when pl.week_start = camarcade.week_now() - 7 then pl.week_best_at else pl.prev_week_best_at end as reached_at
+      from camarcade.players pl
+      where (pl.week_start = camarcade.week_now() - 7 or pl.prev_week_start = camarcade.week_now() - 7)
+        and pl.born + interval '18 years' <= current_date and not coalesce(pl.banned_until > now(), false)) y
+    where y.streak > 0
+    order by y.streak desc, y.reached_at nulls last, y.id
+    limit 3) x;
   if p_viewer is not null then
     select * into p from camarcade.players where id = p_viewer;
     v_me := jsonb_build_object(
-      'best', p.best, 'streak', p.streak,
+      'best', p.best, 'streak', p.streak, 'adult', p.born + interval '18 years' <= current_date,
+      'week_best', case when p.week_start = camarcade.week_now() then p.week_best else 0 end,
+      'week_rank', case when p.week_start = camarcade.week_now() and p.week_best > 0 and p.born + interval '18 years' <= current_date
+        then 1 + (select count(*) from camarcade.players o
+          where o.week_start = camarcade.week_now() and o.born + interval '18 years' <= current_date and not coalesce(o.banned_until > now(), false)
+            and (o.week_best > p.week_best or (o.week_best = p.week_best and (o.week_best_at < p.week_best_at
+              or (o.week_best_at = p.week_best_at and o.id < p.id))))) end,
       'best_rank', case when p.best > 0 then 1 + (select count(*) from camarcade.players o
         where not coalesce(o.banned_until > now(), false)
           and (o.best > p.best or (o.best = p.best and (o.best_at < p.best_at or (o.best_at = p.best_at and o.id < p.id))))) end,
@@ -641,13 +735,15 @@ begin
         where not coalesce(o.banned_until > now(), false)
           and (o.streak > p.streak or (o.streak = p.streak and (o.best > p.best or (o.best = p.best and o.id < p.id))))) end);
   end if;
-  return jsonb_build_object('best', v_best, 'hot', v_hot, 'me', v_me);
+  return jsonb_build_object('best', v_best, 'hot', v_hot, 'week', v_week, 'last_week', v_last, 'me', v_me, 'prize', camarcade.prize_json(),
+    'week_ends', ((camarcade.week_now() + 7)::timestamp at time zone 'America/Chicago'));
 end $$;
 
 create or replace function camarcade.stats() returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
     'online', (select count(*) from camarcade.players where last_seen > now() - interval '2 minutes'),
+    'prize', camarcade.prize_json(),
     'searching', (select count(*) from camarcade.queue where match_id is null and seen_at > now() - interval '8 seconds'),
     'players', (select count(*) from camarcade.players),
     'visitors_today', (select count(*) from camarcade.visits where day = current_date),
@@ -963,6 +1059,8 @@ begin
     perform camarcade.report(d, m, 2, 'rps', 'lose');
     j := camarcade.me_json(c);
     v_log := v_log || camarcade.t((j->>'streak')::int = 2 and (j->>'best')::int = 2, 'a rematch win counts too');
+    v_log := v_log || camarcade.t((select week_best from camarcade.players where id = c) = 2
+      and (select week_start from camarcade.players where id = c) = camarcade.week_now(), 'wins this week count for the weekly prize streak too');
     perform camarcade.report(c, m, 3, 'rps', 'lose');
     perform camarcade.report(d, m, 3, 'rps', 'win');
     j := camarcade.me_json(c);
@@ -1096,3 +1194,40 @@ select v.day, count(*) as visitors, count(distinct v.net) as internet_connection
 from camarcade.visits v
 group by v.day
 order by v.day desc;
+
+-- The weekly prize (open these in the Supabase SQL Editor, like: select * from camarcade.prize_last_week;)
+-- (The prize is only on once camarcade.settings.prize_from is set: the first time 30 players were online at once.)
+-- prize_this_week: the race so far. prize_last_week: last week's final order: the winner is the top player who
+-- checks out. Before paying, look at different_opponents (lots of wins against the same one or two players is
+-- suspicious) and times_reported.
+create or replace view camarcade.prize_this_week as
+select p.name, p.week_best as streak, p.week_streak as current_run, p.week_best_at as reached_at,
+       (select count(distinct case when m.host = p.id then m.guest else m.host end)
+        from camarcade.games g join camarcade.matches m on m.id = g.match_id
+        where g.ranked and g.resolved_at >= (camarcade.week_now()::timestamp at time zone 'America/Chicago')
+          and (m.host = p.id or m.guest = p.id)) as different_opponents,
+       (select count(*) from camarcade.reports r where r.reported = p.id) as times_reported,
+       p.created_at, p.banned_until
+from camarcade.players p
+where p.week_start = camarcade.week_now() and p.week_best > 0 and p.born + interval '18 years' <= current_date
+order by p.week_best desc, p.week_best_at, p.id
+limit 20;
+
+create or replace view camarcade.prize_last_week as
+select x.name, x.streak, x.reached_at,
+       (select count(distinct case when m.host = x.id then m.guest else m.host end)
+        from camarcade.games g join camarcade.matches m on m.id = g.match_id
+        where g.ranked and (m.host = x.id or m.guest = x.id)
+          and g.resolved_at >= ((camarcade.week_now() - 7)::timestamp at time zone 'America/Chicago')
+          and g.resolved_at < (camarcade.week_now()::timestamp at time zone 'America/Chicago')) as different_opponents,
+       (select count(*) from camarcade.reports r where r.reported = x.id) as times_reported,
+       x.created_at, x.banned_until
+from (select p.id, p.name, p.created_at, p.banned_until,
+             case when p.week_start = camarcade.week_now() - 7 then p.week_best else p.prev_week_best end as streak,
+             case when p.week_start = camarcade.week_now() - 7 then p.week_best_at else p.prev_week_best_at end as reached_at
+      from camarcade.players p
+      where (p.week_start = camarcade.week_now() - 7 or p.prev_week_start = camarcade.week_now() - 7)
+        and p.born + interval '18 years' <= current_date) x
+where x.streak > 0
+order by x.streak desc, x.reached_at, x.id
+limit 20;
