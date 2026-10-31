@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
-<link rel="stylesheet" href="style.css?v=59">
-<link rel="stylesheet" href="pieces.css?v=59">
+<link rel="stylesheet" href="style.css?v=60">
+<link rel="stylesheet" href="pieces.css?v=60">
 </head>
 <body>
 
@@ -119,11 +119,17 @@
     </div>
   </section>
 
+  <a class="prize-banner hidden" id="prizeBanner" href="#/leaders">
+    <span class="pb-icon">💵</span>
+    <span class="pb-text"><b id="prizeTitle"></b><small id="prizeSub"></small></span>
+    <span class="pb-go">See the race →</span>
+  </a>
+
   <div class="mode-grid">
     <a class="mode-card classic" href="#/solos">
       <span class="tag">⚡ Solos</span>
       <h2>Classic Games</h2>
-      <p>Meet a random player face to face and play one of 36 games. Every win grows your 🔥 streak and catches 🐟 fish.</p>
+      <p>Meet a random player face to face and play one of 29 games. Every win grows your 🔥 streak and catches 🐟 fish.</p>
       <div class="mc-icons"><span>🛢️</span><span>🏀</span><span>🧗</span><span>⚽</span><span>🧠</span><span>♟️</span><span>🌍</span></div>
       <span class="btn solos-btn big">⚡ Find a match</span>
     </a>
@@ -491,11 +497,13 @@
     </div>
     <div class="row board-tabs">
       <div class="seg" id="lbTabs" role="group" aria-label="Which streaks">
-        <button data-lb="best" class="active">🏆 Best ever</button>
+        <button data-lb="week" class="active">💵 This week</button>
+        <button data-lb="best">🏆 Best ever</button>
         <button data-lb="hot">🔥 Right now</button>
       </div>
       <button class="btn small ghost" id="lbRefresh">↻ Refresh</button>
     </div>
+    <div class="card prize-card hidden" id="lbPrize"></div>
     <p class="board-me hidden" id="lbMe"></p>
     <div class="card board-card">
       <ol class="board-list" id="lbList"></ol>
@@ -510,6 +518,19 @@
         <li>The same two players count for up to 3 games a day. After that, rematches are just for fun.</li>
         <li>If the two reports disagree, nobody's streak goes up. Three disagreements during one streak end that streak.</li>
         <li>Leaving in the middle of a game counts as a loss.</li>
+      </ul>
+    </details>
+    <details class="card board-rules" id="lbPrizeRules">
+      <summary>💵 Weekly prize: official rules</summary>
+      <ul>
+        <li><b>The prize:</b> $100 every week to the player with the longest win streak in Classic Games that week.</li>
+        <li><b>When it starts:</b> the weekly prize switches on the first time 30 players are online at the same time (counted by internet connection, so a house full of accounts counts once). Until then it's "coming soon".</li>
+        <li><b>The week:</b> Monday 12:00 am to Sunday 11:59 pm, US Central time. Only wins played during the week count, so everyone starts from 0 every Monday.</li>
+        <li><b>Who can win:</b> anyone 18 or older (by the birthday on your account) with one CamArcade account. It's free: no purchase, no entry fee.</li>
+        <li><b>What counts:</b> the same as the leaderboard (see "What counts?" above). A tie goes to whoever reached that streak first.</li>
+        <li><b>Checking the winner:</b> every winning streak is checked before paying. Cheating of any kind, like several accounts, arranged wins with friends or using bugs, means no prize (and a ban), and the prize goes to the next player who checks out.</li>
+        <li><b>Getting paid:</b> the winner is shown at the top of last week's list. To claim it, contact CamArcade within 14 days with your username. The prize is paid within 14 days by a method we agree on (like PayPal, Venmo or a gift card). You're responsible for any taxes.</li>
+        <li><b>Changes:</b> CamArcade can change or end the weekly prize at any time; a week that has already started is still paid out. Not available where it isn't allowed by law.</li>
       </ul>
     </details>
   </div>
@@ -578,45 +599,45 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=59"></script>
-<script src="server.js?v=59"></script>
-<script src="common.js?v=59"></script>
-<script src="solos.js?v=59"></script>
-<script src="games-quick.js?v=59"></script>
-<script src="games-words.js?v=59"></script>
-<script src="games-board.js?v=59"></script>
-<script src="games-world.js?v=59"></script>
+<script src="config.js?v=60"></script>
+<script src="server.js?v=60"></script>
+<script src="common.js?v=60"></script>
+<script src="solos.js?v=60"></script>
+<script src="games-quick.js?v=60"></script>
+<script src="games-words.js?v=60"></script>
+<script src="games-board.js?v=60"></script>
+<script src="games-world.js?v=60"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=59"></script>
-<script src="games-quiz.js?v=59"></script>
-<script src="games-mind.js?v=59"></script>
-<script src="games-pose.js?v=59"></script>
-<script src="cam-walls.js?v=59"></script>
-<script src="games-floppy.js?v=59"></script>
-<script src="games-barrel.js?v=59"></script>
-<script src="games-walls.js?v=59"></script>
-<script src="games-duel.js?v=59"></script>
-<script src="games-trails.js?v=59"></script>
-<script src="games-box.js?v=59"></script>
-<script src="games-sumo.js?v=59"></script>
-<script src="games-pond.js?v=59"></script>
-<script src="games-hockey.js?v=59"></script>
-<script src="games-paint.js?v=59"></script>
-<script src="games-cannons.js?v=59"></script>
-<script src="games-golf.js?v=59"></script>
-<script src="games-mouse.js?v=59"></script>
-<script src="games-kart.js?v=59"></script>
-<script src="games-blocks.js?v=59"></script>
-<script src="games-swords.js?v=59"></script>
-<script src="games-stare.js?v=59"></script>
-<script src="games-boxing.js?v=59"></script>
-<script src="games-hoops.js?v=59"></script>
-<script src="games-simon.js?v=59"></script>
-<script src="games-climb.js?v=59"></script>
-<script src="chess.js?v=59"></script>
-<script src="pass.js?v=59"></script>
-<script src="character.js?v=59"></script>
-<script src="leaders.js?v=59"></script>
-<script src="app.js?v=59"></script>
+<script src="games-action.js?v=60"></script>
+<script src="games-quiz.js?v=60"></script>
+<script src="games-mind.js?v=60"></script>
+<script src="games-pose.js?v=60"></script>
+<script src="cam-walls.js?v=60"></script>
+<script src="games-floppy.js?v=60"></script>
+<script src="games-barrel.js?v=60"></script>
+<script src="games-walls.js?v=60"></script>
+<script src="games-duel.js?v=60"></script>
+<script src="games-trails.js?v=60"></script>
+<script src="games-box.js?v=60"></script>
+<script src="games-sumo.js?v=60"></script>
+<script src="games-pond.js?v=60"></script>
+<script src="games-hockey.js?v=60"></script>
+<script src="games-paint.js?v=60"></script>
+<script src="games-cannons.js?v=60"></script>
+<script src="games-golf.js?v=60"></script>
+<script src="games-mouse.js?v=60"></script>
+<script src="games-kart.js?v=60"></script>
+<script src="games-blocks.js?v=60"></script>
+<script src="games-swords.js?v=60"></script>
+<script src="games-stare.js?v=60"></script>
+<script src="games-boxing.js?v=60"></script>
+<script src="games-hoops.js?v=60"></script>
+<script src="games-simon.js?v=60"></script>
+<script src="games-climb.js?v=60"></script>
+<script src="chess.js?v=60"></script>
+<script src="pass.js?v=60"></script>
+<script src="character.js?v=60"></script>
+<script src="leaders.js?v=60"></script>
+<script src="app.js?v=60"></script>
 </body>
 </html>

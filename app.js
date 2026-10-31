@@ -267,9 +267,26 @@ async function showOnline() {
     $('menuOnline').textContent = '🟢 ' + n + ' player' + (n === 1 ? '' : 's') + ' online now' +
       (s.searching ? ' · ' + s.searching + ' looking for a match' : '');
     $('menuOnline').classList.remove('hidden');
+    showPrize(s.prize);
   } catch (e) {
     $('menuOnline').classList.add('hidden');
   }
+}
+
+// The weekly $100 prize: "coming soon" (with the record of players online at once) until 30 players are online at
+// the same time, then on for good.
+function showPrize(p) {
+  if (!p) return;
+  if (p.on) {
+    $('prizeTitle').textContent = 'Win $100 this week!';
+    $('prizeSub').textContent = 'The longest win streak in Classic Games this week wins (18+). A new race starts every Monday.';
+  } else {
+    $('prizeTitle').textContent = 'Win $100 every week: coming soon!';
+    $('prizeSub').textContent = ('It starts once ' + p.need + ' players are online at the same time. Most at once so far: ' + p.peak + ' / ' + p.need +
+      ' (' + p.online + ' now). Invite your friends!');
+  }
+  $('prizeBanner').classList.toggle('on', !!p.on);
+  $('prizeBanner').classList.remove('hidden');
 }
 
 CA.register('menu', {

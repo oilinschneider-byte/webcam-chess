@@ -1535,3 +1535,23 @@ body:has(#scr-play:not(.hidden)) #appBar { display: none; }
   #scr-play .stage .g-msg { margin-top: 4px; overflow: hidden; font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
 }
 @media (max-height: 520px) and (min-width: 761px) and (hover: none) { #scr-play .stage { --under: 120px; } }
+
+/* The weekly $100 prize: a banner on the home screen, and a box on the leaderboard's "This week" tab */
+.prize-banner {
+  display: flex; align-items: center; gap: 14px; margin: 0 0 18px; padding: 14px 18px; border-radius: 18px;
+  border: 2px dashed #3ddc84; background: linear-gradient(90deg, rgba(61, 220, 132, .12), rgba(255, 210, 63, .1));
+  transition: transform .12s, border-color .12s;
+}
+.prize-banner:hover { transform: translateY(-2px); }
+.prize-banner.on { border-style: solid; border-color: #ffd23f; box-shadow: 0 0 24px rgba(255, 210, 63, .25); }
+.pb-icon { font-size: 34px; }
+.pb-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.pb-text b { font-size: 18px; color: #7dff8a; }
+.prize-banner.on .pb-text b { color: #ffd23f; }
+.pb-text small { color: var(--muted); font-weight: 700; }
+.pb-go { flex: none; color: #7dff8a; font-weight: 900; white-space: nowrap; }
+.prize-card { margin-bottom: 12px; padding: 14px 18px; border: 2px solid #3ddc84; }
+.prize-card b { font-size: 17px; }
+.prize-card p { margin: 6px 0 0; color: var(--muted); font-weight: 700; }
+.prize-card .prize-last { color: var(--text); }
+@media (max-width: 560px) { .pb-go { display: none; } .pb-icon { font-size: 28px; } }
