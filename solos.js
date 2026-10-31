@@ -12,6 +12,7 @@ const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('
 const PROTOCOL = 37;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
+if (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) PEER_OPTS.config = { iceServers: CAMARCADE_CONFIG.iceServers }; // (relay for blocked networks)
 const CONN_OPTS = { reliable: true, serialization: 'json' };
 const POLL_MS = 1500;             // how often a searching player asks the server for a match
 const PAIR_LIMIT = 3;             // games a day between the same two players that count (the server decides; this is for messages)
@@ -1821,7 +1822,7 @@ function startPairing(m) {
   };
   setMsg('searchTitle', 'Found ' + (pairing.opp.name || 'a player') + '! Connecting…');
   if (m.role === 'guest') knock(pairing);
-  else pairing.timer = setTimeout(() => { if (!conn) pairingFailed(pairing); }, 15000); // (they connect to us)
+  else pairing.timer = setTimeout(() => { if (!conn) pairingFailed(pairing); }, 25000); // (they connect to us; through the relay it takes longer)
 }
 
 // Their browsers couldn't connect: tell the server, and look again.
@@ -1831,7 +1832,7 @@ function pairingFailed(pr) {
   pairing = null;
   if (pr.conn && pr.conn !== conn) { try { pr.conn.close(); } catch (e) { /* ignore */ } }
   CA.server.call('ca_mm_fail', { p_token: CA.token, p_match: pr.id }).catch(() => {});
-  if (searching) setMsg('searchTitle', 'Looking for a player…');
+  if (searching) setMsg('searchTitle', "Couldn't connect to " + (pr.opp.name || 'that player') + '. Looking again…');
 }
 
 // The guest connects to the host the server paired us with.
@@ -1841,7 +1842,7 @@ function knock(pr) {
   let done = false;
   let c = null;
   const onErr = err => { if (err.type === 'peer-unavailable' && String(err.message || '').includes(pr.oppPeer)) giveUp(); };
-  const timer = setTimeout(giveUp, 12000);
+  const timer = setTimeout(giveUp, 20000);
   function finish() {
     done = true;
     clearTimeout(timer);
