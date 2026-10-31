@@ -19,6 +19,7 @@ const PIECE_ORDER = ['q', 'r', 'b', 'n', 'p'];
 const START_COUNT = { q: 1, r: 2, b: 2, n: 2, p: 8 };
 const VALUE = { q: 9, r: 5, b: 3, n: 3, p: 1 };
 const PEER_OPTS = { debug: 1 };
+if (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) PEER_OPTS.config = { iceServers: CAMARCADE_CONFIG.iceServers }; // (relay for blocked networks)
 const JOIN_TIMEOUT = 25000;
 const COMPUTER_CAT = { skin: 'skin-gray', bg: 'bg-neon', eyes: 'eyes-visor', shirt: 'shirt-astro' };
 const REASONS = {
