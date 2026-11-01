@@ -217,6 +217,9 @@ const ITEMS = [
     '<text x="72" y="171" font-size="7" font-weight="700" font-family="Arial, sans-serif" fill="#111">P</text><text x="124" y="201" font-size="7" font-weight="700" font-family="Arial, sans-serif" fill="#111">Q</text>' +
     '<text x="112" y="169" font-size="6" font-weight="700" font-family="Arial, sans-serif" fill="#d11d1d">Supply</text><text x="104" y="196" font-size="6" font-weight="700" font-family="Arial, sans-serif" fill="#1a3fd0">Demand</text>' },
 
+  // The OLIVER skin: a whole picture of a jacked cat in a diamond chain and red sneakers, only for habernoto (see catSVG: photo).
+  { id: 'shirt-oliver', slot: 'shirt', name: 'OLIVER Jacked Cat', only: ['habernoto'], photo: 'oliver.jpg', art: () => '' },
+
   { id: 'neck-bowtie', slot: 'neck', name: 'Bow Tie', price: 25, art: () =>
     '<path d="M100 150 L84 141 L84 159 Z" fill="#ff3b5c" ' + EDGE + '/>' +
     '<path d="M100 150 L116 141 L116 159 Z" fill="#ff3b5c" ' + EDGE + '/>' +
@@ -339,6 +342,10 @@ function catSVG(equip, opts) {
   const eyes = pick('eyes');
   const shirt = pick('shirt');
   const jacked = !!(shirt && shirt.jacked);
+  if (shirt && shirt.photo) { // (a whole picture instead of the drawn cat)
+    return '<svg class="cat' + (o.anim === false ? '' : ' anim') + '" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" role="img" style="--mouth:0" aria-label="' +
+      esc(o.label || 'Cat') + '"><image href="' + shirt.photo + '" x="0" y="0" width="200" height="240" preserveAspectRatio="xMidYMid slice"/></svg>';
+  }
   const neck = pick('neck');
   const hand = pick('hand');
   const [light, mid, shadow] = fur.c;
