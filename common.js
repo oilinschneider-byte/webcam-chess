@@ -217,8 +217,24 @@ const ITEMS = [
     '<text x="72" y="171" font-size="7" font-weight="700" font-family="Arial, sans-serif" fill="#111">P</text><text x="124" y="201" font-size="7" font-weight="700" font-family="Arial, sans-serif" fill="#111">Q</text>' +
     '<text x="112" y="169" font-size="6" font-weight="700" font-family="Arial, sans-serif" fill="#d11d1d">Supply</text><text x="104" y="196" font-size="6" font-weight="700" font-family="Arial, sans-serif" fill="#1a3fd0">Demand</text>' },
 
-  // The OLIVER skin: a whole picture of a jacked cat in a diamond chain and red sneakers, only for habernoto (see catSVG: photo).
-  { id: 'shirt-oliver', slot: 'shirt', name: 'OLIVER Jacked Cat', only: ['habernoto'], photo: 'oliver.jpg', art: () => '' },
+  // The OLIVER skin, only for habernoto: a jacked cat (like the DAME tee) with abs, a gold OLIVER chain, red high-tops, a tabby forehead and angry brows.
+  // (`face` is drawn on the head, `over` on top of the head and neck, and `shoes` instead of the feet: see catSVG.)
+  { id: 'shirt-oliver', slot: 'shirt', name: 'OLIVER Jacked Cat', only: ['habernoto'], jacked: true,
+    art: () => '<g fill="none" stroke="#b8661a" stroke-width="2.2" stroke-linecap="round">' +
+      '<path d="M62 156 Q80 176 99 165 M138 156 Q120 176 101 165"/>' +
+      '<path d="M80 178 Q90 185 99 178 M101 178 Q110 185 120 178 M84 190 Q92 196 99 190 M101 190 Q108 196 116 190 M92 200 Q96 203 100 200 Q104 203 108 200"/></g>',
+    face: () => '<path d="M100 28 L100 46 M88 31 Q91 40 93 47 M112 31 Q109 40 107 47" fill="none" stroke="#d9741f" stroke-width="5" stroke-linecap="round" opacity=".8"/>' +
+      '<path d="M54 74 L87 84 M146 74 L113 84" fill="none" stroke="' + INK + '" stroke-width="4.5" stroke-linecap="round"/>',
+    over: () => '<g fill="none" stroke="#b8661a" stroke-width="2.2" stroke-linecap="round"><path d="M44 158 Q52 172 62 168 M156 158 Q148 172 138 168 M46 188 Q54 194 62 190 M154 188 Q146 194 138 190"/></g>' +
+      '<path d="M66 139 Q70 165 100 167 Q130 165 134 139" fill="none" stroke="#7a4a0a" stroke-width="9" stroke-linecap="round"/>' +
+      '<path d="M66 139 Q70 165 100 167 Q130 165 134 139" fill="none" stroke="#f6c93a" stroke-width="6.5" stroke-linecap="round"/>' +
+      '<path d="M66 139 Q70 165 100 167 Q130 165 134 139" fill="none" stroke="#b8861a" stroke-width="6.5" stroke-dasharray="1.4 4.6"/>' +
+      '<text x="100" y="180" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-style="italic" font-size="19" fill="#f6c93a" stroke="#7a4a0a" stroke-width="4" paint-order="stroke" stroke-linejoin="round">OLIVER</text>' +
+      '<path d="M76 163 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6 z M127 176 l1.2 3 3 1.2 -3 1.2 -1.2 3 -1.2 -3 -3 -1.2 3 -1.2 z" fill="#fff"/>',
+    shoes: () => [0, 1].map(i => '<g' + (i ? ' transform="translate(200 0) scale(-1 1)"' : '') + '>' +
+      '<path d="M80 212 L92 212 L93 229 L66 229 Q66 222 72 221 L80 219 Z" fill="#e0262f" stroke="#7d1118" stroke-width="1.6" stroke-linejoin="round"/>' +
+      '<path d="M79 216 L93 216 L93 222 L79 222 Z" fill="#ff5a5a" stroke="#7d1118" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<path d="M64 229 L94 229 L94 233 Q94 235.5 91.5 235.5 L66.5 235.5 Q64 235.5 64 233 Z" fill="#8f1d24"/></g>').join('') },
 
   { id: 'neck-bowtie', slot: 'neck', name: 'Bow Tie', price: 25, art: () =>
     '<path d="M100 150 L84 141 L84 159 Z" fill="#ff3b5c" ' + EDGE + '/>' +
@@ -342,10 +358,6 @@ function catSVG(equip, opts) {
   const eyes = pick('eyes');
   const shirt = pick('shirt');
   const jacked = !!(shirt && shirt.jacked);
-  if (shirt && shirt.photo) { // (a whole picture instead of the drawn cat)
-    return '<svg class="cat' + (o.anim === false ? '' : ' anim') + '" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" role="img" style="--mouth:0" aria-label="' +
-      esc(o.label || 'Cat') + '"><image href="' + shirt.photo + '" x="0" y="0" width="200" height="240" preserveAspectRatio="xMidYMid slice"/></svg>';
-  }
   const neck = pick('neck');
   const hand = pick('hand');
   const [light, mid, shadow] = fur.c;
@@ -373,7 +385,8 @@ function catSVG(equip, opts) {
   p.push('<g class="cat-tail"><path d="M132 188 C150 190 166 178 162 156" fill="none" stroke="' + shadow + '" stroke-width="12" stroke-linecap="round"/></g>');
   if (jacked) { // very skinny legs, tiny feet
     p.push('<rect x="81.5" y="196" width="5" height="30" rx="2.5" fill="' + mid + '"/><rect x="113.5" y="196" width="5" height="30" rx="2.5" fill="' + mid + '"/>');
-    p.push('<ellipse cx="84" cy="228" rx="9" ry="5" fill="' + fill + '"/><ellipse cx="116" cy="228" rx="9" ry="5" fill="' + fill + '"/>');
+    if (shirt.shoes) p.push(shirt.shoes(c));
+    else p.push('<ellipse cx="84" cy="228" rx="9" ry="5" fill="' + fill + '"/><ellipse cx="116" cy="228" rx="9" ry="5" fill="' + fill + '"/>');
   } else {
     p.push('<rect x="74" y="186" width="16" height="34" rx="8" fill="' + mid + '"/><rect x="110" y="186" width="16" height="34" rx="8" fill="' + mid + '"/>');
     p.push('<ellipse cx="82" cy="225" rx="11" ry="7.5" fill="' + fill + '"/><ellipse cx="118" cy="225" rx="11" ry="7.5" fill="' + fill + '"/>');
@@ -386,7 +399,7 @@ function catSVG(equip, opts) {
       p.push('<ellipse cx="' + (100 + sx * 63) + '" cy="191" rx="12.5" ry="15" fill="' + fill + '"/>');
       p.push('<circle cx="' + (100 + sx * 60) + '" cy="206" r="12" fill="' + fill + '"/>');
       p.push('<ellipse cx="' + (100 + sx * 58) + '" cy="162" rx="5" ry="9" fill="#fff" opacity=".16"/>');
-      p.push('<ellipse cx="' + (100 + sx * 61) + '" cy="153" rx="14" ry="11" fill="#f4f5fa"/>');
+      if (shirt.sleeve) p.push('<ellipse cx="' + (100 + sx * 61) + '" cy="153" rx="14" ry="11" fill="' + shirt.sleeve + '"/>');
     }
   } else if (arms) {
     p.push('<path d="' + ARMS + '" fill="none" stroke="' + mid + '" stroke-width="15" stroke-linecap="round"/>');
@@ -419,9 +432,11 @@ function catSVG(equip, opts) {
   }
   if (o.mouth !== 'open') p.push('<path class="cat-mouth-closed" d="M100 108.3 L100 111.5 M86 110.5 Q93 118.5 100 111.5 Q107 118.5 114 110.5" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
   p.push('<path d="M94.5 101.5 Q100 99.3 105.5 101.5 Q103 107 100 108.3 Q97 107 94.5 101.5 Z" fill="#4a2418"/>');
+  if (shirt && shirt.face) p.push(shirt.face(c));
   if (eyes) p.push(eyes.art(c));
   if (hat) p.push(hat.art(c));
   p.push('</g>');
+  if (shirt && shirt.over) p.push(shirt.over(c));
   if (neck) p.push(neck.art(c));
   if (hand && arms) p.push(hand.art(c));
 
