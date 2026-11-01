@@ -13,7 +13,7 @@
    (it goes floppy for a moment) and pushing that cat back. Keep holding E and it charges up a grab (then 6 seconds
    to cool down): you drop your sword and your arm shoots out a long way towards the mouse pointer. If it catches the
    other cat, they're stuck (and so are you), and you carry them through the air with the mouse; let go of E and they
-   fly off the way you were moving them. A hard landing hurts, leaves them dizzy, and knocks their sword out of their hand.
+   fly off the way you were moving them. A hard landing hurts and knocks their sword out of their hand (but doesn't leave them dizzy).
 
    The arms (chains of points) and the swords swing with gravity and springs (Verlet physics). A hit is checked along
    the whole path a blade swept since the last step, so a fast swing can't pass through. The host's app runs all of
@@ -25,7 +25,7 @@ const F = CA.floppy;
 const W = 960, H = 540, GROUND = 468;
 const G = 2100, AG = 1600;                         // gravity for the cats, and for their arms and the swords
 const SUB = 2;                                     // physics steps per game step
-const WALK = 260, ACCEL = 2600, AIR_ACCEL = 1400, JUMP = 760;
+const WALK = 260, ACCEL = 2600, AIR_ACCEL = 1400, JUMP = 1000;
 const DASH_SPEED = 820, DASH_TIME = 0.16, DASH_WAIT = 0.55;
 const EDGE = 28, TOP = 95;                         // how near the walls a cat can go; how high its feet can go (head at the top of the screen)
 const SH_X = 12.4, SH_Y = 33;                      // the shoulders, from the feet (as in games-floppy.js)
@@ -39,7 +39,7 @@ const BLOCK_MIN = 0.35, BLOCK_WAIT = 1, CHARGE = 0.9; // a tap of E blocks this 
 const RECOIL = 0.45;                               // how long a blocked (or clashed) cat's arms stay floppy after bouncing back
 const GRAB_RANGE = 470, GRAB_SPEED = 2100, GRAB_WAIT = 6; // how far the grabbing arm stretches, how fast; its cooldown after
 const GRIP_MAX = 2.2, CARRY = 1000, THROW_MAX = 1500; // the longest you can hold them; how fast you can carry and throw them
-const PICK_WAIT = 0.6, SPLAT = 650, DIZZY = 1.3;   // a dropped sword can't be picked up at once; a landing this fast (px/s) is a splat
+const PICK_WAIT = 0.6, SPLAT = 650;                // a dropped sword can't be picked up at once; a landing this fast (px/s) is a splat
 const WIN = 2, ROUND = 60;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const approach = (v, to, d) => (v < to ? Math.min(to, v + d) : Math.max(to, v - d));
@@ -440,8 +440,7 @@ function koCat(s, i, api, dir) {
 
 function splat(s, c, i, api) {
   const dir = Math.sign(c.spin) || 1;
-  c.dizzy = DIZZY;
-  dropSword(s, c, dir);
+  dropSword(s, c, dir); // (a hard landing hurts and drops the sword, but doesn't leave the cat dizzy)
   c.hp = Math.max(0, c.hp - SPLAT_DMG);
   api.ev('splat', { x: c.x, y: c.y - 30, dmg: SPLAT_DMG });
   if (c.hp <= 0 && s.phase === 'fight') koCat(s, i, api, dir);

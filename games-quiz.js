@@ -1,5 +1,5 @@
 /* Classic Games: Closest Guess, Country Shape, Odd One Out, Which Is Bigger?, Timeline, Emoji Movie Guess,
-   Animal Guess, Pattern Next, Spot the Difference. */
+   Animal Guess, Pattern Next. */
 (() => {
 'use strict';
 
@@ -568,97 +568,6 @@ CA.games.add('pattern', {
         show();
       },
       bot(skill) { return { final: Math.max(1, Math.round(gauss(0.2 + skill * 0.3, 0.05) * LEN / 1000)), at: LEN * 0.95 }; },
-    });
-  },
-});
-
-/* ================= SPOT THE DIFFERENCE ================= */
-
-const SCENE = ['🌳', '🏠', '🌞', '☁️', '🚗', '🐶', '🌸', '🎈', '⭐', '🍎', '🐱', '🦋', '🌈', '🍄', '🐦', '🚲', '⛵', '🌙', '🐟', '🌵', '🍩', '🎁'];
-const FLIPPY = ['🚗', '🐶', '🐱', '🐦', '🚲', '⛵', '🌙', '🐟']; // mirroring these is easy to see (a mirrored ⭐ looks the same)
-
-function makeScene(rng) {
-  const objs = [];
-  for (let tries = 0; objs.length < 13 && tries < 400; tries++) {
-    const s = 8 + rng() * 5;
-    const o = { e: SCENE[Math.floor(rng() * SCENE.length)], x: 7 + rng() * 86, y: 7 + rng() * 56, s };
-    if (objs.every(p => Math.hypot(p.x - o.x, p.y - o.y) > (p.s + o.s) * 0.62)) objs.push(o);
-  }
-  const right = objs.map(o => Object.assign({}, o));
-  const diffs = [];
-  const kinds = shuffle(['gone', 'swap', 'big', 'flip', 'swap'], rng);
-  shuffle(objs.map((o, i) => i), rng).slice(0, 4).forEach((i, k) => {
-    const o = right[i];
-    const kind = kinds[k] === 'flip' && !FLIPPY.includes(o.e) ? 'big' : kinds[k];
-    if (kind === 'gone') o.gone = true;
-    else if (kind === 'swap') o.e = SCENE.filter(e => e !== o.e)[Math.floor(rng() * (SCENE.length - 1))];
-    else if (kind === 'big') o.s *= 1.55;
-    else o.flip = true;
-    diffs.push({ x: o.x, y: o.y, r: Math.max(o.s, objs[i].s) * 0.75 + 3 });
-  });
-  for (let tries = 0; tries < 200; tries++) { // one extra thing that's only in the right picture
-    const o = { e: SCENE[Math.floor(rng() * SCENE.length)], x: 7 + rng() * 86, y: 7 + rng() * 56, s: 9 };
-    if (objs.every(p => Math.hypot(p.x - o.x, p.y - o.y) > (p.s + o.s) * 0.7)) { right.push(o); diffs.push({ x: o.x, y: o.y, r: 9.5 }); break; }
-  }
-  return { left: objs, right, diffs };
-}
-
-function sceneSVG(list, id) {
-  return '<svg class="sd-pic" id="' + id + '" viewBox="0 0 100 70">' + list.filter(o => !o.gone).map(o =>
-    '<text x="' + o.x.toFixed(1) + '" y="' + o.y.toFixed(1) + '" font-size="' + o.s.toFixed(1) + '"' +
-    (o.flip ? ' transform="translate(' + (2 * o.x).toFixed(1) + ' 0) scale(-1 1)"' : '') + '>' + o.e + '</text>').join('') + '<g class="sd-marks"></g></svg>';
-}
-
-CA.games.add('spot', {
-  name: 'Spot the Difference', icon: '🔍', blurb: 'The two pictures have 5 differences. Click them in either picture! First to find all 5 (or the most in 30 seconds) wins.',
-  start(ctx) {
-    const LEN = L(30000);
-    const sc = makeScene(ctx.rng);
-    const total = sc.diffs.length;
-    scoreRace(ctx, {
-      len: LEN,
-      note: 'Find all ' + total + ' differences',
-      timerId: 'sdTimer',
-      barMax: total,
-      endsRace: true,
-      fmt: n => Math.floor(n) + '/' + total,
-      html: bars => bars + '<div class="sd-pics">' + sceneSVG(sc.left, 'sdL') + sceneSVG(sc.right, 'sdR') + '</div>' +
-        '<div class="timer"><i id="sdTimer"></i></div><p class="g-msg" id="sdMsg">Click on the differences!</p>',
-      start(api) {
-        const found = new Set();
-        let frozen = false;
-        const mark = d => ['sdL', 'sdR'].forEach(id => {
-          $(id).querySelector('.sd-marks').insertAdjacentHTML('beforeend', '<circle cx="' + d.x.toFixed(1) + '" cy="' + d.y.toFixed(1) + '" r="' + d.r.toFixed(1) + '"/>');
-        });
-        ['sdL', 'sdR'].forEach(id => ctx.listen($(id), 'pointerdown', e => {
-          if (!api.running() || frozen) return;
-          const svg = $(id);
-          const pt = svg.createSVGPoint();
-          pt.x = e.clientX;
-          pt.y = e.clientY;
-          const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-          const k = sc.diffs.findIndex((d, i) => !found.has(i) && Math.hypot(d.x - p.x, d.y - p.y) <= d.r);
-          if (k < 0) { // no guessing everywhere: a wrong click freezes you for a moment
-            frozen = true;
-            sound('miss');
-            svg.classList.add('frozen');
-            setMsg('sdMsg', '❌ Nothing different there!');
-            ctx.later(() => { frozen = false; svg.classList.remove('frozen'); setMsg('sdMsg', 'Click on the differences!'); }, 800);
-            return;
-          }
-          found.add(k);
-          mark(sc.diffs[k]);
-          sound('correct');
-          api.add(1);
-          if (found.size === total) { setMsg('sdMsg', 'You found them all! 🎉'); api.done(); }
-        }));
-        if (window.__testHooks) window.__peek = { diffs: sc.diffs };
-      },
-      bot(skill) {
-        const T = Math.max(8000, gauss(30000 - skill * 12000, 4000)) * (LEN / 30000);
-        return T < LEN ? { final: total, at: T } : { final: Math.floor(total * LEN / T), at: LEN };
-      },
-      botNow: (bot, ms) => Math.min(total - 1, Math.floor(bot.final * Math.min(1, ms / bot.at))),
     });
   },
 });

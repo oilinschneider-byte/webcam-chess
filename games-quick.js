@@ -117,8 +117,15 @@ CA.games.add('aim', {
   name: 'Aim Targets', icon: '🎯', blurb: 'Click the targets as fast as you can for 20 seconds. They shrink and vanish faster as time goes on. Gold stars are worth 3, bombs cost 2, and hitting several in a row builds a combo multiplier. Most points wins!',
   start(ctx) {
     const LEN = 20000;
+    // Both players get the same targets, in the same order, and the bad and good ones come in even numbers: every
+    // 12 targets have exactly 2 bombs and 2 gold stars (in a shuffled order), so nobody gets a run of bad luck.
     const spots = [];
-    for (let i = 0; i < 200; i++) spots.push([0.07 + ctx.rng() * 0.86, 0.1 + ctx.rng() * 0.8, ctx.rng()]);
+    for (let b = 0; b < 17; b++) {
+      const kinds = ['bomb', 'bomb', 'gold', 'gold'];
+      while (kinds.length < 12) kinds.push('norm');
+      for (let k = kinds.length - 1; k > 0; k--) { const j = Math.floor(ctx.rng() * (k + 1)); [kinds[k], kinds[j]] = [kinds[j], kinds[k]]; }
+      kinds.forEach(kind => spots.push([0.07 + ctx.rng() * 0.86, 0.1 + ctx.rng() * 0.8, kind]));
+    }
     const bars = raceBars(ctx, 35);
     ctx.stage.innerHTML =
       '<div class="g-aim">' + bars.html +
@@ -134,8 +141,8 @@ CA.games.add('aim', {
     let idx = 0, combo = 0, cur = 'norm', expiry = null; // (hits is now your points: gold stars 3, bombs -2, a combo multiplies)
 
     function place() {
-      const [x, y, roll] = spots[idx % spots.length];
-      cur = roll < 0.11 ? 'gold' : roll < 0.21 ? 'bomb' : 'norm';
+      const [x, y, kind] = spots[idx % spots.length];
+      cur = kind;
       const k = Math.min(1, (performance.now() - t0) / LEN); // (as the game goes on: smaller targets that stay for less time)
       target.style.left = x * 100 + '%';
       target.style.top = y * 100 + '%';

@@ -1,5 +1,6 @@
-/* Classic Games: Cat and Mouse. A maze; one player is the cat, the other the mouse. The cat is a little faster, but
-   the mouse's dash comes back sooner. When the cat catches the mouse (or 45 seconds pass), the players swap and play
+/* Classic Games: Cat and Mouse. A maze; one player is the cat, the other the mouse. The cat is a little faster and
+   dashes with Space; the mouse gets faster as the round goes on and leaps over a wall with Space (the cat can't jump).
+   When the cat catches the mouse (or 45 seconds pass), the players swap and play
    the same maze from the same spots again. Whoever survived longer as the mouse wins. (The host's app runs the
    chase: see games-duel.js.) */
 (() => {
@@ -8,10 +9,10 @@
 const W = 960, H = 540;
 const CW = 23, CH = 13, TILE = 40, X0 = (W - CW * TILE) / 2, Y0 = (H - CH * TILE) / 2;
 const R = 13;
-const SPEED = { cat: 172, mouse: 158 }, DASH = 2.2, DASH_TIME = 0.25, DASH_WAIT = { cat: 3, mouse: 1.6 };
+const SPEED = { cat: 172, mouse: 158 }, DASH = 2.2, DASH_TIME = 0.25, DASH_WAIT = 3;   // (only the cat dashes)
 const ROUND = 45;
 const SHRINK_AT = [12, 21, 30, 38], WARN = 3;    // the maze closes in from the edges (4 times), with a warning first
-const JUMP_TIME = 0.34, JUMP_SPEED = 300, JUMP_WAIT = 9;   // the cat can leap over a wall now and then
+const JUMP_TIME = 0.34, JUMP_SPEED = 300, JUMP_WAIT = 4;   // the mouse can leap over a wall (Space), then waits this long
 const TRAP_STUN = 1.3, CHEESE_BOOST = 3;
 let INS = 0;                                      // how many cells in from the edge the maze has closed (set by step and bot)
 const START = { mouse: [0, CH - 1], cat: [CW - 1, 4] };      // (the same spots in both rounds, clear of the camera walls)
@@ -21,14 +22,13 @@ const center = (cx, cy) => [X0 + (cx + 0.5) * TILE, Y0 + (cy + 0.5) * TILE];
 
 CA.games.add('mouse', {
   name: 'Cat and Mouse', icon: '🐭',
-  blurb: 'One of you is the cat, the other the mouse: then you swap! The cat is faster, but the mouse dashes more often (Space). Whoever survives longer as the mouse wins.',
+  blurb: 'One of you is the cat, the other the mouse: then you swap! The cat is faster and dashes with Space. The mouse jumps over walls with Space. Whoever survives longer as the mouse wins.',
   start(ctx) {
     CA.duel.run(ctx, {
       id: 'mouse',
-      pad: { stick: true, buttons: [{ k: 'b', label: '🦘 Leap (cat)' }, { k: 'a', label: '💨 Dash', main: true }] },
-      keys: { KeyB: 'b' }, letters: { b: 'b' },
-      help: 'WASD move · Space dash · B leaps over a wall (cat only, long wait) · 🧀 speeds you up, 🪤 traps stun · the maze closes in!',
-      helpTouch: 'Stick moves · Dash · as the mouse, survive · as the cat, catch!',
+      pad: { stick: true, buttons: [{ k: 'a', label: '⎵ Space: cat dash · mouse jump', main: true }] },
+      help: 'WASD move · Space: the cat dashes, the mouse jumps over a wall · 🧀 speeds you up, 🪤 traps stun · the maze closes in!',
+      helpTouch: 'Stick moves · Space button: cat dashes, mouse jumps · as the mouse, survive · as the cat, catch!',
       note: 'Survive longer as the mouse',
       init, step, snap, bot, draw, event,
     });
@@ -178,8 +178,8 @@ function step(s, inp, dt, api) {
     c.jw = Math.max(0, c.jw - dt);
     c.stun = Math.max(0, c.stun - dt);
     c.boost = Math.max(0, c.boost - dt);
-    if (c.stun <= 0 && n.hit.a && c.wait <= 0) { c.dash = DASH_TIME; c.wait = DASH_WAIT[c.role]; api.ev('dash', { x: c.x, y: c.y }); }
-    if (c.role === 'cat' && c.stun <= 0 && c.jump <= 0 && n.hit.b && c.jw <= 0) { // the cat leaps over a wall (then waits a long time)
+    if (c.role === 'cat' && c.stun <= 0 && n.hit.a && c.wait <= 0) { c.dash = DASH_TIME; c.wait = DASH_WAIT; api.ev('dash', { x: c.x, y: c.y }); }
+    if (c.role === 'mouse' && c.stun <= 0 && c.jump <= 0 && n.hit.a && c.jw <= 0) { // the mouse leaps over a wall with Space (then waits a bit)
       let jx = n.mx, jy = n.my;
       if (!jx && !jy) { jx = c.fx; jy = 0; }
       const jl = Math.hypot(jx, jy) || 1;
@@ -215,7 +215,7 @@ function step(s, inp, dt, api) {
   s.pu = s.pu.filter(p => { // pickups: a cheese speeds you up (and gives you back your dash); a trap stuns
     for (const c of s.movers) {
       if (Math.hypot(p.x - c.x, p.y - c.y) > R + 10) continue;
-      if (p.type === 0) { c.boost = CHEESE_BOOST; c.wait = 0; api.ev('cheese', { x: p.x, y: p.y }); }
+      if (p.type === 0) { c.boost = CHEESE_BOOST; c.wait = 0; c.jw = 0; api.ev('cheese', { x: p.x, y: p.y }); }
       else { c.stun = TRAP_STUN; api.ev('trap', { x: p.x, y: p.y }); }
       return false;
     }
@@ -279,7 +279,12 @@ function bot(s, i, dt, api) {
   }
   const dx = st.tx - me.x, dy = st.ty - me.y, d = Math.hypot(dx, dy);
   const out = { mx: d > 3 ? dx / d : 0, my: d > 3 ? dy / d : 0, slow: 0.85 + 0.15 * api.skill, hit: {} };
-  if (st.dash && me.wait <= 0) { out.hit.a = true; st.dash = false; }
+  if (me.role === 'cat') {
+    if (st.dash && me.wait <= 0) { out.hit.a = true; st.dash = false; }
+  } else if (st.dash && me.jw <= 0 && d > 3) { // the mouse leaps, but only away from the cat
+    st.dash = false;
+    if ((dx / d) * (them.x - me.x) + (dy / d) * (them.y - me.y) < 0) out.hit.a = true;
+  }
   return out;
 }
 
@@ -371,8 +376,8 @@ function draw(v, s) {
     if (c.bo) { g.strokeStyle = '#ffd23f'; g.lineWidth = 2; g.beginPath(); g.arc(c.x, c.y, 20 + Math.sin(v.now / 70) * 2, 0, Math.PI * 2); g.stroke(); }
     const up = c.j ? 14 : 0;
     if (c.j) { g.fillStyle = 'rgba(0, 0, 0, .25)'; g.beginPath(); g.ellipse(c.x, c.y + 12, 16, 6, 0, 0, Math.PI * 2); g.fill(); }
-    if (c.r) v.catTop(i, c.x, c.y - 2 - up, 0.85, { lookRight: c.f >= 0 });
-    else drawMouse(v, i, c.x, c.y, c.f >= 0 ? 1 : -1);
+    if (c.r) v.catTop(i, c.x, c.y - 2, 0.85, { lookRight: c.f >= 0 });
+    else drawMouse(v, i, c.x, c.y - up, c.f >= 0 ? 1 : -1);
     if (c.st) { v.label('💫', c.x, c.y - 28, 20, '#ffffff'); }
   });
   if (s.ph === 'chase' && s.nx >= 0 && s.nx <= WARN) v.label('The maze closes in ' + Math.ceil(s.nx) + '…', W / 2, H - 14, 14, '#ff9a9a');
@@ -381,8 +386,11 @@ function draw(v, s) {
   const tm = i => (s.tm[i] < 0 ? '—' : s.tm[i].toFixed(1) + 's');
   v.label('Round ' + s.rd + '/2 · ⏱ ' + Math.max(0, Math.ceil(ROUND - s.t)) + ' · as the mouse: ' + v.names[0] + ' ' + tm(0) + ', ' + v.names[1] + ' ' + tm(1), W / 2, 15, 12, '#ffffff');
   const mineC = s.c[v.me];
-  const leapTxt = mineC && mineC.r ? (mineC.jw > 0 ? ' · leap (B) in ' + mineC.jw.toFixed(0) + 's' : ' · B to leap over a wall!') : '';
-  if (mineC && s.ph === 'chase') v.msg((mineC.r ? "You're the CAT: catch the mouse!" : "You're the MOUSE: don't get caught!") + (mineC.w > 0 ? ' · dash in ' + mineC.w.toFixed(1) + 's' : ' · Space to dash') + leapTxt);
+  if (mineC && s.ph === 'chase') {
+    v.msg(mineC.r
+      ? "You're the CAT: catch the mouse!" + (mineC.w > 0 ? ' · dash in ' + mineC.w.toFixed(1) + 's' : ' · Space to dash')
+      : "You're the MOUSE: don't get caught!" + (mineC.jw > 0 ? ' · jump in ' + mineC.jw.toFixed(1) + 's' : ' · Space to jump over a wall'));
+  }
 }
 
 })();

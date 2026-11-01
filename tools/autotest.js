@@ -38,7 +38,7 @@ if (role !== 'a' && role !== 'b') return;
 const camTest = q.get('mode') === 'cam';
 const wallTest = q.get('mode') === 'walls';
 const duelTest = q.get('mode') === 'duels';
-const DUELS = (q.get('games') || 'trails,box,sumo,pond,hockey,paint,cannons,golf,mouse,kart,blocks,swords,stare,boxing').split(',');
+const DUELS = (q.get('games') || 'trails,box,sumo,pond,hockey,paint,cannons,golf,mouse,kart,swords,stare,boxing,dodge,parkour,poop').split(',');
 const DUEL_ONLINE = q.get('online') || 'sumo';
 const run = (q.get('run') || 'x').replace(/[^a-z0-9]/gi, '').slice(0, 8);
 const NAME = 'zt' + run + role;

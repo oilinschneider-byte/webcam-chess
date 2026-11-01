@@ -1,7 +1,8 @@
-/* Classic Games: Cat Cannons. Two cats in cannons on opposite hills take turns firing. Aim with the mouse, hold the
-   button to charge the shot, let go to fire. The cannonball flies in an arc (gravity, and a little wind), and blows a
-   crater where it lands. A direct hit costs 2 of your 3 hearts; landing close costs 1. You have 10 seconds a shot.
-   (The host's app flies the cannonballs: see games-duel.js.) */
+/* Classic Games: Cat Cannons. Two cats in cannons on opposite hills, both firing at the same time (no turns). Aim with
+   the mouse, hold the button to charge the shot, let go to fire; then your cannon needs a moment to reload. The
+   cannonballs fly in an arc (gravity, and a little wind that keeps changing), and blow a crater where they land. Balls
+   from the two cannons can hit each other in the air and bounce off. A direct hit costs 2 of your 3 hearts; landing
+   close costs 1. (The host's app flies the cannonballs: see games-duel.js.) */
 (() => {
 'use strict';
 
@@ -11,20 +12,21 @@ const GRAV = 520;
 const POWER_MIN = 230, POWER_MAX = 900, CHARGE = 1.4;
 const BOOM = 70, CRATER = 38, CR = 22;            // blast size, crater size, a cat's size
 const SHELLS = ['Normal', 'Split shot', 'Big crater'], AMMO = 2; // (the special shells: 2 each)
-const TURN = 10, HEARTS = 3;
+const HEARTS = 3, RELOAD = 1.2;                   // a cannon can fire again this long after a shot
 const SPOT = [110, W - 110];
+const ballR = kind => (kind === 2 ? 11 : 8);
 
 CA.games.add('cannons', {
   name: 'Cat Cannons', icon: '💥',
-  blurb: 'Take turns firing your cannon at the other cat! Aim with the mouse, hold to charge, let go to fire. Watch the wind. A direct hit costs 2 hearts, a near miss 1. 3 hearts each.',
+  blurb: 'Both cats fire their cannons at the same time! Aim with the mouse, hold to charge, let go to fire, then reload. Watch the wind. Cannonballs can hit each other in the air. A direct hit costs 2 hearts, a near miss 1. 3 hearts each.',
   start(ctx) {
     CA.duel.run(ctx, {
       id: 'cannons', mouse: true, angles: ['a'],
       pad: { buttons: [{ k: 'b', label: '🔁 Shell' }, { k: 'fire', label: '💥 Hold to charge', main: true }] },
       keys: { KeyB: 'b' }, letters: { b: 'b' },
-      help: 'Your turn: aim with the mouse · hold the button to charge · let go to fire · B or right-click swaps shells',
-      helpTouch: 'Your turn: touch where to aim, hold to charge, let go to fire',
-      note: HEARTS + ' hearts each · take turns',
+      help: 'Aim with the mouse · hold the button to charge · let go to fire · B or right-click swaps shells · your balls can hit theirs!',
+      helpTouch: 'Touch where to aim, hold to charge, let go to fire',
+      note: HEARTS + ' hearts each · fire at the same time',
       init, step, snap, bot, draw, event,
     });
   },
@@ -40,10 +42,10 @@ function init(api) {
     ground.push(y);
   }
   for (let k = 1; k < N - 1; k++) for (const sx of SPOT) if (Math.abs(k * COL - sx) < 90 && Math.abs(k * COL - sx) >= 50) ground[k] = (ground[k] * 2 + 410) / 3;
-  const s = { ground, hearts: [HEARTS, HEARTS], turn: 0, turnT: TURN, power: 0, charging: false, balls: [], trail: [], wait: 0, wind: 0, aim: [-0.9, -2.2], shots: 0,
-    shell: [0, 0], ammo: [[0, AMMO, AMMO], [0, AMMO, AMMO]], bouncy: api.rng() < 0.5, windT: 0 }; // (bouncy: some matches the ground is bouncy)
-  newTurn(s, api, 0);
-  return s;
+  return {
+    ground, hearts: [HEARTS, HEARTS], power: [0, 0], charging: [false, false], cd: [1, 1], a: [-0.9, -2.2], balls: [], endT: 0,
+    wind: Math.round((api.rng() - 0.5) * 100), windT: 1, shell: [0, 0], ammo: [[0, AMMO, AMMO], [0, AMMO, AMMO]], bouncy: api.rng() < 0.5, // (bouncy: some matches the ground is bouncy)
+  };
 }
 
 function groundAt(s, x) {
@@ -53,16 +55,6 @@ function groundAt(s, x) {
 const catPos = (s, i) => ({ x: SPOT[i], y: groundAt(s, SPOT[i]) - CR - 6 });
 const pivot = (s, i) => ({ x: SPOT[i], y: groundAt(s, SPOT[i]) - 30 });
 
-function newTurn(s, api, who) {
-  s.turn = who;
-  s.turnT = TURN;
-  s.power = 0;
-  s.charging = false;
-  s.balls = [];
-  s.wind = Math.round((api.rng() - 0.5) * 120);
-  api.ev('turn', { who });
-}
-
 function aimAngle(s, i, ax, ay) {
   const p = pivot(s, i);
   let a = Math.atan2(ay - p.y, ax - p.x);
@@ -71,80 +63,96 @@ function aimAngle(s, i, ax, ay) {
 }
 
 function step(s, inp, dt, api) {
-  if (s.wait > 0) {
-    s.wait -= dt;
-    if (s.wait <= 0) {
-      if (s.hearts[0] <= 0 || s.hearts[1] <= 0) {
-        const w = s.hearts[0] <= 0 && s.hearts[1] <= 0 ? -1 : s.hearts[0] <= 0 ? 1 : 0;
-        api.end(w, 'BOOM!');
-      } else newTurn(s, api, 1 - s.turn);
-    }
+  if (s.endT > 0) { // somebody is out of hearts: the shells still in the air finish their flight, then it's over
+    s.endT -= dt;
+    flyBalls(s, dt, api);
+    if (s.endT <= 0) api.end(s.hearts[0] <= 0 && s.hearts[1] <= 0 ? -1 : s.hearts[0] <= 0 ? 1 : 0, 'BOOM!');
     return;
   }
-  if (s.balls.length) { flyBall(s, dt, api); return; }
-  const i = s.turn, n = inp[i];
-  if (n.hit.b || n.hit.alt) { // the next shell you still have
-    for (let k = 1; k <= 3; k++) { const j = (s.shell[i] + k) % 3; if (j === 0 || s.ammo[i][j] > 0) { s.shell[i] = j; break; } }
+  for (let i = 0; i < 2; i++) {
+    const n = inp[i];
+    s.cd[i] = Math.max(0, s.cd[i] - dt);
+    if (n.hit.b || n.hit.alt) { // the next shell you still have
+      for (let k = 1; k <= 3; k++) { const j = (s.shell[i] + k) % 3; if (j === 0 || s.ammo[i][j] > 0) { s.shell[i] = j; break; } }
+    }
+    s.a[i] = aimAngle(s, i, n.ax, n.ay);
+    if (!s.charging[i] && s.cd[i] <= 0 && (n.hit.fire || n.held.fire)) { s.charging[i] = true; s.power[i] = 0; }
+    if (s.charging[i] && n.held.fire) s.power[i] = Math.min(1, s.power[i] + dt / CHARGE);
+    if (s.charging[i] && !n.held.fire) fire(s, i, api);
   }
-  s.a = aimAngle(s, i, n.ax, n.ay);
-  if (n.hit.fire) s.charging = true;
-  if (s.charging && n.held.fire) s.power = Math.min(1, s.power + dt / CHARGE);
-  if (s.charging && !n.held.fire) { fire(s, api); return; }
-  s.turnT -= dt;
-  if (s.turnT <= 0) { api.ev('slow', { who: i }); s.wait = 1; s.balls = []; }
+  flyBalls(s, dt, api);
 }
 
-function fire(s, api) {
-  const i = s.turn, p = pivot(s, i), a = s.a, v = POWER_MIN + (POWER_MAX - POWER_MIN) * s.power;
+function fire(s, i, api) {
+  const p = pivot(s, i), a = s.a[i], v = POWER_MIN + (POWER_MAX - POWER_MIN) * s.power[i];
   let kind = s.shell[i];
   if (kind && s.ammo[i][kind] > 0) s.ammo[i][kind]--; else kind = 0;
   if (kind && s.ammo[i][kind] === 0) s.shell[i] = 0; // (that was the last one)
-  s.balls = [{ x: p.x + Math.cos(a) * 34, y: p.y + Math.sin(a) * 34, vx: Math.cos(a) * v, vy: Math.sin(a) * v, kind, split: false, bn: 0 }];
-  s.trail = [];
-  s.charging = false;
-  s.shots++;
-  api.ev('fire', { x: s.balls[0].x, y: s.balls[0].y });
+  const b = { x: p.x + Math.cos(a) * 34, y: p.y + Math.sin(a) * 34, vx: Math.cos(a) * v, vy: Math.sin(a) * v, kind, o: i, split: false, bn: 0, dead: false, tr: [] };
+  s.balls.push(b);
+  s.charging[i] = false;
+  s.power[i] = 0;
+  s.cd[i] = RELOAD;
+  api.ev('fire', { x: b.x, y: b.y });
 }
 
-function flyBall(s, dt, api) {
-  // the wind shifts while the shells are in the air
+function flyBalls(s, dt, api) {
+  // the wind keeps shifting, a little at a time
   s.windT -= dt;
-  if (s.windT <= 0) { s.windT = 0.7; s.wind = Math.max(-80, Math.min(80, s.wind + Math.round((api.rng() - 0.5) * 50))); }
-  s.balls.slice().forEach(b => flyOne(s, b, dt, api));
-  if (!s.balls.length) s.wait = 1.4;
-}
-
-function drop(s, b) { s.balls = s.balls.filter(x => x !== b); }
-
-function flyOne(s, b, dt, api) {
+  if (s.windT <= 0) { s.windT = 0.9; s.wind = Math.max(-80, Math.min(80, s.wind + Math.round((api.rng() - 0.5) * 44))); }
   for (let n = 0; n < 4; n++) {
     const h = dt / 4;
-    const vy0 = b.vy;
-    b.vx += s.wind * h;
-    b.vy += GRAV * h;
-    b.x += b.vx * h;
-    b.y += b.vy * h;
-    if (b.kind === 1 && !b.split && vy0 < 0 && b.vy >= 0) { // a split shot: three shells at the top of its arc
-      b.split = true;
-      api.ev('split', { x: b.x, y: b.y });
-      [-90, 90].forEach(dx => s.balls.push({ x: b.x, y: b.y, vx: b.vx + dx, vy: b.vy, kind: 1, split: true, bn: 0 }));
-    }
-    for (let i = 0; i < 2; i++) {
-      const c = catPos(s, i);
-      if (Math.hypot(b.x - c.x, b.y - c.y) < CR + 8) { explode(s, b, b.x, b.y, i, api); return; }
-    }
-    if (b.x < -40 || b.x > W + 40 || b.y > H + 40) { api.ev('splash', { x: b.x }); drop(s, b); return; }
-    if (b.x >= 0 && b.x <= W && b.y >= groundAt(s, b.x)) {
-      if (s.bouncy && b.bn < 1) { b.bn++; b.y = groundAt(s, b.x) - 2; b.vy = -Math.abs(b.vy) * 0.6; b.vx *= 0.85; api.ev('bounce', { x: b.x, y: b.y }); continue; }
-      explode(s, b, b.x, b.y, -1, api);
-      return;
-    }
-    if (CA.camWalls.inWall(b.x, b.y, 6)) { explode(s, b, b.x, b.y, -1, api); return; } // (it hit a camera wall)
+    for (const b of s.balls.slice()) if (!b.dead) moveBall(s, b, h, api);
+    collide(s, api);
+    s.balls = s.balls.filter(b => !b.dead);
   }
-  if (s.trail.length === 0 || Math.hypot(b.x - s.trail[s.trail.length - 2], b.y - s.trail[s.trail.length - 1]) > 14) s.trail.push(Math.round(b.x), Math.round(b.y));
+}
+
+// Two balls from different cannons that touch bounce off each other (like billiard balls).
+function collide(s, api) {
+  const bs = s.balls;
+  for (let p = 0; p < bs.length; p++) for (let q = p + 1; q < bs.length; q++) {
+    const a = bs[p], b = bs[q];
+    if (a.dead || b.dead || a.o === b.o) continue;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01, rr = ballR(a.kind) + ballR(b.kind);
+    if (d >= rr) continue;
+    const nx = dx / d, ny = dy / d, push = (rr - d) / 2;
+    a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+    const vr = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+    if (vr <= 0) continue; // (already moving apart)
+    a.vx -= vr * nx; a.vy -= vr * ny; b.vx += vr * nx; b.vy += vr * ny;
+    api.ev('clash', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, p: Math.min(1, vr / 600) });
+  }
+}
+
+function moveBall(s, b, h, api) {
+  const vy0 = b.vy;
+  b.vx += s.wind * h;
+  b.vy += GRAV * h;
+  b.x += b.vx * h;
+  b.y += b.vy * h;
+  if (b.kind === 1 && !b.split && vy0 < 0 && b.vy >= 0) { // a split shot: three shells at the top of its arc
+    b.split = true;
+    api.ev('split', { x: b.x, y: b.y });
+    [-90, 90].forEach(dx => s.balls.push({ x: b.x, y: b.y, vx: b.vx + dx, vy: b.vy, kind: 1, o: b.o, split: true, bn: 0, dead: false, tr: [] }));
+  }
+  for (let i = 0; i < 2; i++) {
+    const c = catPos(s, i);
+    if (Math.hypot(b.x - c.x, b.y - c.y) < CR + 8) { explode(s, b, b.x, b.y, i, api); return; }
+  }
+  if (b.x < -40 || b.x > W + 40 || b.y > H + 40) { api.ev('splash', { x: b.x }); b.dead = true; return; }
+  if (b.x >= 0 && b.x <= W && b.y >= groundAt(s, b.x)) {
+    if (s.bouncy && b.bn < 1) { b.bn++; b.y = groundAt(s, b.x) - 2; b.vy = -Math.abs(b.vy) * 0.6; b.vx *= 0.85; api.ev('bounce', { x: b.x, y: b.y }); return; }
+    explode(s, b, b.x, b.y, -1, api);
+    return;
+  }
+  if (CA.camWalls.inWall(b.x, b.y, 6)) { explode(s, b, b.x, b.y, -1, api); return; } // (it hit a camera wall)
+  const t = b.tr;
+  if (t.length === 0 || Math.hypot(b.x - t[t.length - 2], b.y - t[t.length - 1]) > 14) { t.push(Math.round(b.x), Math.round(b.y)); if (t.length > 48) t.splice(0, 2); }
 }
 
 function explode(s, b, x, y, direct, api) {
+  b.dead = true;
   const big = b.kind === 2, cr = big ? CRATER * 1.7 : CRATER, boom = big ? BOOM * 1.6 : BOOM;
   for (let k = 0; k < N; k++) { // a round crater
     const dx = k * COL - x;
@@ -159,25 +167,30 @@ function explode(s, b, x, y, direct, api) {
   }
   api.score(HEARTS - s.hearts[1], HEARTS - s.hearts[0]);
   api.ev('boom', { x, y, h0: hurt[0], h1: hurt[1], d: direct, big: big ? 1 : 0 });
-  drop(s, b);
+  if ((s.hearts[0] <= 0 || s.hearts[1] <= 0) && !s.endT) s.endT = 1.2;
 }
+
+const r2 = v => Math.round(v * 100) / 100;
 
 function snap(s) {
   return {
-    gr: s.ground.map(y => Math.round(y)), h: s.hearts, tn: s.turn, tt: Math.round(s.turnT * 10) / 10, pw: Math.round(s.power * 100) / 100,
-    a: Math.round((s.a || (s.turn ? -2.3 : -0.8)) * 100) / 100, wd: s.wind, ch: s.charging ? 1 : 0, wt: s.wait > 0 ? 1 : 0,
-    b: s.balls.length ? s.balls.map(b => [Math.round(b.x), Math.round(b.y)]) : null, tr: s.trail.slice(),
+    gr: s.ground.map(y => Math.round(y)), h: s.hearts, pw: s.power.map(r2), a: s.a.map((v, i) => r2(v)), wd: s.wind,
+    ch: s.charging.map(v => (v ? 1 : 0)), cd: s.cd.map(v => Math.round(v * 10) / 10),
+    b: s.balls.map(b => ({ x: Math.round(b.x), y: Math.round(b.y), k: b.o + '' + b.kind })), tr: s.balls.map(b => b.tr.slice()),
     sh: s.shell, am: s.ammo, bn: s.bouncy ? 1 : 0,
   };
 }
 
 // The bot tries lots of angles and powers in its head (with the wind) and picks the one that lands closest to the
-// other cat; easier bots aim worse.
+// other cat; easier bots aim worse. It fires as soon as it has reloaded.
 function bot(s, i, dt, api) {
-  const st = s.bs || (s.bs = { shot: -1, plan: null, think: 0 });
-  if (s.turn !== i || s.balls.length || s.wait > 0) { st.plan = null; return {}; }
+  const st = (s.bs || (s.bs = {}))[i] || (s.bs[i] = { plan: null, think: 0 });
+  const target = catPos(s, 1 - i), p = pivot(s, i);
+  if (s.endT > 0 || (s.cd[i] > 0 && !s.charging[i])) {
+    st.plan = null;
+    return { ax: target.x, ay: target.y - 140, held: {}, hit: {} };
+  }
   if (!st.plan) {
-    const target = catPos(s, 1 - i), p = pivot(s, i);
     let best = null, bestD = Infinity;
     for (let a = -Math.PI + 0.15; a < -0.15; a += 0.05) {
       if ((i === 0 && Math.cos(a) < 0) || (i === 1 && Math.cos(a) > 0)) continue;
@@ -194,14 +207,13 @@ function bot(s, i, dt, api) {
     }
     const err = 1 - api.skill;
     st.plan = { a: best.a + CA.games.kit.gauss(0, 0.02 + 0.07 * err), pw: Math.max(0.05, Math.min(1, best.pw + CA.games.kit.gauss(0, 0.02 + 0.1 * err))) };
-    st.think = 0.8 + Math.random() * 1.2;
+    st.think = 0.3 + (1 - api.skill) * 1.1 + Math.random() * 0.6;
   }
-  const p = pivot(s, i);
   const out = { ax: p.x + Math.cos(st.plan.a) * 200, ay: p.y + Math.sin(st.plan.a) * 200, held: {}, hit: {} };
   st.think -= dt;
   if (st.think > 0) return out;
-  if (!s.charging) { out.hit.fire = true; out.held.fire = true; return out; }
-  if (s.power < st.plan.pw) out.held.fire = true;
+  if (!s.charging[i]) { out.hit.fire = true; out.held.fire = true; return out; }
+  if (s.power[i] < st.plan.pw) out.held.fire = true;
   return out;
 }
 
@@ -215,11 +227,10 @@ function event(v, e) {
     v.sound('boom');
     [0, 1].forEach(i => { const h = e['h' + i]; if (h) v.pop(SPOT[i], 300, h > 1 ? 'DIRECT HIT! −2' : '−1', '#ff5a5a'); });
   }
+  if (e.type === 'clash') { v.burst(e.x, e.y, '#ffffff', 12, 240); v.ring(e.x, e.y, '#ffffff', 10); v.shake(3); v.sound([[900, 0, 0.04], [600, 0.03, 0.06]]); if (e.p > 0.3) v.pop(e.x, e.y - 18, 'CLANG!', '#ffd23f'); }
   if (e.type === 'splash') v.sound([[300, 0, 0.1]]);
   if (e.type === 'split') { v.burst(e.x, e.y, '#ffd23f', 10, 160); v.sound([[600, 0, 0.05], [800, 0.04, 0.05]]); }
   if (e.type === 'bounce') { v.burst(e.x, e.y, '#e6b3ff', 6, 160); v.sound([[400, 0, 0.04], [700, 0.03, 0.05]]); }
-  if (e.type === 'slow') { v.pop(SPOT[e.who], 300, 'Too slow!', '#ff9a9a'); v.sound('miss'); }
-  if (e.type === 'turn') v.sound('tick');
 }
 
 function draw(v, s) {
@@ -246,7 +257,7 @@ function draw(v, s) {
   const gy = x => { const k = Math.max(0, Math.min(N - 2, Math.floor(x / COL))), f = x / COL - k; return s.gr[k] * (1 - f) + s.gr[k + 1] * f; };
   [0, 1].forEach(i => {
     const x = SPOT[i], base = gy(x), py = base - 30;
-    const a = s.tn === i ? s.a : (i ? -2.4 : -0.75);
+    const a = s.a[i];
     v.catSide(i, x - (i ? -6 : 6), base - 8, 0.62, { lookRight: i === 0 });
     g.save(); // the barrel
     g.translate(x, py);
@@ -262,18 +273,30 @@ function draw(v, s) {
     v.dot(x, base - 10, 5);
     for (let k = 0; k < HEARTS; k++) v.heart(x + (k - 1) * 18, base - 110, k < s.h[i]);
     v.label(i === v.me ? 'You' : v.names[i], x, base + 22, 13, i === v.me ? '#ffd23f' : '#ffffff');
-    if (s.tn === i && !s.b && !s.wt) { // the power bar
+    if (s.ch[i] || s.cd[i] > 0) { // the power bar while you charge, and the reload bar after a shot
       g.fillStyle = 'rgba(0, 0, 0, .55)';
       v.roundRect(x - 40, base - 136, 80, 10, 5); g.fill();
-      g.fillStyle = s.pw < 0.5 ? '#7dff8a' : s.pw < 0.85 ? '#ffd23f' : '#ff5a5a';
-      v.roundRect(x - 39, base - 135, Math.max(6, 78 * s.pw), 8, 4); g.fill();
+      if (s.ch[i]) {
+        g.fillStyle = s.pw[i] < 0.5 ? '#7dff8a' : s.pw[i] < 0.85 ? '#ffd23f' : '#ff5a5a';
+        v.roundRect(x - 39, base - 135, Math.max(6, 78 * s.pw[i]), 8, 4); g.fill();
+      } else {
+        g.fillStyle = '#9aa8c8';
+        v.roundRect(x - 39, base - 135, Math.max(6, 78 * (1 - s.cd[i] / RELOAD)), 8, 4); g.fill();
+      }
     }
   });
-  if (s.tr.length >= 4) {
-    g.fillStyle = 'rgba(40, 40, 60, .35)';
-    for (let k = 0; k < s.tr.length; k += 2) v.dot(s.tr[k], s.tr[k + 1], 2.5);
-  }
-  (s.b || []).forEach(p => { g.fillStyle = '#1b1b24'; v.dot(p[0], p[1], s.sh[s.tn] === 2 ? 11 : 8); g.fillStyle = 'rgba(255, 255, 255, .4)'; v.dot(p[0] - 2, p[1] - 3, 2.5); });
+  g.fillStyle = 'rgba(40, 40, 60, .35)';
+  s.tr.forEach(t => { for (let k = 0; k < t.length; k += 2) v.dot(t[k], t[k + 1], 2.5); });
+  s.b.forEach(p => {
+    const o = +p.k[0], kind = +p.k[1], r = ballR(kind);
+    g.fillStyle = '#1b1b24';
+    v.dot(p.x, p.y, r);
+    g.strokeStyle = v.team[o].main; // (a ring in the color of the cat that fired it)
+    g.lineWidth = 2.5;
+    g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = 'rgba(255, 255, 255, .4)';
+    v.dot(p.x - 2, p.y - 3, 2.5);
+  });
   // wind
   g.fillStyle = 'rgba(20, 30, 60, .7)';
   v.roundRect(W / 2 - 80, 12, 160, 30, 15); g.fill();
@@ -282,11 +305,9 @@ function draw(v, s) {
   { // which shell is loaded, and the ground
     const sel = Math.round(s.sh[v.me]), am = s.am[v.me].map(Math.round);
     v.label('Shell: ' + SHELLS[sel] + (sel ? ' (' + am[sel] + ' left)' : '') + ' · B or right-click to swap', W / 2, H - 14, 13, '#1c2a4a');
-    if (s.bn) v.label('🟣 Bouncy ground: shells bounce once!', W / 2, 82, 14, '#7a2fa8');
+    if (s.bn) v.label('🟣 Bouncy ground: shells bounce once!', W / 2, 62, 14, '#7a2fa8');
   }
-  if (!s.b && !s.wt) v.label((s.tn === v.me ? 'Your turn' : v.names[s.tn] + "'s turn") + ' · ⏱ ' + Math.ceil(s.tt), W / 2, 62, 16, s.tn === v.me ? '#ffd23f' : '#ffffff');
-  if (s.tn === v.me && !s.b && !s.wt) v.msg(s.ch ? 'Let go to fire!' : 'Your turn! Aim with the mouse, hold the button to charge, let go to fire');
-  else if (!s.b && !s.wt) v.msg(v.names[s.tn] + ' is aiming…');
+  v.msg(s.ch[v.me] ? 'Let go to fire!' : s.cd[v.me] > 0 ? 'Reloading…' : 'Aim with the mouse, hold the button to charge, let go to fire. Your balls can hit theirs!');
 }
 
 })();

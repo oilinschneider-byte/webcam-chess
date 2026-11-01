@@ -102,9 +102,9 @@ let lastGame = null;
 let gameBag = [];        // the games still to come in this round of "every game once"
 // The games in the Classic Games mix (and "Classic mode vs bots"): the ones that take skill. Every other game can
 // still be played on its own in Practice.
-const MIX_GAMES = ['barrel', 'hoops', 'walls', 'climb', 'speedchess', 'c4', 'simon', 'draw', 'aim', 'dodge',
-  'memory', 'sequence', 'spot', 'type', 'scramble',
-  'trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'blocks', 'swords', 'stare', 'boxing'];
+const MIX_GAMES = ['barrel', 'hoops', 'walls', 'climb', 'speedchess', 'simon', 'draw', 'aim', 'dodge',
+  'memory', 'sequence', 'type', 'scramble',
+  'trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'swords', 'stare', 'boxing', 'parkour', 'poop'];
 let nextTimer = null;    // the countdown to the next opponent after a game
 let recentName = '';
 
