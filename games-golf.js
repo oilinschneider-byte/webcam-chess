@@ -9,6 +9,8 @@ const W = 960, H = 540, M = 36;                  // the course, inside a wooden 
 const BR = 8, CUP = 12;
 const V_MIN = 90, V_MAX = 900, CHARGE = 1.3;
 const MAX_STROKES = 8, HOLE_TIME = 60, PLAYOFF_TIME = 40;
+const SWING = 0.16;                              // seconds from letting go to the putter meeting the ball
+const CAT_DIST = 58;                             // how far behind the ball the cat stands
 
 const rect = (x, y, w, h) => [[x, y, x + w, y], [x + w, y, x + w, y + h], [x + w, y + h, x, y + h], [x, y + h, x, y]];
 const HOLES = [
@@ -52,7 +54,7 @@ function nextHole(s, api) {
   s.hole++;
   s.t = 0;
   const h = HOLES[s.hole];
-  s.balls = [0, 1].map(() => ({ x: h.tee[0], y: h.tee[1], vx: 0, vy: 0, lx: h.tee[0], ly: h.tee[1], n: 0, sunk: false, a: -0.0, p: 0, ch: false }));
+  s.balls = [0, 1].map(() => ({ x: h.tee[0], y: h.tee[1], vx: 0, vy: 0, lx: h.tee[0], ly: h.tee[1], n: 0, sunk: false, a: -0.0, p: 0, ch: false, sw: 0, rp: 0, lv: 0 }));
   s.sunkAt = [0, 0];
   api.ev('hole', { h: s.hole });
 }
@@ -104,21 +106,30 @@ function step(s, inp, dt, api) {
   s.balls.forEach((b, i) => {
     if (b.sunk) return;
     const n = inp[i];
+    if (b.sw > 0) { // the cat's putter is swinging: the ball goes when it reaches it
+      b.sw -= dt;
+      if (b.sw <= 0) {
+        b.sw = 0;
+        b.vx = Math.cos(b.a) * b.lv;
+        b.vy = Math.sin(b.a) * b.lv;
+        b.lx = b.x;
+        b.ly = b.y;
+        api.ev('putt', { x: b.x, y: b.y, i, p: b.rp });
+      }
+      return;
+    }
     const moving = b.vx || b.vy;
     if (!moving && b.n < MAX_STROKES) {
       b.a = Math.atan2(n.ay - b.y, n.ax - b.x);
       if (n.hit.fire) b.ch = true;
       if (b.ch && n.held.fire) b.p = Math.min(1, b.p + dt / CHARGE);
-      if (b.ch && !n.held.fire) { // a putt
-        const v = V_MIN + (V_MAX - V_MIN) * b.p;
-        b.vx = Math.cos(b.a) * v;
-        b.vy = Math.sin(b.a) * v;
-        b.lx = b.x;
-        b.ly = b.y;
+      if (b.ch && !n.held.fire) { // a putt: the swing starts now
+        b.lv = V_MIN + (V_MAX - V_MIN) * b.p;
+        b.rp = b.p;
+        b.sw = SWING;
         b.n++;
         b.ch = false;
         b.p = 0;
-        api.ev('putt', { x: b.x, y: b.y, i });
       }
       return;
     }
@@ -141,7 +152,7 @@ function step(s, inp, dt, api) {
     }
   });
   const limit = s.playoff ? PLAYOFF_TIME : HOLE_TIME;
-  const done = s.balls.every(b => b.sunk || (b.n >= MAX_STROKES && !b.vx && !b.vy));
+  const done = s.balls.every(b => b.sunk || (b.n >= MAX_STROKES && !b.vx && !b.vy && !b.sw));
   if (done || s.t >= limit) {
     s.balls.forEach((b, i) => { if (!b.sunk) b.n = Math.min(MAX_STROKES, b.n + (s.t >= limit ? 2 : 1)); }); // (not in: a penalty)
     s.wait = 2.2;
@@ -172,7 +183,8 @@ function endHole(s, api) {
 function snap(s) {
   return {
     h: s.hole, t: Math.round(s.t * 10) / 10, wt: s.wait > 0 ? 1 : 0, po: s.playoff ? 1 : 0, st: s.strokes,
-    b: s.balls.map(b => ({ x: Math.round(b.x * 10) / 10, y: Math.round(b.y * 10) / 10, n: b.n, s: b.sunk ? 1 : 0, a: Math.round(b.a * 100) / 100, p: Math.round(b.p * 100) / 100, m: b.vx || b.vy ? 1 : 0, c: b.ch ? 1 : 0 })),
+    b: s.balls.map(b => ({ x: Math.round(b.x * 10) / 10, y: Math.round(b.y * 10) / 10, n: b.n, s: b.sunk ? 1 : 0, a: Math.round(b.a * 100) / 100, p: Math.round(b.p * 100) / 100, m: b.vx || b.vy || b.sw > 0 ? 1 : 0, c: b.ch ? 1 : 0,
+      sw: Math.round(Math.max(0, b.sw) / SWING * 100) / 100, rp: Math.round(b.rp * 100) / 100, lx: Math.round(b.lx != null ? b.lx : b.x), ly: Math.round(b.ly != null ? b.ly : b.y) })),
   };
 }
 
@@ -180,7 +192,7 @@ function snap(s) {
 function bot(s, i, dt, api) {
   const b = s.balls[i];
   const st = s.bs || (s.bs = {});
-  if (b.sunk || b.vx || b.vy || s.wait > 0) { st[i] = null; return {}; }
+  if (b.sunk || b.vx || b.vy || b.sw > 0 || s.wait > 0) { st[i] = null; return {}; }
   const h = HOLES[s.hole];
   if (!st[i]) {
     let best = null, bestD = Infinity;
@@ -208,7 +220,11 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
-  if (e.type === 'putt') v.sound([[700, 0, 0.03], [500, 0.02, 0.04]]);
+  if (e.type === 'putt') {
+    v.sound([[700, 0, 0.03], [500, 0.02, 0.04]]);
+    v.burst(e.x, e.y, '#ffffff', 4 + Math.round(6 * (e.p || 0)), 90 + 140 * (e.p || 0));
+    if (e.i === v.me && (e.p || 0) > 0.7) v.shake(2);
+  }
   if (e.type === 'bonk') v.sound(e.bump ? [[900, 0, 0.04], [1200, 0.03, 0.05]] : [[260, 0, 0.03]]);
   if (e.type === 'splash') { v.burst(e.x, e.y, '#7fd0ff', 16, 200); v.pop(e.x, e.y - 20, 'SPLASH! +1', '#7fd0ff'); v.sound([[180, 0, 0.12], [120, 0.08, 0.15]]); }
   if (e.type === 'sunk') {
@@ -262,13 +278,78 @@ function holeArt(k) {
   return c;
 }
 
+/* ---------- the cats and their putters (only drawn: the game itself doesn't need them) ---------- */
+// Each cat stands behind its ball, on the far side from where it's aiming, and walks round it when you aim somewhere
+// else. It holds the putter back while you charge, swings it through when you let go (the ball leaves at the moment
+// they meet: see SWING), and follows through. When its ball goes in, the cat hops.
+const cats = [null, null];
+let seenHole = -1;
+const BACK = 1.15, FOLLOW = 0.85, FOLLOW_MS = 420;
+const clampN = (x, a, b) => Math.max(a, Math.min(b, x));
+
+function walk(v, b, i, aim) {
+  const ax = b.m ? b.lx : b.x, ay = b.m ? b.ly : b.y;
+  const tx = clampN(ax - Math.cos(aim) * CAT_DIST, M + 22, W - M - 22), ty = clampN(ay - Math.sin(aim) * CAT_DIST, M + 22, H - M - 22);
+  let c = cats[i];
+  if (!c) c = cats[i] = { x: tx, y: ty, hit: -1e9, fl: false, face: 1 };
+  if (!b.m && !b.s) { // (while the ball is on its way, the cat stays where it hit it)
+    const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy), st = Math.min(d, 380 * Math.min(0.1, v.dt || 0.016));
+    if (d > 0.01) { c.x += dx / d * st; c.y += dy / d * st; }
+  }
+  if (b.m && b.sw < 0.02 && !c.fl) { c.fl = true; c.hit = v.now; }
+  if (!b.m) c.fl = false;
+  c.face = Math.cos(Math.atan2(ay - c.y, ax - c.x)) >= 0 ? 1 : -1;
+}
+
+function drawCat(v, b, i) {
+  const c = cats[i];
+  if (!c) return;
+  const hop = b.s ? Math.abs(Math.sin(v.now / 140)) * 10 : 0;
+  v.catTop(i, c.x, c.y - hop, 0.62, { ring: false, label: false, lookRight: c.face > 0, alpha: i === v.me ? 1 : 0.6 });
+}
+
+function drawPutter(v, b, i) {
+  const c = cats[i];
+  if (!c || b.s) return;
+  const g = v.g;
+  const ax = b.m ? b.lx : b.x, ay = b.m ? b.ly : b.y;
+  const phi = Math.atan2(ay - c.y, ax - c.x);
+  let th;
+  if (b.sw >= 0.02) th = -BACK * b.rp * b.sw;                               // swinging through
+  else if (b.c) th = -BACK * b.p;                                      // held back while charging
+  else if (b.m) th = FOLLOW * (0.4 + 0.6 * b.rp) * Math.sin(Math.min(1, (v.now - c.hit) / FOLLOW_MS) * Math.PI); // following through
+  else th = 0.05 * Math.sin(v.now / 380 + i);
+  const px = c.x + Math.cos(phi) * 15, py = c.y + 4 + Math.sin(phi) * 15;
+  const len = Math.max(20, Math.hypot(ax - px, ay - py) - 11);
+  const hx = px + Math.cos(phi + th) * len, hy = py + Math.sin(phi + th) * len;
+  g.save();
+  g.globalAlpha = i === v.me ? 1 : 0.6;
+  g.lineCap = 'round';
+  g.strokeStyle = '#d8dde6';
+  g.lineWidth = 3;
+  g.beginPath(); g.moveTo(px, py); g.lineTo(hx, hy); g.stroke();
+  const nx = -Math.sin(phi + th), ny = Math.cos(phi + th); // the head: a short block across the end
+  g.strokeStyle = v.team[i].main;
+  g.lineWidth = 6;
+  g.beginPath(); g.moveTo(hx - nx * 8, hy - ny * 8); g.lineTo(hx + nx * 8, hy + ny * 8); g.stroke();
+  g.fillStyle = v.team[i].light; // the paws
+  v.dot(px, py, 4);
+  v.dot(px + (hx - px) * 0.3, py + (hy - py) * 0.3, 3.5);
+  g.restore();
+}
+
 function draw(v, s) {
   const g = v.g;
   g.drawImage(holeArt(s.h), 0, 0, W, H);
+  if (seenHole !== s.h) { seenHole = s.h; cats[0] = cats[1] = null; }
+  const aimOf = (b, i) => (i === v.me && !v.host && !b.m ? Math.atan2(v.aim.y - b.y, v.aim.x - b.x) : b.a);
+  const order = [v.them, v.me]; // (you on top)
+  order.forEach(i => walk(v, s.b[i], i, aimOf(s.b[i], i)));
+  order.forEach(i => drawCat(v, s.b[i], i));
   s.b.forEach((b, i) => {
     if (b.s) return;
     if (!b.m && i === v.me) { // your aim, and how hard
-      const a = v.host ? b.a : Math.atan2(v.aim.y - b.y, v.aim.x - b.x);
+      const a = aimOf(b, i);
       g.setLineDash([6, 6]);
       g.strokeStyle = 'rgba(255, 255, 255, .8)';
       g.lineWidth = 2;
@@ -288,6 +369,7 @@ function draw(v, s) {
     g.fillStyle = v.team[i].main;
     v.dot(b.x, b.y, BR - 3);
   });
+  order.forEach(i => drawPutter(v, s.b[i], i));
   // scoreboard
   g.fillStyle = 'rgba(20, 30, 20, .8)';
   v.roundRect(W / 2 - 230, 4, 460, 28, 14); g.fill();

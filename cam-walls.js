@@ -5,8 +5,17 @@
 (() => {
 'use strict';
 
-const W = 960, H = 540, CAM_W = 164, CAM_H = 162;
+const W = 960, H = 540, DEF_W = 164, DEF_H = 162;
+let CAM_W = DEF_W, CAM_H = DEF_H;
 const RECTS = [{ x: 0, y: 0, w: CAM_W, h: CAM_H }, { x: W - CAM_W, y: 0, w: CAM_W, h: CAM_H }];
+// A game that needs more room (Cat Hoops) can make the walls, and so the camera blocks, smaller while it plays.
+function size(w, h) {
+  CAM_W = w;
+  CAM_H = h;
+  RECTS[0].w = RECTS[1].w = w;
+  RECTS[0].h = RECTS[1].h = h;
+  RECTS[1].x = W - w;
+}
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Is the point inside a camera wall (or within r of one)?
@@ -67,6 +76,6 @@ function draw(g) {
   g.restore();
 }
 
-CA.camWalls = { W, H, CAM_W, CAM_H, RECTS, inWall, push, bounce, draw };
+CA.camWalls = { W, H, get CAM_W() { return CAM_W; }, get CAM_H() { return CAM_H; }, RECTS, inWall, push, bounce, draw, size, reset: () => size(DEF_W, DEF_H) };
 
 })();

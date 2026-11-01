@@ -51,50 +51,60 @@ CA.games.add('stare', {
     loadDetector().then(() => { status = 'ready'; }, () => { status = 'failed'; });
     // thr: one fixed line for everybody (how closed your eyes are, 0 to 1). It isn't measured from your own eyes at
     // the start, so squinting while it gets ready doesn't help: squinted eyes count as closed.
-    const eye = { open: 1, face: false, last: 0, cal: [], thr: 0.5, closed: 0, sent: false, ph: '', rd: 0 };
+    // Real blinks are quick (about a tenth of a second), so the camera is read on every new video frame (about 30 times
+    // a second) and a blink counts after two closed frames in a row, or one frame of eyes squeezed fully shut.
+    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: 0.5, strong: 0.85, closed: 0, sent: false, ph: '', rd: 0, raw: null, vt: -1, flash: 0 };
 
     // Reads the camera (about 15 times a second) and turns it into controls: 'face' (held while your face is
     // seen), 'ready' (held once your eyes are properly open) and 'blink' (pressed once when you blink).
     function local(v, s) {
       if (!s) return;
       if (s.ph !== eye.ph || s.rd !== eye.rd) { // a new round or a new phase
-        if (s.ph === 'calib') { eye.cal = []; v.hold('ready', false); }
+        if (s.ph === 'calib') { eye.openSince = 0; v.hold('ready', false); }
         eye.closed = 0;
         eye.sent = false;
         eye.ph = s.ph;
         eye.rd = s.rd;
       }
       const now = performance.now();
-      if (now - eye.last < 66) return;
+      if (now - eye.last < 30) return;
       eye.last = now;
-      let blink = null;
+      let blink = eye.raw, fresh = true;
       const fake = window.__fakeFace; // (the tests use a made-up face)
       if (fake) blink = fake.face ? fake.blink : null;
       else {
         const cam = CA.voice.camera;
         if (cam && video.srcObject !== cam) { video.srcObject = cam; video.play().catch(() => {}); }
         if (detector && CA.voice.cameraOn() && video.readyState >= 2) {
-          try {
-            const res = detector.detectForVideo(video, now);
-            const bs = res.faceBlendshapes && res.faceBlendshapes[0];
-            if (bs) {
-              const get = n => { const c = bs.categories.find(x => x.categoryName === n); return c ? c.score : 0; };
-              blink = (get('eyeBlinkLeft') + get('eyeBlinkRight')) / 2;
-            }
-          } catch (e) { blink = null; }
-        }
+          if (video.currentTime === eye.vt) fresh = false; // (no new picture yet: keep the last reading, count nothing)
+          else {
+            eye.vt = video.currentTime;
+            blink = null;
+            try {
+              const res = detector.detectForVideo(video, now);
+              const bs = res.faceBlendshapes && res.faceBlendshapes[0];
+              if (bs) {
+                const get = n => { const c = bs.categories.find(x => x.categoryName === n); return c ? c.score : 0; };
+                blink = (get('eyeBlinkLeft') + get('eyeBlinkRight')) / 2;
+              }
+            } catch (e) { blink = null; }
+          }
+        } else blink = null;
       }
+      eye.raw = blink;
       eye.face = blink != null;
       v.hold('face', eye.face);
-      if (!eye.face) { eye.closed = 0; return; }
+      if (!eye.face) { eye.closed = 0; eye.openSince = 0; return; }
       eye.open = 1 - blink;
+      if (!fresh) return;
       if (s.ph === 'calib') { // ready once your eyes have been properly open for a moment (squinting doesn't count)
-        eye.cal.push(blink);
-        if (blink > eye.thr) eye.cal = [];
-        if (eye.cal.length >= 10) v.hold('ready', true);
+        if (blink > eye.thr) eye.openSince = 0;
+        else if (!eye.openSince) eye.openSince = now;
+        if (eye.openSince && now - eye.openSince >= 600) v.hold('ready', true);
+        else v.hold('ready', false);
       } else if (s.ph === 'stare') {
         eye.closed = blink > eye.thr ? eye.closed + 1 : 0;
-        if (eye.closed >= 2 && !eye.sent) { eye.sent = true; v.press('blink'); }
+        if ((eye.closed >= 2 || blink > eye.strong) && !eye.sent) { eye.sent = true; v.press('blink'); v.hold('blink', false); } // (a press, not held: so the next blink counts too)
       }
     }
 
@@ -132,6 +142,11 @@ CA.games.add('stare', {
         g.strokeStyle = v.team[i].main;
         g.lineWidth = 4;
         v.roundRect(x, 110, 400, 300, 22); g.stroke();
+        if (s.ph === 'result' && s.rw >= 0 && s.rw !== i) { // whoever blinked
+          g.fillStyle = 'rgba(255, 60, 60, .3)';
+          v.roundRect(x, 110, 400, 300, 22); g.fill();
+          v.label('😵 Blinked!', x + 200, 270, 32, '#ffffff');
+        }
         v.label(i === v.me ? 'You' : v.names[i], x + 200, 95, 18, v.team[i].light);
         g.fillStyle = 'rgba(255, 255, 255, .15)';
         for (let k = 0; k < WIN; k++) v.star(x + 170 + k * 60, 440, 12);
@@ -146,6 +161,12 @@ CA.games.add('stare', {
       else if (s.ph === 'stare') v.bigText("DON'T BLINK! " + s.t.toFixed(1) + 's', 52, 34, '#ffd23f', 1);
       else if (s.ph === 'paused') v.bigText("Paused: can't see a face", 52, 28, '#ff9a9a', 1);
       else if (s.ph === 'result') v.bigText(s.rw < 0 ? 'Nobody blinked: a draw!' : s.rw === v.me ? 'They blinked! Round to you' : 'You blinked!', 52, 32, s.rw === v.me ? '#7dff8a' : '#ff9a9a', 1);
+      if (s.ph === 'stare') { // how long until a draw
+        g.fillStyle = 'rgba(255, 255, 255, .12)';
+        v.roundRect(40, 66, 880, 8, 4); g.fill();
+        g.fillStyle = '#ffd23f';
+        v.roundRect(40, 66, Math.max(8, 880 * Math.min(1, s.t / ROUND)), 8, 4); g.fill();
+      }
       // your eyes, as the camera sees them
       if (eye.face) {
         g.fillStyle = 'rgba(0, 0, 0, .5)';

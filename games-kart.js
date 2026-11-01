@@ -48,10 +48,19 @@ CA.games.add('kart', {
       help: 'W go · S brake · A/D steer · Space boost · 3 laps, every checkpoint counts',
       helpTouch: 'Stick: up to go, down to brake, sideways to steer · Boost',
       note: LAPS + ' laps',
-      init, step, snap, bot, draw, event,
+      init, step, snap, bot, draw, event, lerp,
     });
   },
 });
+
+// The guest's smoothing between two snaps. Whole numbers (laps, checkpoints) must stay whole: halfway between
+// checkpoint 3 and 4 there is no checkpoint, and drawing it used to crash and freeze the race.
+function lerp(a, b, f) {
+  const o = CA.duel.deepLerp(a, b, f, ['h'], 80);
+  o.lead = b.lead;
+  o.k.forEach((k, i) => { k.lap = b.k[i].lap; k.cp = b.k[i].cp; k.b = b.k[i].b; k.w = b.k[i].w; });
+  return o;
+}
 
 function init() {
   const k0 = N - 5, dir = Math.atan2(PATH[0][1] - PATH[k0][1], PATH[0][0] - PATH[k0][0]);
@@ -197,7 +206,7 @@ function draw(v, s) {
   g.drawImage(art, 0, 0, W, H);
   s.k.forEach((k, i) => { // the next checkpoint for you, highlighted
     if (i !== v.me) return;
-    const idx = CP_AT[k.cp % CPS], [x, y] = PATH[idx], [x2, y2] = PATH[(idx + 1) % N], a = Math.atan2(y2 - y, x2 - x), nx = -Math.sin(a), ny = Math.cos(a);
+    const idx = CP_AT[Math.round(k.cp) % CPS], [x, y] = PATH[idx], [x2, y2] = PATH[(idx + 1) % N], a = Math.atan2(y2 - y, x2 - x), nx = -Math.sin(a), ny = Math.cos(a);
     g.strokeStyle = 'rgba(255, 235, 80, ' + (0.5 + 0.3 * Math.sin(v.now / 150)) + ')';
     g.lineWidth = 5;
     g.beginPath(); g.moveTo(x + nx * HW, y + ny * HW); g.lineTo(x - nx * HW, y - ny * HW); g.stroke();

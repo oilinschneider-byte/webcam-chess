@@ -64,6 +64,9 @@ function play(ctx) {
     '<div><button data-k="j" aria-label="Jump and shoot">W</button><button data-k="s" aria-label="Block or slap">S</button>' +
     '<button class="bb-v" data-k="v" aria-label="Quick shot, or slap">🏀</button></div></div>' +
     '<p class="g-msg" id="hbMsg"></p></div>';
+  // The court needs the corners: smaller camera blocks in this game, so shots and jumping cats don't run into them.
+  CA.camWalls.size(112, 88);
+  ctx.onEnd(() => CA.camWalls.reset());
   const cv = $('hbCanvas');
   const g = cv.getContext('2d');
   const DPR = Math.min(2, window.devicePixelRatio || 1);
