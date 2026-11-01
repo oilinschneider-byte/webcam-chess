@@ -1489,6 +1489,8 @@ body:has(#scr-play:not(.hidden)) #appBar { display: none; }
 }
 #scr-play .m-player.me { left: 0; padding-left: var(--frame); border-left: 0; border-radius: 0 18px 18px 0; }
 #scr-play .m-player.them { right: 0; padding-right: var(--frame); border-right: 0; border-radius: 18px 0 0 18px; }
+/* (Cat Hoops: smaller cameras, so the court stays clear) */
+#scr-play .match.cams-small { --cam-w: clamp(110px, 11vw, 200px); }
 #scr-play .m-player .cat-tile { width: 100%; aspect-ratio: 4 / 3; border: 3px solid var(--wall); border-radius: 12px; }
 #scr-play .m-player.fit .cat-tile { height: 100%; aspect-ratio: auto; } /* (sized to cover a game's camera wall: see fitCams in solos.js) */
 /* the game: everything inside the wall */

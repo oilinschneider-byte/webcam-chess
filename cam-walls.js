@@ -25,6 +25,7 @@ const inWall = (x, y, r = 0) => y < CAM_H + r && (x < CAM_W + r || x > W - CAM_W
 // goes, and which way the wall faces there (for bouncing off it).
 function push(x, y, r) {
   for (const b of RECTS) {
+    if (b.w <= 0) continue; // (no camera walls in this game)
     const cx = clamp(x, b.x, b.x + b.w), cy = clamp(y, b.y, b.y + b.h), dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
     if (d >= r) continue;
     if (d > 1e-6) return { x: cx + dx / d * r, y: cy + dy / d * r, nx: dx / d, ny: dy / d };
@@ -51,6 +52,7 @@ function bounce(o, r, k = 0.8) {
 function draw(g) {
   g.save();
   for (const b of RECTS) {
+    if (b.w <= 0) continue;
     const left = b.x === 0, rx = left ? [0, 18, 18, 0] : [18, 0, 0, 18];
     g.beginPath();
     g.roundRect(b.x, b.y - 20, b.w, b.h + 20, rx);

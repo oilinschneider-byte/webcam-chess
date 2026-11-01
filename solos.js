@@ -48,7 +48,7 @@ function fitCams() {
   const match = $('matchView'), cv = $('stage').querySelector('.bb-canvas');
   const blocks = [match.querySelector('.m-player.me'), match.querySelector('.m-player.them')];
   const onSides = getComputedStyle(blocks[0]).position === 'absolute'; // (not on a phone held upright: there they sit above the game)
-  const fit = !!cv && onSides && !match.classList.contains('cams-in-stage') && playRoot.offsetParent !== null;
+  const fit = !!cv && onSides && CA.camWalls.CAM_W > 0 && !match.classList.contains('cams-in-stage') && playRoot.offsetParent !== null;
   blocks.forEach(b => b.classList.toggle('fit', fit));
   if (!fit) { blocks.forEach(b => { b.style.width = b.style.height = ''; }); return; }
   const r = cv.getBoundingClientRect(), m = match.getBoundingClientRect(), k = r.width / CA.camWalls.W;
@@ -1065,6 +1065,7 @@ CA.games = {
   add(id, def) { GAMES[id] = def; },
   pick: opts => pickGame(opts), // (the tests use this to check that every game gets the same chance)
   ids: () => Object.keys(GAMES),
+  name: id => (GAMES[id] ? GAMES[id].name : id),
   kit: {
     $, setMsg, esc, sound, sleep, gauss, shuffle, startTimer, stopTimer, resetTimer, roundMatch, raceBars, fmtTime,
     L, skillOf, msOf, scoreRace, quizRounds, predictRounds,
