@@ -310,10 +310,26 @@ function run(ctx, def) {
     ctx.later(() => ctx.finish(w < 0 ? 'draw' : w === meI ? 'win' : 'lose'), 2600);
   }
 
+  // The owner's test player (testplayer.js) plays online by itself, with the Practice bot's moves.
+  const auto = online && !!window.__autoplay;
+  const autoCount = {};
+  function autoInput() {
+    try {
+      const b = own ? def.bot(mine, meI, DT, api.mine) : def.bot(host ? S : guestView(performance.now()), meI, DT, api);
+      return Object.assign({}, NO_INPUT, b || {});
+    } catch (e) { return NO_INPUT; }
+  }
+  function autoRaw() { // (the guest sends its controls in readInput()'s form)
+    const s = autoInput();
+    for (const k in s.hit) if (s.hit[k]) autoCount[k] = (autoCount[k] || 0) + 1;
+    return { mx: r2(s.mx), my: r2(s.my), ax: Math.round(s.ax), ay: Math.round(s.ay),
+      h: Object.keys(s.held).filter(k => s.held[k]).join(','), c: Object.assign({}, autoCount) };
+  }
+
   function step() {
     simT += DT;
     if (own) {
-      def.stepMine(mine, toStep(readInput(), meI), DT, api.mine);
+      def.stepMine(mine, auto ? autoInput() : toStep(readInput(), meI), DT, api.mine);
       if (botP) def.stepMine(botP, def.bot(botP, themI, DT, api.theirs) || NO_INPUT, DT, api.theirs);
       if (host && phase === 'play') {
         const snaps = [];
@@ -324,7 +340,7 @@ function run(ctx, def) {
       return;
     }
     const inp = [];
-    inp[meI] = toStep(readInput(), meI);
+    inp[meI] = auto ? autoInput() : toStep(readInput(), meI);
     inp[themI] = ctx.bot ? Object.assign({}, NO_INPUT, def.bot(S, themI, DT, api) || {}) : toStep(guestRaw, themI);
     def.step(S, inp, DT, api);
   }
@@ -526,7 +542,7 @@ function run(ctx, def) {
   if (online) {
     if (own) ctx.every(() => ctx.send({ t: 'o', p: def.snapMine(mine), T: host ? Math.round(simT * 1000) / 1000 : undefined, sc: host ? score : undefined }), def.sendMs || SEND_MS);
     else if (host) ctx.every(() => { if (S) ctx.send({ t: 's', g: def.snap(S), T: Math.round(simT * 1000) / 1000, sc: score }); }, def.sendMs || SEND_MS);
-    else ctx.every(() => ctx.send({ t: 'i', i: readInput() }), INPUT_MS);
+    else ctx.every(() => ctx.send({ t: 'i', i: auto ? autoRaw() : readInput() }), INPUT_MS);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
