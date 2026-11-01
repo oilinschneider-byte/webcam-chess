@@ -63,6 +63,11 @@ alter table camarcade.players add column if not exists prev_week_start date;
 alter table camarcade.players add column if not exists prev_week_best int not null default 0;
 alter table camarcade.players add column if not exists prev_week_best_at timestamptz;
 create index if not exists players_week on camarcade.players (week_start, week_best desc, week_best_at);
+-- Test accounts: a test player (testplayer.js) plays by itself, and is only ever paired with the one player named in
+-- test_with. Its games never count. To make one, sign up on the site as usual, then run in the SQL Editor:
+--   update camarcade.players set is_test = true, test_with = lower('YourUsername') where name_key = lower('TestAccountName');
+alter table camarcade.players add column if not exists is_test boolean not null default false;
+alter table camarcade.players add column if not exists test_with text;
 
 create table if not exists camarcade.sessions (
   token_hash text primary key,
@@ -206,7 +211,7 @@ begin
   return jsonb_build_object(
     'id', p.id, 'name', p.name, 'adult', p.born + interval '18 years' <= current_date,
     'streak', p.streak, 'best', p.best, 'wins', p.wins, 'losses', p.losses, 'draws', p.draws,
-    'friendly', p.friendly, 'disputes', p.disputes, 'profile', p.profile,
+    'friendly', p.friendly, 'disputes', p.disputes, 'profile', p.profile, 'test', p.is_test, 'test_with', p.test_with,
     'banned_until', case when p.banned_until > now() then p.banned_until end,
     'ban_reason', case when p.banned_until > now() then p.ban_reason end);
 end $$;
@@ -354,7 +359,7 @@ begin
     'opp', jsonb_build_object('id', o.id, 'name', o.name, 'streak', o.streak, 'best', o.best),
     'opp_peer', case when is_host then m.guest_peer else m.host_peer end,
     'cats_only', m.cats_only, 'same_net', m.same_net,
-    'ranked_left', case when m.same_net then 0 else greatest(0, camarcade.pair_limit() - camarcade.pair_ranked(m.host, m.guest)) end);
+    'ranked_left', case when m.same_net or o.is_test or (select is_test from camarcade.players where id = p_viewer) then 0 else greatest(0, camarcade.pair_limit() - camarcade.pair_ranked(m.host, m.guest)) end);
 end $$;
 
 create or replace function camarcade.poll(p_me bigint, p_peer text, p_avoid bigint, p_net text) returns jsonb
@@ -397,6 +402,7 @@ begin
     and q.match_id is null
     and q.seen_at > now() - interval '8 seconds'
     and not coalesce(o.banned_until > now(), false)
+    and (not o.is_test or o.test_with = me.name_key) and (not me.is_test or me.test_with = o.name_key) -- (test players)
     and not exists (select 1 from camarcade.blocks b
                     where (b.blocker = p_me and b.blocked = q.player_id) or (b.blocker = q.player_id and b.blocked = p_me))
     and not exists (select 1 from camarcade.matches f
@@ -530,6 +536,7 @@ begin
 
   if v_res = 'void' then v_why := 'void';
   elsif m.same_net then v_why := 'same_net';
+  elsif exists (select 1 from camarcade.players where id in (m.host, m.guest) and is_test) then v_why := 'test';
   elsif camarcade.pair_ranked(m.host, m.guest) >= camarcade.pair_limit() then v_why := 'pair_limit';
   elsif exists (select 1 from camarcade.players where id in (m.host, m.guest) and banned_until > now()) then v_why := 'banned';
   else v_ranked := true;
