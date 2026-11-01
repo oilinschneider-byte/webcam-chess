@@ -1822,37 +1822,46 @@ function startPairing(m) {
   };
   setMsg('searchTitle', 'Found ' + (pairing.opp.name || 'a player') + '! Connecting…');
   if (m.role === 'guest') knock(pairing);
-  else pairing.timer = setTimeout(() => { if (!conn) pairingFailed(pairing); }, 25000); // (they connect to us; through the relay it takes longer)
+  else pairing.timer = setTimeout(() => { if (!conn) pairingFailed(pairing, pairing && pairing.conn ? stuckOn(pairing.conn) : "they couldn't reach you"); }, 25000); // (they connect to us; through the relay it takes longer)
 }
 
-// Their browsers couldn't connect: tell the server, and look again.
-function pairingFailed(pr) {
+// Their browsers couldn't connect: tell the server, and look again. (why: a few words on what went wrong, shown to the player.)
+function pairingFailed(pr, why) {
   if (!pr || pairing !== pr || pr.live) return; // (once the match has started, a closed connection is handled by onConnClosed)
   clearTimeout(pr.timer);
   pairing = null;
   if (pr.conn && pr.conn !== conn) { try { pr.conn.close(); } catch (e) { /* ignore */ } }
   CA.server.call('ca_mm_fail', { p_token: CA.token, p_match: pr.id }).catch(() => {});
-  if (searching) setMsg('searchTitle', "Couldn't connect to " + (pr.opp.name || 'that player') + '. Looking again…');
+  console.warn('Pairing failed:', pr.opp.name, why);
+  if (searching) setMsg('searchTitle', "Couldn't connect to " + (pr.opp.name || 'that player') + (why ? ' (' + why + ')' : '') + '. Looking again…');
+}
+
+// What a connection that never opened got stuck on, in words.
+function stuckOn(c) {
+  const pc = c && c.peerConnection;
+  const ice = pc ? pc.iceConnectionState : 'none';
+  if (ice === 'checking' || ice === 'failed' || ice === 'disconnected') return 'a network firewall blocked it';
+  return 'their browser didn\'t answer';
 }
 
 // The guest connects to the host the server paired us with.
 function knock(pr) {
   const p = peer;
-  if (!p || p.destroyed) { pairingFailed(pr); return; }
+  if (!p || p.destroyed) { pairingFailed(pr, 'your connection dropped'); return; }
   let done = false;
   let c = null;
-  const onErr = err => { if (err.type === 'peer-unavailable' && String(err.message || '').includes(pr.oppPeer)) giveUp(); };
-  const timer = setTimeout(giveUp, 20000);
+  const onErr = err => { if (err.type === 'peer-unavailable' && String(err.message || '').includes(pr.oppPeer)) giveUp('their browser had disconnected'); };
+  const timer = setTimeout(() => giveUp(stuckOn(c)), 20000);
   function finish() {
     done = true;
     clearTimeout(timer);
     p.off('error', onErr);
   }
-  function giveUp() {
+  function giveUp(why) {
     if (done) return;
     finish();
     if (c) { try { c.close(); } catch (e) { /* ignore */ } }
-    pairingFailed(pr);
+    pairingFailed(pr, why);
   }
   p.on('error', onErr);
   try { c = p.connect(pr.oppPeer, CONN_OPTS); } catch (e) { giveUp(); return; }
@@ -1862,7 +1871,7 @@ function knock(pr) {
   c.on('data', msg => {
     if (conn === c) { onNet(msg); return; }
     if (done || !msg) return;
-    if (msg.t === 'busy') { giveUp(); return; }
+    if (msg.t === 'busy') { giveUp(msg.v && msg.v !== PROTOCOL ? 'one of you has an older version: refresh with Ctrl+Shift+R' : 'they were busy'); return; }
     if (msg.t === 'welcome' && msg.match === pr.id && GAMES[msg.game]) {
       if (pairing !== pr || !searching || conn || peer !== p) { giveUp(); return; }
       finish();
@@ -1870,8 +1879,8 @@ function knock(pr) {
       commit(c, false, readCard(msg.card), msg.game, msg.seed >>> 0);
     }
   });
-  c.on('close', () => { if (conn === c) onConnClosed(); else giveUp(); });
-  c.on('error', () => giveUp());
+  c.on('close', () => { if (conn === c) onConnClosed(); else giveUp('the connection closed'); });
+  c.on('error', e => giveUp('connection error: ' + ((e && e.type) || e)));
 }
 
 // The host lets in only the player the server paired it with.
@@ -1888,7 +1897,7 @@ function onIncoming(c, p) {
       const pr = pairing;
       if (peer !== p || !searching || conn || !pr || pr.role !== 'host' || pr.conn || msg.match !== pr.id ||
           c.peer !== pr.oppPeer || msg.v !== PROTOCOL) {
-        try { c.send({ t: 'busy' }); } catch (e) { /* ignore */ }
+        try { c.send({ t: 'busy', v: PROTOCOL }); } catch (e) { /* ignore */ }
         setTimeout(() => { try { c.close(); } catch (e) { /* ignore */ } }, 400);
         return;
       }
