@@ -19,33 +19,34 @@ const r1 = v => Math.round(v * 10) / 10;
 /* ---------- the course (the same every time) ---------- */
 
 // k: 's' still, 'h' swings sideways (rg: how far, sp: how fast), 'v' bobs up and down, 'sp' has spikes in the middle, 'f' the finish.
-// Every gap and every step up is made small enough to jump (and the moving ones are allowed for).
+// Every gap and every step up is made small enough to jump (and the moving ones are allowed for). It is a hard one: small platforms, long gaps, lots of moving platforms and spikes, and few checkpoints.
 const PL = [];
 let END = 0;
 (function build() {
   let seed = 20261101;
   const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  const LEN = 6200;
+  const LEN = 7600;
   PL.push({ x: 0, y: 450, w: 470, k: 's', cp: true });
   let x = 470, y = 450, prev = 's', n = 0, sinceCp = 0;
   while (x < LEN) {
     n++;
     const prog = x / LEN, roll = rnd();
-    let k = n < 3 ? 's' : roll < 0.2 ? 'h' : roll < 0.3 ? 'v' : roll < 0.42 ? 'sp' : 's';
+    let k = n < 3 ? 's' : roll < 0.25 ? 'h' : roll < 0.38 ? 'v' : roll < 0.58 ? 'sp' : 's';
     if (prev === 'h' && k === 'h') k = 's';
-    let gap = 70 + rnd() * (40 + prog * 70);                      // 70 to 180
-    if (k === 'h') gap = 90 + rnd() * 20;                         // (it swings 60 either way)
-    if (prev === 'h') gap = 80 + rnd() * 40;
-    let ny = clamp(y + (rnd() - 0.5) * 150, 285, 475);
+    let gap = 85 + rnd() * (45 + prog * 85);                      // 85 to 215 (the longest ones need a dash, later on)
+    if (k === 'h') gap = 90 + rnd() * 10;                         // (it swings 80 either way: 10 to 180)
+    if (prev === 'h') gap = 90 + rnd() * 20;
+    let ny = clamp(y + (rnd() - 0.5) * 170, 285, 475);
     ny = Math.max(ny, y - 90);                                    // (never a step up of more than 90)
-    if (prev === 'v') ny = Math.max(ny, y - 45);
-    let w = 120 + rnd() * (130 - prog * 50);
+    if (gap > 170) ny = Math.max(ny, y - 15);                     // (and hardly any step up after a very long gap)
+    if (prev === 'v') ny = Math.max(ny, y - 30);
+    const w = 90 + rnd() * (90 - prog * 30);                      // (small platforms)
     const p = { x: x + gap, y: ny, w, k };
-    if (k === 'h') { p.w = 140; p.rg = 60; p.sp = 1.1 + rnd() * 0.8; p.ph = rnd() * 6.28; }
-    if (k === 'v') { p.y = clamp(ny, 330, 460); p.w = 150; p.rg = 45; p.sp = 1 + rnd() * 0.8; p.ph = rnd() * 6.28; }
-    if (k === 'sp') { p.w = 250 + rnd() * 60; p.sx = p.x + p.w / 2 - 22; }
+    if (k === 'h') { p.w = 110; p.rg = 80; p.sp = 1.4 + rnd() * 1; p.ph = rnd() * 6.28; }
+    if (k === 'v') { p.y = clamp(ny, 340, 440); p.w = 120; p.rg = 60; p.sp = 1.3 + rnd() * 0.9; p.ph = rnd() * 6.28; }
+    if (k === 'sp') { p.w = 250 + rnd() * 40; p.sw = 66; p.sx = p.x + p.w / 2 - 33; }
     sinceCp++;
-    if (k === 's' && sinceCp >= 6) { p.cp = true; sinceCp = 0; }
+    if (k === 's' && sinceCp >= 9) { p.cp = true; sinceCp = 0; }
     PL.push(p);
     x = p.x + p.w;
     y = p.y;
@@ -54,6 +55,7 @@ let END = 0;
   const f = { x: x + 100, y: Math.min(y, 440), w: 460, k: 'f' };
   PL.push(f);
   END = f.x + 230;
+  if (window.__testHooks) window.__PL = PL;
 })();
 
 const posOf = (p, t) => {
@@ -150,7 +152,7 @@ function stepCat(s, c, i, n, dt, api) {
   if (!wasGround && c.ground) api.ev('land', { x: c.x, y: c.y });
   for (const p of PL) { // spikes
     if (p.k !== 'sp') continue;
-    if (c.x > p.sx - 8 && c.x < p.sx + 52 && c.y > p.y - 16 && c.y < p.y + 6 && c.inv <= 0) { respawn(s, c, i, api, 'spikes'); return; }
+    if (c.x > p.sx - 8 && c.x < p.sx + p.sw + 8 && c.y > p.y - 16 && c.y < p.y + 6 && c.inv <= 0) { respawn(s, c, i, api, 'spikes'); return; }
   }
   if (c.y > H + 140) respawn(s, c, i, api, 'fell');
 }
@@ -195,7 +197,7 @@ function bot(s, i, dt, api) {
     if (under) {
       const edge = under.pb.x + under.p.w - c.x;
       if (edge < 16 + (1 - api.skill) * 10 - st.late) jump = true;
-      if (under.p.k === 'sp' && under.p.sx - c.x < 70 && under.p.sx - c.x > -30) jump = true; // (spikes ahead: jump early, they're 44 wide)
+      if (under.p.k === 'sp' && under.p.sx - c.x < 80 && under.p.sx - c.x > -30) jump = true; // (spikes ahead: jump early, they're 66 wide)
       for (const q of PL) { // a step up close ahead
         const qb = posOf(q, s.t);
         if (qb.x > c.x && qb.x - c.x < 70 && qb.y < c.y - 30 && qb.x > under.pb.x) { jump = true; break; }
@@ -266,7 +268,7 @@ function drawPlat(v, p, j, t) {
   if (moving) { g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.setLineDash([8, 6]); v.roundRect(x, y, p.w, 22, 8); g.stroke(); g.setLineDash([]); v.label(p.k === 'h' ? '↔' : '↕', x + p.w / 2, y + 11, 14, '#ffd23f'); }
   if (p.k === 'sp') { // spikes
     g.fillStyle = '#d9dde8'; g.strokeStyle = '#6b7080'; g.lineWidth = 1.5;
-    for (let k = 0; k < 4; k++) { const sx = p.sx - cam + k * 11; g.beginPath(); g.moveTo(sx, y); g.lineTo(sx + 5.5, y - 16); g.lineTo(sx + 11, y); g.closePath(); g.fill(); g.stroke(); }
+    for (let k = 0; k < p.sw / 11; k++) { const sx = p.sx - cam + k * 11; g.beginPath(); g.moveTo(sx, y); g.lineTo(sx + 5.5, y - 16); g.lineTo(sx + 11, y); g.closePath(); g.fill(); g.stroke(); }
   }
 }
 
