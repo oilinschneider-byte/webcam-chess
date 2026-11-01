@@ -860,6 +860,37 @@ begin
   insert into camarcade.visits (day, visitor, net) values (current_date, p_visitor, camarcade.net()) on conflict do nothing;
 end $$;
 
+-- A relay login for a logged-in player, so two browsers can still connect when a network (like school Wi-Fi) blocks
+-- direct connections. It comes from Cloudflare's TURN service and expires after 12 hours. The Cloudflare API token
+-- that makes these is kept in Supabase's Vault (never in this file or on the website); to put it there, run once:
+--   select vault.create_secret('<the API token>', 'cloudflare_turn_token');
+-- Without it this returns null, and players only connect directly.
+create extension if not exists http with schema extensions;
+
+create or replace function camarcade.turn_key_id() returns text language sql immutable as $$ select '876846b915cadcbc7a4ae4bc4f2af4ef' $$;
+
+create or replace function public.ca_turn(p_token text) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_id bigint := camarcade.auth(p_token);
+  v_secret text;
+  r extensions.http_response;
+begin
+  select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'cloudflare_turn_token' limit 1;
+  if v_secret is null then return null; end if;
+  select * into r from extensions.http((
+    'POST',
+    'https://rtc.live.cloudflare.com/v1/turn/keys/' || camarcade.turn_key_id() || '/credentials/generate-ice-servers',
+    array[extensions.http_header('Authorization', 'Bearer ' || v_secret)],
+    'application/json',
+    '{"ttl": 43200}')::extensions.http_request);
+  if r.status not between 200 and 299 then
+    raise warning 'Cloudflare TURN answered %: %', r.status, left(r.content, 200);
+    return null;
+  end if;
+  return r.content::jsonb -> 'iceServers';
+end $$;
+
 -- For the test script: which internet-connection id the server sees, worked out from each header it could use.
 -- (Only scrambled ids come back, never an IP address.)
 create or replace function public.ca_net_check() returns jsonb
@@ -884,7 +915,8 @@ begin
     'ca_sign_up(text, text, int, int, jsonb)', 'ca_log_in(text, text)', 'ca_log_out(text)', 'ca_me(text)',
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
-    'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()'
+    'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
+    'ca_turn(text)'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);

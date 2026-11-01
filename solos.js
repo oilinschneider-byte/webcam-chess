@@ -12,7 +12,8 @@ const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('
 const PROTOCOL = 37;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
-if (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) PEER_OPTS.config = { iceServers: CAMARCADE_CONFIG.iceServers }; // (relay for blocked networks)
+const BASE_ICE = (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) || [];
+const RELAY_MS = 6 * 3600e3;      // a relay login from the server is good for 12 hours; get a new one after 6
 const CONN_OPTS = { reliable: true, serialization: 'json' };
 const POLL_MS = 1500;             // how often a searching player asks the server for a match
 const PAIR_LIMIT = 3;             // games a day between the same two players that count (the server decides; this is for messages)
@@ -1740,9 +1741,22 @@ function startSearch() {
     });
 }
 
-function openPeer(gen) {
+// The Cloudflare relay login (see ca_turn in server/schema.sql), for networks that block direct connections.
+// Without one (no answer within a few seconds, or the server has none), players still connect directly.
+let relay = null, relayAt = 0;
+async function peerOpts() {
+  if (!relay || Date.now() - relayAt > RELAY_MS) {
+    const got = await Promise.race([CA.server.call('ca_turn', { p_token: CA.token }).catch(() => null), sleep(4000).then(() => null)]);
+    if (got) { relay = [].concat(got); relayAt = Date.now(); }
+  }
+  return Object.assign({}, PEER_OPTS, { config: { iceServers: BASE_ICE.concat(relay || []) } });
+}
+
+async function openPeer(gen) {
+  const opts = await peerOpts();
+  if (!searching || gen !== searchGen) throw new Error('cancelled');
   return new Promise((resolve, reject) => {
-    const p = new Peer(PEER_PREFIX + randomId(), PEER_OPTS);
+    const p = new Peer(PEER_PREFIX + randomId(), opts);
     let settled = false;
     p.on('open', () => {
       if (settled) return;
