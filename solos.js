@@ -48,7 +48,14 @@ function fitCams() {
   const match = $('matchView'), cv = $('stage').querySelector('.bb-canvas');
   const blocks = [match.querySelector('.m-player.me'), match.querySelector('.m-player.them')];
   const onSides = getComputedStyle(blocks[0]).position === 'absolute'; // (not on a phone held upright: there they sit above the game)
-  const fit = !!cv && onSides && CA.camWalls.CAM_W > 0 && !match.classList.contains('cams-in-stage') && playRoot.offsetParent !== null;
+  if (!!cv && onSides && CA.camWalls.alignY > 0 && playRoot.offsetParent !== null) { // (Cat Hoops: normal 4:3 cameras, as big as reaches the top of the backboards)
+    const r = cv.getBoundingClientRect(), k = r.width / CA.camWalls.W;
+    const tileH = Math.max(60, r.top + CA.camWalls.alignY * k - blocks[0].getBoundingClientRect().top - 22);
+    const w = Math.round(Math.min(tileH * 4 / 3 + 24, innerWidth * 0.4));
+    blocks.forEach(b => { b.classList.remove('fit'); b.style.height = ''; b.style.width = w + 'px'; });
+    return;
+  }
+  const fit = !!cv && onSides && CA.camWalls.CAM_W > 0 &&!match.classList.contains('cams-in-stage') && playRoot.offsetParent !== null;
   blocks.forEach(b => b.classList.toggle('fit', fit));
   if (!fit) { blocks.forEach(b => { b.style.width = b.style.height = ''; }); return; }
   const r = cv.getBoundingClientRect(), m = match.getBoundingClientRect(), k = r.width / CA.camWalls.W;

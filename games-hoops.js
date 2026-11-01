@@ -66,6 +66,7 @@ function play(ctx) {
     '<p class="g-msg" id="hbMsg"></p></div>';
   // The court needs the corners: the camera blocks are smaller in this game (normal square-ish cameras, no walls in the court).
   CA.camWalls.size(0, 0);
+  CA.camWalls.alignY = BOARD_TOP; // (the camera blocks reach down to the top of the backboards)
   const mvEl = document.getElementById("matchView");
   mvEl.classList.add("cams-small");
   ctx.onEnd(() => { CA.camWalls.reset(); mvEl.classList.remove("cams-small"); });

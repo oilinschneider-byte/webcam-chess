@@ -7,6 +7,7 @@
 
 const W = 960, H = 540, DEF_W = 164, DEF_H = 162;
 let CAM_W = DEF_W, CAM_H = DEF_H;
+let alignY = 0; // (Cat Hoops: the camera blocks grow down to this line of the court: the top of the backboards)
 const RECTS = [{ x: 0, y: 0, w: CAM_W, h: CAM_H }, { x: W - CAM_W, y: 0, w: CAM_W, h: CAM_H }];
 // A game that needs more room (Cat Hoops) can make the walls, and so the camera blocks, smaller while it plays.
 function size(w, h) {
@@ -78,6 +79,6 @@ function draw(g) {
   g.restore();
 }
 
-CA.camWalls = { W, H, get CAM_W() { return CAM_W; }, get CAM_H() { return CAM_H; }, RECTS, inWall, push, bounce, draw, size, reset: () => size(DEF_W, DEF_H) };
+CA.camWalls = { W, H, get CAM_W() { return CAM_W; }, get CAM_H() { return CAM_H; }, RECTS, inWall, push, bounce, draw, size, get alignY() { return alignY; }, set alignY(v) { alignY = v; }, reset: () => { size(DEF_W, DEF_H); alignY = 0; } };
 
 })();
