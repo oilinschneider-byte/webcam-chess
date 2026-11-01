@@ -1,16 +1,16 @@
-/* Classic Games: Poop Showdown. A silly cartoon arena with two cats with big butts and really floppy arms. You can't
+/* Classic Games: Poop Showdown. A silly cartoon arena with two cats with big butts. You can't
    poop at somebody who is in front of you: turn your butt toward the other cat (just walk away from them, your cat
-   faces the way it walks), then press Space. You strain for a moment (green fart smoke!) and fire a powerful poop out the
+   faces the way it walks), then left-click. You strain for a moment (green fart smoke!) and fire a powerful poop out the
    back. A poop hit takes a third of your health and knocks you away; poops that meet in the air splat each other. Jump
-   over theirs. First to win 2 rounds. (The host's app runs the fight: see games-duel.js.) */
+   over theirs. Right-click is a short-range pee in front of you that leaves the other cat dizzy for a second. Space or W jumps. First to win 2 rounds. (The host's app runs the fight: see games-duel.js.) */
 (() => {
 'use strict';
 
-const F = CA.floppy;
 const W = 960, H = 540, GROUND = 470;
 const G = 2100, RUN = 270, ACCEL = 2600, AIR_ACCEL = 1500, JUMP = 770;
 const HP = 100, DMG = 34, RELOAD = 1.1, STRAIN = 0.3;
 const SHOT_V = 840, SHOT_G = 430, SHOT_R = 13;
+const PEE_RANGE = 170, PEE_TIME = 0.4, PEE_WAIT = 2.6, DIZZY = 1;   // the pee only reaches just in front of you
 const WIN = 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const approach = (v, to, d) => (v < to ? Math.min(to, v + d) : Math.max(to, v - d));
@@ -18,13 +18,13 @@ const r1 = v => Math.round(v * 10) / 10;
 
 CA.games.add('poop', {
   name: 'Poop Showdown', icon: '💩',
-  blurb: 'Two cats with big butts and floppy arms! Turn your butt toward the other cat (walk away from them) and press Space to blast a powerful poop out the back, with green fart smoke. Jump over theirs! First to win 2 rounds.',
+  blurb: 'Two cats with big butts! Turn your butt toward the other cat (walk away from them) and LEFT-CLICK to blast a powerful poop out the back, with green fart smoke. RIGHT-CLICK to pee in front of you: a short spray that makes them dizzy for a second. Space jumps over theirs! First to win 2 rounds.',
   start(ctx) {
     CA.duel.run(ctx, {
-      id: 'poop',
-      pad: { stick: true, buttons: [{ k: 'u', label: '⤒ Jump' }, { k: 'a', label: '💩 Poop', main: true }] },
-      help: 'A/D walk (your cat faces the way it walks) · turn your BUTT toward them, then Space fires a poop out the back · W jumps over theirs · first to 2 rounds',
-      helpTouch: 'Stick walks · face away from them, then Poop! · Jump over theirs',
+      id: 'poop', mouse: true,
+      pad: { stick: true, buttons: [{ k: 'a', label: '⤒ Jump' }, { k: 'alt', label: '💦 Pee' }, { k: 'fire', label: '💩 Poop', main: true }] },
+      help: 'A/D walk (your cat faces the way it walks) · turn your BUTT toward them, then LEFT-CLICK fires a poop out the back · RIGHT-CLICK pees in front of you (dizzy!) · Space or W jumps · first to 2 rounds',
+      helpTouch: 'Stick walks · face away from them, then Poop! · Pee when they are close in front of you · Jump over theirs',
       note: 'First to ' + WIN + ' rounds',
       init, step, snap, bot, draw, event,
     });
@@ -32,7 +32,7 @@ CA.games.add('poop', {
 });
 
 function newCat(x, face) {
-  return { x, y: GROUND, vx: 0, vy: 0, ground: true, face, hp: HP, strain: 0, rel: 0.8, fa: 0 };
+  return { x, y: GROUND, vx: 0, vy: 0, ground: true, face, hp: HP, strain: 0, rel: 0.8, fa: 0, pe: 0, pc: 0, peHit: false, dz: 0 };
 }
 
 function init(api) {
@@ -61,15 +61,30 @@ function shoot(s, c, i, api) {
 function stepCat(s, c, i, n, dt, api) {
   c.rel = Math.max(0, c.rel - dt);
   c.fa = Math.max(0, c.fa - dt);
+  c.pc = Math.max(0, c.pc - dt);
+  c.dz = Math.max(0, c.dz - dt);
   if (c.strain > 0) { // straining: stuck for a moment, rear end wiggling
     c.strain -= dt;
     c.vx *= Math.pow(0.02, dt);
     if (c.strain <= 0) shoot(s, c, i, api);
+  } else if (c.pe > 0) { // peeing: a short spray in front of you, it makes the other cat dizzy
+    c.pe -= dt;
+    c.vx *= Math.pow(0.02, dt);
+    const o = s.cats[1 - i];
+    if (!c.peHit && (o.x - c.x) * c.face > 0 && Math.abs(o.x - c.x) < PEE_RANGE && Math.abs(o.y - c.y) < 80) {
+      c.peHit = true;
+      o.dz = DIZZY;
+      o.strain = 0;
+      o.pe = 0;
+      api.ev('dizzy', { x: o.x, y: o.y - 118, i: 1 - i });
+    }
   } else {
-    if (n.mx) c.face = n.mx > 0 ? 1 : -1;
-    c.vx = approach(c.vx, n.mx * RUN, (c.ground ? ACCEL : AIR_ACCEL) * dt);
-    if (c.ground && (n.hit.u || n.my < -0.7)) { c.vy = -JUMP; c.ground = false; api.ev('jump', {}); }
-    if (n.hit.a && c.rel <= 0) { c.strain = STRAIN; c.fa = 1; api.ev('strain', { x: c.x - c.face * 36, y: c.y - 30 }); }
+    const dizzy = c.dz > 0, mx = dizzy ? -n.mx * 0.5 : n.mx; // (dizzy: you stumble the wrong way, slowly, and can't do anything else)
+    if (mx) c.face = mx > 0 ? 1 : -1;
+    c.vx = approach(c.vx, mx * RUN, (c.ground ? ACCEL : AIR_ACCEL) * dt);
+    if (!dizzy && c.ground && (n.hit.u || n.hit.a || n.my < -0.7)) { c.vy = -JUMP; c.ground = false; api.ev('jump', {}); }
+    if (!dizzy && n.hit.fire && c.rel <= 0) { c.strain = STRAIN; c.fa = 1; api.ev('strain', { x: c.x - c.face * 36, y: c.y - 30 }); }
+    if (!dizzy && n.hit.alt && c.pc <= 0) { c.pe = PEE_TIME; c.pc = PEE_WAIT; c.peHit = false; api.ev('pee', { x: c.x + c.face * 30, y: c.y - 34, d: c.face }); }
   }
   c.vy += G * dt;
   c.x += c.vx * dt;
@@ -139,7 +154,7 @@ function step(s, inp, dt, api) {
 function snap(s) {
   return {
     rd: s.round, w: s.wins, ph: s.phase, rw: s.rw,
-    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), f: c.face, g: c.ground ? 1 : 0, hp: c.hp, st: c.strain > 0 ? 1 : 0, rl: r1(c.rel), fa: c.fa > 0 ? 1 : 0 })),
+    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), f: c.face, g: c.ground ? 1 : 0, hp: c.hp, st: c.strain > 0 ? 1 : 0, rl: r1(c.rel), fa: c.fa > 0 ? 1 : 0, pe: c.pe > 0 ? 1 : 0, pc: r1(c.pc), dz: c.dz > 0 ? 1 : 0 })),
     sh: s.shots.map(sh => ({ x: Math.round(sh.x), y: Math.round(sh.y), a: r1(sh.a * 8) })),
   };
 }
@@ -161,7 +176,10 @@ function bot(s, i, dt, api) {
     // face away from them (walking away does it); only come back toward them if they are very far
     st.mx = dist > 560 ? dir * 0.6 : c.face === dir ? -dir : (dist < 300 ? -dir * 0.5 : -dir * 0.12);
     if (c.x < 90 && dir > 0 && c.face === dir) st.mx = -dir; // (backed into a wall: just turn)
-    if (c.face !== dir && c.rel <= 0 && c.strain <= 0 && Math.abs(o.y - c.y) < 100 && Math.random() < 0.2 + 0.6 * api.skill) out.hit.a = true;
+    if (c.face !== dir && c.rel <= 0 && c.strain <= 0 && Math.abs(o.y - c.y) < 100 && Math.random() < 0.2 + 0.6 * api.skill) out.hit.fire = true;
+    if (dist < PEE_RANGE - 20 && c.pc <= 0 && c.dz <= 0 && Math.abs(o.y - c.y) < 70 && Math.random() < 0.3 + 0.5 * api.skill) { // they're close: turn toward them and pee
+      if (c.face === dir) out.hit.alt = true; else st.mx = dir * 0.2;
+    }
     for (const sh of s.shots) { // an incoming poop: jump over it
       if (sh.o === i || st.jump > 0 || !c.ground) continue;
       if (Math.sign(sh.vx) === Math.sign(c.x - sh.x) && Math.abs(sh.x - c.x) < 260 && Math.abs(sh.x - c.x) > 60 && Math.abs(sh.y - (c.y - 40)) < 90 && Math.random() < 0.15 + 0.6 * api.skill) { out.hit.u = true; st.jump = 0.8; }
@@ -175,9 +193,10 @@ function bot(s, i, dt, api) {
 
 const puffs = [];                                     // green smoke (just for show, on each screen)
 const puddles = [];
-const vis = [null, null];                             // each cat's floppy arms (just for show: they swing with the cat)
+const drops = [];                                     // pee (just for show)
 let emit = [0, 0], lastRd = -1;
 
+function addDrop(x, y, vx, vy) { drops.push({ x, y, vx, vy, life: 0.55, max: 0.55 }); if (drops.length > 160) drops.shift(); }
 function addPuff(x, y, vx, vy, r, life) { puffs.push({ x, y, vx, vy, r, life, max: life }); if (puffs.length > 140) puffs.shift(); }
 
 function event(v, e) {
@@ -197,8 +216,10 @@ function event(v, e) {
   }
   if (e.type === 'ground') { puddles.push({ x: e.x, t0: performance.now() }); if (puddles.length > 8) puddles.shift(); v.burst(e.x, GROUND - 4, '#7a4a1f', 8, 200); v.sound([[200, 0, 0.06]]); }
   if (e.type === 'clash') { v.burst(e.x, e.y, '#7a4a1f', 14, 260); v.pop(e.x, e.y - 20, 'SPLORT!', '#c8864a'); v.sound([[300, 0, 0.05], [200, 0.04, 0.08]]); }
+  if (e.type === 'pee') { for (let k = 0; k < 26; k++) addDrop(e.x, e.y, e.d * (180 + Math.random() * 220), -90 + Math.random() * 150); v.sound([[800, 0, 0.12], [700, 0.1, 0.12], [600, 0.2, 0.12]]); v.pop(e.x + e.d * 40, e.y - 30, 'PSSSS!', '#ffe14d'); }
+  if (e.type === 'dizzy') { v.pop(e.x, e.y, 'DIZZY!', '#ffe14d'); v.sound([[300, 0, 0.1], [450, 0.08, 0.1], [300, 0.16, 0.1]]); }
   if (e.type === 'jump') v.sound([[500, 0, 0.04]]);
-  if (e.type === 'round') { v.note('Round ' + e.n + ' · first to ' + WIN); puffs.length = 0; puddles.length = 0; }
+  if (e.type === 'round') { v.note('Round ' + e.n + ' · first to ' + WIN); puffs.length = 0; puddles.length = 0; drops.length = 0; }
 }
 
 function drawBg(v) {
@@ -246,17 +267,13 @@ function drawButt(v, i, c) {
 
 function drawCat(v, s, i, c) {
   const g = v.g;
-  if (!vis[i] || vis[i].fur !== v.looks[i].fur) vis[i] = { fur: v.looks[i].fur, arms: null };
-  F.stepArms(vis[i], { x: c.x, y: c.y }, Math.min(v.dt, 0.05), {
-    wild: c.st || !c.g,
-    ground: p => { if (p.y > GROUND - 2) { p.y = GROUND - 2; return true; } return false; },
-  });
+
   g.fillStyle = v.team[i].main; g.globalAlpha = 0.3;
   g.beginPath(); g.ellipse(c.x, GROUND + 6, 40, 9, 0, 0, Math.PI * 2); g.fill();
   g.globalAlpha = 1;
   drawButt(v, i, c);
-  v.catSide(i, c.x, c.y, 1, { lookRight: c.f > 0, tilt: c.st ? Math.sin(v.now / 30) * 0.05 : 0 });
-  F.drawArms(g, vis[i], x => x);
+  v.catSide(i, c.x, c.y, 1, { lookRight: c.f > 0, tilt: c.st ? Math.sin(v.now / 30) * 0.05 : c.dz ? Math.sin(v.now / 90) * 0.14 : 0 });
+  if (c.dz) { g.fillStyle = '#ffe14d'; for (let k = 0; k < 3; k++) { const a = v.now / 150 + k * 2.1; v.star(c.x + Math.cos(a) * 26, c.y - 104 + Math.sin(a) * 8, 7); } } // dizzy: stars going round the head
   const sense = c.rl > 0 ? 1 - clamp(c.rl / RELOAD, 0, 1) : 1; // the reload meter
   g.fillStyle = 'rgba(40, 20, 10, .6)'; v.roundRect(c.x - 24, c.y - 118, 48, 8, 4); g.fill();
   g.fillStyle = sense >= 1 ? '#9be564' : '#c8a46a'; v.roundRect(c.x - 23, c.y - 117, Math.max(3, 46 * sense), 6, 3); g.fill();
@@ -300,6 +317,18 @@ function draw(v, s) {
   });
   s.c.forEach((c, i) => drawCat(v, s, i, c));
   drawPuffs(v);
+  { // the pee
+    const dt = Math.min(v.dt, 0.05);
+    s.c.forEach(c => { if (c.pe) for (let k = 0; k < 2; k++) addDrop(c.x + c.f * 32, c.y - 34, c.f * (160 + Math.random() * 220), -70 + Math.random() * 130); });
+    for (let k = drops.length - 1; k >= 0; k--) {
+      const d = drops[k];
+      d.life -= dt;
+      if (d.life <= 0 || d.y > GROUND) { drops.splice(k, 1); continue; }
+      d.vy += 700 * dt; d.x += d.vx * dt; d.y += d.vy * dt;
+      g.fillStyle = 'rgba(255, 225, 60, ' + (0.4 + 0.6 * d.life / d.max) + ')';
+      g.beginPath(); g.arc(d.x, d.y, 3.2, 0, Math.PI * 2); g.fill();
+    }
+  }
   s.sh.forEach(p => {
     g.save();
     g.translate(p.x, p.y);
@@ -324,7 +353,7 @@ function draw(v, s) {
   const mine = s.c[v.me], them = s.c[1 - v.me];
   if (mine && s.ph === 'fight') {
     const facingAway = them && (them.x - mine.x) * mine.f < 0;
-    v.msg(mine.rl > 0 ? 'Reloading…' : facingAway ? 'Your butt is aimed at them: press Space to POOP!' : 'Turn around (walk away from them) to aim your butt, then press Space');
+    v.msg(mine.dz ? 'You are dizzy!' : mine.rl > 0 ? 'Reloading…' : facingAway ? 'Your butt is aimed at them: LEFT-CLICK to POOP! (right-click pees in front of you)' : 'Walk away from them to aim your butt, then LEFT-CLICK · RIGHT-CLICK pees in front of you');
   }
 }
 
