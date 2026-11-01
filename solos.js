@@ -1943,7 +1943,7 @@ function commit(c, asHost, card, game, seed) {
   isHost = asHost;
   // (Their name and streak come from the server, so nobody can pretend to be someone else.)
   opp = Object.assign(card, { id: pairing.opp.id, name: pairing.opp.name || card.name, streak: pairing.opp.streak | 0 });
-  showFace = false; // every new opponent starts out seeing your cat
+  showFace = CA.voice.faceWanted() && CA.voice.camWanted(); // your cat, unless you chose "Show my face" before (only sent where cameras are allowed)
   muteThem = false;
   hideThem = false;
   lastSeen = Date.now();
@@ -2301,12 +2301,14 @@ $('faceBtn').addEventListener('click', async () => {
   if (!canShare()) return;
   if (showFace) {
     showFace = false;
-    CA.toast('Now ' + opp.name + ' sees your cat. 🐱');
+    CA.voice.setFaceWanted(false);
+    CA.toast('Now ' + opp.name + ' sees your cat. 🐱 (Your next opponents will too.)');
   } else {
     if (!CA.voice.cameraOn()) await CA.voice.setCamWanted(true);
     if (!CA.voice.cameraOn() || !canShare()) { updateTiles(); return; } // (the camera is blocked: that has its own message)
     showFace = true;
-    CA.toast(opp.name + ' can see you now. 📷');
+    CA.voice.setFaceWanted(true);
+    CA.toast(opp.name + ' can see you now. 📷 (Your next opponents will too, until you switch back to your cat.)');
   }
   mediaChanged();
 });

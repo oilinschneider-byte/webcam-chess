@@ -23,6 +23,7 @@ const CACHE_KEY = 'camarcade-me';
 const LAST_USER_KEY = 'camarcade-last-user';
 const MEDIA_KEY = 'camarcade-media';
 const CAMERA_KEY = 'camarcade-camera';
+const FACE_KEY = 'camarcade-face';           // 'on': other players see your camera from the start of each match
 const DEVICE_KEY = 'camarcade-device';
 const PBKDF2_ROUNDS = 150000;
 
@@ -473,8 +474,9 @@ function logOut() {
   if (token) CAServer.call('ca_log_out', { p_token: token }).catch(() => {});
   ssDel(TOKEN_KEY);
   ssDel(CACHE_KEY);
-  ssDel(MEDIA_KEY);
-  ssDel(CAMERA_KEY);
+  lsDel(MEDIA_KEY);
+  lsDel(CAMERA_KEY);
+  lsDel(FACE_KEY);
   lsDel(REMEMBER_KEY);
   lsDel(CACHE_KEY);
   clearInterval(pingTimer);
@@ -755,16 +757,19 @@ const voice = {
   raf: 0,
   listeners: new Set(),
 
-  choice() { return ssGet(MEDIA_KEY); },           // 'on' | 'off' | null (not asked yet this visit)
-  setChoice(v) { ssSet(MEDIA_KEY, v); },
+  choice() { return lsGet(MEDIA_KEY); },           // 'on' | 'off' | null (not asked yet; remembered between visits)
+  setChoice(v) { lsSet(MEDIA_KEY, v); },
   micOn() { return !!this.stream && this.stream.getAudioTracks().some(t => t.enabled && t.readyState === 'live'); },
   hasMic() { return !!this.stream && this.stream.getAudioTracks().some(t => t.readyState === 'live'); },
   cameraOn() { return !!this.camera && this.camera.getVideoTracks().some(t => t.readyState === 'live'); },
 
   // Did you allow the camera (and not switch to your cat since)? Then it turns on whenever you're in a game.
-  camWanted() { return ssGet(CAMERA_KEY) === 'on'; },
+  camWanted() { return lsGet(CAMERA_KEY) === 'on'; },
+  // Did you pick "Show my face"? Then every match where cameras are allowed starts with your face showing.
+  faceWanted() { return lsGet(FACE_KEY) === 'on'; },
+  setFaceWanted(on) { lsSet(FACE_KEY, on ? 'on' : 'off'); },
   setCamWanted(on) {
-    ssSet(CAMERA_KEY, on ? 'on' : 'off');
+    lsSet(CAMERA_KEY, on ? 'on' : 'off');
     emitMedia();
     return this.syncCamera();
   },
@@ -779,7 +784,7 @@ const voice = {
         await this.startCamera();
       } catch (err) {
         console.warn('Camera error:', err);
-        ssSet(CAMERA_KEY, 'off');
+        lsSet(CAMERA_KEY, 'off');
         emitMedia();
         toast(cameraErrorText(err));
       }
@@ -807,7 +812,7 @@ const voice = {
     }
     if (s.getAudioTracks().length) this.useMic(new MediaStream(s.getAudioTracks()));
     const cam = s.getVideoTracks();
-    ssSet(CAMERA_KEY, cam.length ? 'on' : 'off');
+    lsSet(CAMERA_KEY, cam.length ? 'on' : 'off');
     if (cam.length) this.useCamera(new MediaStream(cam));
     emitMedia();
   },
