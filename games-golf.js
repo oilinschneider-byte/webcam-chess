@@ -9,7 +9,8 @@
 
 const W = 960, H = 540, M = 36;                  // the course, inside a wooden border M wide
 const BR = 8, CUP = 11;
-const V_MIN = 90, V_MAX = 900, CHARGE = 1.3;
+const V_MIN = 90, V_MAX = 900;
+const METER_T = 1.4, SWEET = 0.74, SWEET_HALF = 0.06; // the power bar swings up and down; let go in the gold part for a perfect, straight putt
 const MAX_STROKES = 8, HOLE_TIME = 60, PLAYOFF_TIME = 40;
 const SWING = 0.16;                              // seconds from letting go to the putter meeting the ball
 const CAT_DIST = 58;                             // how far behind the ball the cat stands
@@ -19,21 +20,31 @@ const rect = (x, y, w, h) => [[x, y, x + w, y], [x + w, y, x + w, y + h], [x + w
 // walls: [x1, y1, x2, y2] · sand and water: [x, y, w, h] · slope: [x, y, w, h, pushX, pushY] · bump: [x, y, radius]
 // mov: bars that slide to and fro: { x, y (where it starts from), w, h, ax, ay (how far it slides), sp (speed), ph (offset) }
 const HOLES = [
-  { name: 'Hole 1 · The Gates', tee: [115, 270], cup: [855, 290], par: 3,
+  { name: 'The Gates', tee: [115, 270], cup: [855, 290], par: 3,
     walls: [[360, M, 360, 215], [360, 325, 360, H - M], [610, M, 610, 195], [610, 315, 610, H - M]],
     sand: [[700, 345, 100, 110]], water: [], slope: [[805, 235, 100, 110, 0, -95]], bump: [[760, 215, 20]],
     mov: [{ x: 372, y: 230, w: 12, h: 80, ax: 0, ay: 82, sp: 1.7, ph: 0 }, { x: 622, y: 215, w: 12, h: 80, ax: 0, ay: 85, sp: 2.1, ph: 1.7 }] },
-  { name: 'Hole 2 · River Crossing', tee: [110, 285], cup: [860, 440], par: 4,
+  { name: 'River Crossing', tee: [110, 285], cup: [860, 440], par: 4,
     walls: [[600, M, 600, 240]],
     sand: [[690, 365, 100, 135]], water: [[380, M, 90, 216], [380, 318, 90, H - M - 318], [600, 450, 120, 54]], slope: [[520, 290, 70, 100, 0, 130]],
     bump: [[530, 262, 20], [760, 250, 24], [655, 410, 20]],
     mov: [{ x: 690, y: 230, w: 12, h: 100, ax: 0, ay: 120, sp: 1.5, ph: 0.6 }] },
-  { name: 'Hole 3 · Zigzag', tee: [110, 235], cup: [845, 440], par: 4,
+  { name: 'Zigzag', tee: [110, 235], cup: [845, 440], par: 4,
     walls: [[330, M, 330, 380], [630, 160, 630, H - M]],
     sand: [[400, 405, 160, 99]], water: [[705, 275, 80, 95]], slope: [[660, M, 264, 170, 0, 180]],
     bump: [[480, 255, 30], [805, 360, 22], [420, 330, 18]],
     mov: [{ x: 380, y: 100, w: 90, h: 14, ax: 85, ay: 0, sp: 1.5, ph: 0 }] },
-  { name: 'Playoff · Bumpers', tee: [150, 270], cup: [810, 270], par: 3,
+  { name: 'The Wormhole', tee: [110, 300], cup: [855, 300], par: 3,
+    walls: [[480, M, 480, H - M]],
+    sand: [[560, 240, 70, 120]], water: [], slope: [], bump: [[700, 300, 24], [790, 185, 18], [790, 415, 18]],
+    tele: [[340, 150, 620, 410], [340, 440, 620, 160]],
+    mov: [{ x: 755, y: 230, w: 12, h: 140, ax: 0, ay: 100, sp: 1.6, ph: 0.4 }] },
+  { name: 'Jump Ramp', tee: [110, 450], cup: [855, 235], par: 4,
+    walls: [[300, M, 300, 380]],
+    sand: [[610, 340, 110, 164]], water: [[380, M, 200, H - 2 * M]], slope: [], bump: [[760, 160, 20], [700, 285, 22]],
+    ramp: [[310, 410, 60, 90]],
+    mov: [{ x: 770, y: 300, w: 12, h: 110, ax: 0, ay: 90, sp: 1.9, ph: 1.2 }] },
+  { name: 'Bumpers', tee: [150, 270], cup: [810, 270], par: 3,
     walls: [],
     sand: [[560, 385, 120, 119]], water: [[560, M, 120, 110], [715, 430, 130, 74]], slope: [],
     bump: [[470, 180, 32], [470, 360, 32], [650, 270, 32], [745, 205, 22], [745, 335, 22]],
@@ -42,7 +53,8 @@ const HOLES = [
 // (every hole: the border, and the two camera walls in the top corners: see cam-walls.js)
 const { CAM_W, CAM_H } = CA.camWalls;
 const CAMS = [[CAM_W, M, CAM_W, CAM_H], [M, CAM_H, CAM_W, CAM_H], [W - CAM_W, M, W - CAM_W, CAM_H], [W - CAM_W, CAM_H, W - M, CAM_H]];
-HOLES.forEach(h => { h.walls = h.walls.concat(rect(M, M, W - 2 * M, H - 2 * M), CAMS); });
+HOLES.forEach(h => { h.walls = h.walls.concat(rect(M, M, W - 2 * M, H - 2 * M), CAMS); h.tele = h.tele || []; h.ramp = h.ramp || []; });
+const PLAYOFF = HOLES.length - 1;                // (the last one is the playoff hole; each match plays 3 of the others, picked and ordered at random)
 const inRect = (x, y, r) => x > r[0] && x < r[0] + r[2] && y > r[1] && y < r[1] + r[3];
 const slide = (m, t) => Math.sin(t * m.sp + m.ph);
 
@@ -51,7 +63,7 @@ CA.games.add('golf', {
   blurb: 'Same holes, same time! Aim with the mouse, hold the button to charge, let go to hit. Dodge the moving bars, stay out of the water and sand, and go slowly near the cup or the ball will lip out. Fewest strokes over 3 holes wins.',
   start(ctx) {
     CA.duel.run(ctx, {
-      id: 'golf', mouse: true, angles: ['a'], jump: 140,
+      id: 'golf', mouse: true, angles: ['a'], jump: 140, lerp,
       pad: { buttons: [{ k: 'fire', label: '⛳ Hold to charge', main: true }] },
       help: 'Aim with the mouse · hold the button to charge · let go to putt · gently near the cup! · fewest strokes wins',
       helpTouch: 'Touch where to aim, hold to charge, let go to putt',
@@ -61,8 +73,19 @@ CA.games.add('golf', {
   },
 });
 
+// The guest's smoothing between two snaps. Whole numbers (which hole, strokes, who is in the cup) must stay whole: halfway
+// between hole 0 and hole 1 there is no hole, and drawing it used to crash and freeze the game.
+function lerp(a, b, f) {
+  const o = CA.duel.deepLerp(a, b, f, ['a'], 140);
+  o.h = b.h; o.o = b.o; o.po = b.po; o.wt = b.wt; o.st = b.st;
+  o.b.forEach((x, i) => { const y = b.b[i]; x.n = y.n; x.s = y.s; x.m = y.m; x.c = y.c; x.ar = y.ar; x.lx = y.lx; x.ly = y.ly; });
+  return o;
+}
+
 function init(api) {
-  const s = { hole: -1, strokes: [[], []], balls: [], t: 0, wait: 0, playoff: false, sunkAt: [0, 0] };
+  const pool = HOLES.slice(0, PLAYOFF).map((x, k) => k);
+  for (let k = pool.length - 1; k > 0; k--) { const j = Math.floor(api.rng() * (k + 1)); [pool[k], pool[j]] = [pool[j], pool[k]]; }
+  const s = { hole: -1, order: pool.slice(0, 3).concat(PLAYOFF), strokes: [[], []], balls: [], t: 0, wait: 0, playoff: false, sunkAt: [0, 0] };
   nextHole(s, api);
   return s;
 }
@@ -70,8 +93,8 @@ function init(api) {
 function nextHole(s, api) {
   s.hole++;
   s.t = 0;
-  const h = HOLES[s.hole];
-  s.balls = [0, 1].map(() => ({ x: h.tee[0], y: h.tee[1], vx: 0, vy: 0, lx: h.tee[0], ly: h.tee[1], n: 0, sunk: false, a: -0.0, p: 0, ch: false, sw: 0, rp: 0, lv: 0 }));
+  const h = HOLES[s.order[s.hole]];
+  s.balls = [0, 1].map(() => ({ x: h.tee[0], y: h.tee[1], vx: 0, vy: 0, lx: h.tee[0], ly: h.tee[1], n: 0, sunk: false, a: -0.0, p: 0, ch: false, sw: 0, rp: 0, lv: 0, ct: 0, air: 0, perf: 0 }));
   s.sunkAt = [0, 0];
   api.ev('hole', { h: s.hole });
 }
@@ -93,16 +116,27 @@ function bounceSeg(b, x1, y1, x2, y2) {
 function roll(h, b, dt, t) {
   const sp0 = Math.hypot(b.vx, b.vy);
   if (sp0 === 0) return null;
-  for (const sl of h.slope) if (inRect(b.x, b.y, sl)) { b.vx += sl[4] * dt; b.vy += sl[5] * dt; }
-  const sand = h.sand.some(r => inRect(b.x, b.y, r));
+  const air = b.air > 0; // (in the air after a ramp: over sand, slopes, walls, bumpers and water)
+  if (air) b.air -= dt;
+  b.rampT = Math.max(0, (b.rampT || 0) - dt);
+  b.tpc = Math.max(0, (b.tpc || 0) - dt);
+  if (!air) for (const sl of h.slope) if (inRect(b.x, b.y, sl)) { b.vx += sl[4] * dt; b.vy += sl[5] * dt; }
+  const sand = !air && h.sand.some(r => inRect(b.x, b.y, r));
   const sp = Math.hypot(b.vx, b.vy);
-  const slow = (sand ? 700 : 85) + sp * (sand ? 2.2 : 0.85);
+  const slow = (sand ? 700 : air ? 30 : 85) + sp * (sand ? 2.2 : air ? 0.2 : 0.85);
   const ns = Math.max(0, sp - slow * dt);
   b.slow = ns < 15 ? (b.slow || 0) + dt : 0; // (a ball crawling against a wall on a slope counts as stopped)
-  if ((ns < 6 && !h.slope.some(sl => inRect(b.x, b.y, sl))) || b.slow > 0.6) { b.vx = 0; b.vy = 0; b.slow = 0; return Math.hypot(b.x - h.cup[0], b.y - h.cup[1]) < CUP ? 'sunk' : null; }
+  if ((ns < 6 && !air && !h.slope.some(sl => inRect(b.x, b.y, sl))) || b.slow > 0.6) { b.vx = 0; b.vy = 0; b.slow = 0; return Math.hypot(b.x - h.cup[0], b.y - h.cup[1]) < CUP ? 'sunk' : null; }
   else if (sp > 0) { b.vx *= ns / sp; b.vy *= ns / sp; }
   b.x += b.vx * dt;
   b.y += b.vy * dt;
+  if (air) { // (only the edge of the course keeps it in)
+    if (b.x < M + BR) { b.x = M + BR; b.vx = Math.abs(b.vx); }
+    if (b.x > W - M - BR) { b.x = W - M - BR; b.vx = -Math.abs(b.vx); }
+    if (b.y < M + BR) { b.y = M + BR; b.vy = Math.abs(b.vy); }
+    if (b.y > H - M - BR) { b.y = H - M - BR; b.vy = -Math.abs(b.vy); }
+    return null;
+  }
   for (const w of h.walls) bounceSeg(b, w[0], w[1], w[2], w[3]);
   for (const m of h.mov) {
     const s = slide(m, t), x = m.x + m.ax * s, y = m.y + m.ay * s;
@@ -119,6 +153,17 @@ function roll(h, b, dt, t) {
     b.y = y + ny * (r + BR + 0.1);
     const vn = b.vx * nx + b.vy * ny;
     if (vn < 0) { b.vx -= 2.15 * vn * nx; b.vy -= 2.15 * vn * ny; b.hitBump = true; }
+  }
+  // a ramp: roll onto it fast enough and the ball takes off for a moment
+  if (b.rampT <= 0 && Math.hypot(b.vx, b.vy) > 130) {
+    for (const r of h.ramp) if (inRect(b.x, b.y, r)) { b.air = 0.62; b.rampT = 1.2; b.vx *= 1.18; b.vy *= 1.18; b.jumped = true; return null; }
+  }
+  // a teleporter: in at one end, out at the other (and it can't go straight back at once)
+  if (b.tpc <= 0) {
+    for (const tl of h.tele) {
+      if (Math.hypot(b.x - tl[0], b.y - tl[1]) < 17) { b.x = tl[2]; b.y = tl[3]; b.tpc = 0.6; b.tped = true; break; }
+      if (Math.hypot(b.x - tl[2], b.y - tl[3]) < 17) { b.x = tl[0]; b.y = tl[1]; b.tpc = 0.6; b.tped = true; break; }
+    }
   }
   if (h.water.some(r => inRect(b.x, b.y, r))) return 'water';
   // The cup: a ball that's slow enough, or near enough to the middle, drops in. A faster one rolls over the edge,
@@ -137,7 +182,7 @@ function roll(h, b, dt, t) {
 }
 
 function step(s, inp, dt, api) {
-  const h = HOLES[s.hole];
+  const h = HOLES[s.order[s.hole]];
   if (s.wait > 0) { s.wait -= dt; if (s.wait <= 0) endHole(s, api); return; }
   s.t += dt;
   s.balls.forEach((b, i) => {
@@ -151,17 +196,20 @@ function step(s, inp, dt, api) {
         b.vy = Math.sin(b.a) * b.lv;
         b.lx = b.x;
         b.ly = b.y;
-        api.ev('putt', { x: b.x, y: b.y, i, p: b.rp });
+        api.ev('putt', { x: b.x, y: b.y, i, p: b.rp, pf: b.perf });
       }
       return;
     }
     const moving = b.vx || b.vy;
     if (!moving && b.n < MAX_STROKES) {
       b.a = Math.atan2(n.ay - b.y, n.ax - b.x);
-      if (n.hit.fire) b.ch = true;
-      if (b.ch && n.held.fire) b.p = Math.min(1, b.p + dt / CHARGE);
+      if (n.hit.fire) { if (!b.ch) b.ct = 0; b.ch = true; }
+      if (b.ch && n.held.fire) { b.ct += dt; const ph = (b.ct / METER_T) % 2; b.p = ph < 1 ? ph : 2 - ph; }
       if (b.ch && !n.held.fire) { // a putt: the swing starts now
-        b.lv = V_MIN + (V_MAX - V_MIN) * b.p;
+        const off = Math.abs(b.p - SWEET), perfect = off <= SWEET_HALF, miss = Math.max(0, off - SWEET_HALF);
+        b.lv = (V_MIN + (V_MAX - V_MIN) * b.p) * (perfect ? 1.06 : 1);
+        b.perf = perfect ? 1 : 0;
+        if (!perfect) b.a += (Math.random() - 0.5) * 2 * miss * 0.3; // (off the gold part: the putt wanders a little)
         b.rp = b.p;
         b.sw = SWING;
         b.n++;
@@ -174,6 +222,8 @@ function step(s, inp, dt, api) {
       const r = roll(h, b, dt / 3, s.t + k * dt / 3);
       if (b.hitWall || b.hitBump) { api.ev('bonk', { x: b.x, y: b.y, bump: b.hitBump ? 1 : 0 }); b.hitWall = b.hitBump = false; }
       if (b.lipped) { api.ev('lip', { x: h.cup[0], y: h.cup[1], i }); b.lipped = false; }
+      if (b.tped) { api.ev('tele', { x: b.x, y: b.y }); b.tped = false; }
+      if (b.jumped) { api.ev('jump', { x: b.x, y: b.y }); b.jumped = false; }
       if (r === 'water') {
         b.n++;
         api.ev('splash', { x: b.x, y: b.y, i });
@@ -220,9 +270,9 @@ function endHole(s, api) {
 
 function snap(s) {
   return {
-    h: s.hole, t: Math.round(s.t * 100) / 100, wt: s.wait > 0 ? 1 : 0, po: s.playoff ? 1 : 0, st: s.strokes,
+    h: s.hole, o: s.order, t: Math.round(s.t * 100) / 100, wt: s.wait > 0 ? 1 : 0, po: s.playoff ? 1 : 0, st: s.strokes,
     b: s.balls.map(b => ({ x: Math.round(b.x * 10) / 10, y: Math.round(b.y * 10) / 10, n: b.n, s: b.sunk ? 1 : 0, a: Math.round(b.a * 100) / 100, p: Math.round(b.p * 100) / 100, m: b.vx || b.vy || b.sw > 0 ? 1 : 0, c: b.ch ? 1 : 0,
-      sw: Math.round(Math.max(0, b.sw) / SWING * 100) / 100, rp: Math.round(b.rp * 100) / 100, lx: Math.round(b.lx != null ? b.lx : b.x), ly: Math.round(b.ly != null ? b.ly : b.y) })),
+      ar: b.air > 0 ? 1 : 0, sw: Math.round(Math.max(0, b.sw) / SWING * 100) / 100, rp: Math.round(b.rp * 100) / 100, lx: Math.round(b.lx != null ? b.lx : b.x), ly: Math.round(b.ly != null ? b.ly : b.y) })),
   };
 }
 
@@ -232,7 +282,7 @@ function bot(s, i, dt, api) {
   const b = s.balls[i];
   const st = s.bs || (s.bs = {});
   if (b.sunk || b.vx || b.vy || b.sw > 0 || s.wait > 0) { st[i] = null; return {}; }
-  const h = HOLES[s.hole];
+  const h = HOLES[s.order[s.hole]];
   if (!st[i]) {
     let best = null, bestD = Infinity;
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 45) {
@@ -263,6 +313,7 @@ function event(v, e) {
     v.sound([[700, 0, 0.03], [500, 0.02, 0.04]]);
     v.burst(e.x, e.y, '#ffffff', 4 + Math.round(6 * (e.p || 0)), 90 + 140 * (e.p || 0));
     if (e.i === v.me && (e.p || 0) > 0.7) v.shake(2);
+    if (e.pf) v.pop(e.x, e.y - 24, 'PERFECT!', '#ffd23f');
   }
   if (e.type === 'bonk') v.sound(e.bump ? [[900, 0, 0.04], [1200, 0.03, 0.05]] : [[260, 0, 0.03]]);
   if (e.type === 'splash') { v.burst(e.x, e.y, '#7fd0ff', 16, 200); v.pop(e.x, e.y - 20, 'SPLASH! +1', '#7fd0ff'); v.sound([[180, 0, 0.12], [120, 0.08, 0.15]]); }
@@ -274,6 +325,8 @@ function event(v, e) {
     v.pop(e.x, e.y - 30, (e.i === v.me ? 'You: ' : v.names[e.i] + ': ') + word, v.team[e.i].light);
     v.sound(e.n === 1 ? 'win' : 'point');
   }
+  if (e.type === 'tele') { v.ring(e.x, e.y, '#c58bff', 12); v.burst(e.x, e.y, '#c58bff', 10, 160); v.sound([[300, 0, 0.05], [900, 0.05, 0.08]]); }
+  if (e.type === 'jump') { v.pop(e.x, e.y - 20, 'WHEE!', '#ffffff'); v.sound([[500, 0, 0.05], [800, 0.05, 0.08]]); }
   if (e.type === 'hole') v.sound('notify');
 }
 
@@ -388,6 +441,18 @@ function holeArt(k) {
     b.strokeStyle = 'rgba(255,255,255,.75)';
     b.lineWidth = 2;
     b.beginPath(); b.arc(x, y, r * 0.55, 0, Math.PI * 2); b.stroke();
+  });
+  // ramps: a striped wedge pointing along the way
+  h.ramp.forEach(([x, y, w, hh]) => {
+    b.fillStyle = 'rgba(0, 0, 0, .25)';
+    b.fillRect(x + 3, y + 4, w, hh);
+    const rg = b.createLinearGradient(x, 0, x + w, 0);
+    rg.addColorStop(0, '#8a8f9c'); rg.addColorStop(1, '#e8ecf4');
+    b.fillStyle = rg;
+    b.fillRect(x, y, w, hh);
+    b.fillStyle = 'rgba(255, 210, 63, .9)';
+    for (let xx = x + 8; xx < x + w - 6; xx += 14) { b.beginPath(); b.moveTo(xx, y + hh / 2 - 10); b.lineTo(xx + 8, y + hh / 2); b.lineTo(xx, y + hh / 2 + 10); b.fill(); }
+    b.strokeStyle = '#5a5f6c'; b.lineWidth = 2; b.strokeRect(x, y, w, hh);
   });
   // the cup and its flag
   const [cx, cy] = h.cup;
@@ -527,10 +592,19 @@ function drawBall(v, x, y, i, scale, alpha) {
 }
 
 function draw(v, s) {
-  const g = v.g, hole = HOLES[s.h];
-  g.drawImage(holeArt(s.h), 0, 0, W, H);
+  const g = v.g, hole = HOLES[s.o[s.h]];
+  g.drawImage(holeArt(s.o[s.h]), 0, 0, W, H);
   if (seenHole !== s.h) { seenHole = s.h; cats[0] = cats[1] = null; trails[0].length = trails[1].length = 0; sinks[0] = sinks[1] = null; }
   hole.mov.forEach(m => drawMover(g, m, s.t));
+  hole.tele.forEach(([x1, y1, x2, y2], k) => [[x1, y1], [x2, y2]].forEach(([x, y], e) => { // teleporters: swirling pairs
+    const hue = k ? '#5ad1ff' : '#c58bff';
+    g.fillStyle = 'rgba(0, 0, 0, .35)';
+    v.dot(x, y, 19);
+    g.strokeStyle = hue;
+    g.lineWidth = 3;
+    for (let r = 0; r < 3; r++) { g.globalAlpha = 0.9 - r * 0.25; g.beginPath(); g.arc(x, y, 6 + r * 5 + Math.sin(v.now / 160 + r + e) * 1.5, v.now / 300 + r, v.now / 300 + r + 4.4); g.stroke(); }
+    g.globalAlpha = 1;
+  }));
   drawFlag(v, hole);
   const aimOf = (b, i) => (i === v.me && !v.host && !b.m ? Math.atan2(v.aim.y - b.y, v.aim.x - b.x) : b.a);
   const order = [v.them, v.me]; // (you on top)
@@ -580,15 +654,21 @@ function draw(v, s) {
       v.roundRect(b.x - 27, b.y + 18, 54, 9, 4.5); g.fill();
       g.fillStyle = b.p < 0.5 ? '#7dff8a' : b.p < 0.85 ? '#ffd23f' : '#ff5a5a';
       v.roundRect(b.x - 25, b.y + 20, Math.max(4, 50 * b.p), 5, 2.5); g.fill();
+      g.fillStyle = 'rgba(255, 210, 63, .55)'; // the gold part: let go here for a perfect putt
+      g.fillRect(b.x - 25 + 50 * (SWEET - SWEET_HALF), b.y + 19, 50 * 2 * SWEET_HALF, 7);
+      g.fillStyle = '#ffd23f';
+      g.fillRect(b.x - 25 + 50 * (SWEET - SWEET_HALF) - 1, b.y + 18, 2, 9);
+      g.fillRect(b.x - 25 + 50 * (SWEET + SWEET_HALF) - 1, b.y + 18, 2, 9);
     }
-    drawBall(v, b.x, b.y, i, 1, 1);
+    if (b.ar) { g.fillStyle = 'rgba(0, 0, 0, .3)'; g.beginPath(); g.ellipse(b.x + 3, b.y + 6, 9, 4, 0, 0, Math.PI * 2); g.fill(); }
+    drawBall(v, b.x, b.y - (b.ar ? 14 : 0), i, b.ar ? 1.25 : 1, 1);
   });
   order.forEach(i => drawPutter(v, s.b[i], i));
   // scoreboard
   g.fillStyle = 'rgba(20, 30, 20, .8)';
   v.roundRect(W / 2 - 230, 4, 460, 28, 14); g.fill();
   const tot = s.st.map(a => a.reduce((x, y) => x + y, 0));
-  v.label(hole.name + (s.po ? '' : ' · par ' + hole.par) + '  ·  ⏱ ' + Math.max(0, Math.ceil((s.po ? PLAYOFF_TIME : HOLE_TIME) - s.t)), W / 2, 18, 14, '#ffffff');
+  v.label((s.po ? 'Playoff · ' : 'Hole ' + (s.h + 1) + ' · ') + hole.name + (s.po ? '' : ' · par ' + hole.par) + '  ·  ⏱ ' + Math.max(0, Math.ceil((s.po ? PLAYOFF_TIME : HOLE_TIME) - s.t)), W / 2, 18, 14, '#ffffff');
   [0, 1].forEach(i => {
     const b = s.b[i];
     const n = tot[i] + (b.s ? 0 : b.n);

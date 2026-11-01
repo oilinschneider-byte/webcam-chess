@@ -21,7 +21,7 @@ CA.games.add('sumo', {
     CA.duel.run(ctx, {
       id: 'sumo',
       pad: { stick: true, buttons: [{ k: 'a', label: '💨 Charge', main: true }] },
-      help: 'WASD move · Space charge · push them out of the ring · first to 3 rounds',
+      help: 'WASD move · tap Space to charge, or HOLD it for a bigger shove (longer recovery) · push them out of the ring · first to 3 rounds',
       helpTouch: 'Stick moves · Charge rams them · push them out of the ring',
       note: 'First to ' + WIN + ' rounds',
       init, step, snap, bot, draw, event,
@@ -40,7 +40,7 @@ function newRound(s, api) {
   s.t = 0;
   s.phase = 'fight';
   s.rw = -1;
-  s.cats = [-1, 1].map(side => ({ x: CX + side * 110, y: CY, vx: 0, vy: 0, fx: -side, fy: 0, charge: 0, rec: 0, wait: 0.6, out: false }));
+  s.cats = [-1, 1].map(side => ({ x: CX + side * 110, y: CY, vx: 0, vy: 0, fx: -side, fy: 0, charge: 0, rec: 0, wait: 0.6, out: false, cm: 0, pw: 0 }));
   if (api) api.note('Round ' + s.round + ' · first to ' + WIN);
 }
 
@@ -59,19 +59,26 @@ function step(s, inp, dt, api) {
     c.wait = Math.max(0, c.wait - dt);
     c.rec = Math.max(0, c.rec - dt);
     if (n.mx || n.my) { const l = Math.hypot(n.mx, n.my); c.fx = n.mx / l; c.fy = n.my / l; }
-    if (n.hit.a && c.wait <= 0 && c.rec <= 0 && c.charge <= 0) {
+    // Hold Space to charge a bigger shove (and a longer recovery); a quick tap is the small one.
+    const ready = c.wait <= 0 && c.rec <= 0 && c.charge <= 0;
+    if (ready && n.held.a) c.cm = Math.min(1, (c.cm || 0) + dt / 0.8);
+    const fire = ready && (((c.cm || 0) > 0 && !n.held.a) || (n.hit.a && !n.held.a));
+    if (!ready) c.cm = 0;
+    if (fire) {
+      c.pw = c.cm || 0;
+      c.cm = 0;
       if (!n.mx && !n.my) { const dx = o.x - c.x, dy = o.y - c.y, l = Math.hypot(dx, dy) || 1; c.fx = dx / l; c.fy = dy / l; }
-      c.charge = CHARGE_TIME;
+      c.charge = CHARGE_TIME * (1 + 0.8 * c.pw);
       c.wait = CHARGE_WAIT;
       api.ev('charge', { x: c.x, y: c.y });
     }
     if (c.charge > 0) {
       c.charge -= dt;
-      c.vx = c.fx * CHARGE_SPEED;
-      c.vy = c.fy * CHARGE_SPEED;
-      if (c.charge <= 0) c.rec = RECOVER;
+      c.vx = c.fx * CHARGE_SPEED * (1 + 0.6 * c.pw);
+      c.vy = c.fy * CHARGE_SPEED * (1 + 0.6 * c.pw);
+      if (c.charge <= 0) c.rec = RECOVER * (1 + 1.6 * c.pw);
     } else {
-      const k = c.rec > 0 ? 0.25 : 1; // (tired after a charge: slow to move)
+      const k = (c.rec > 0 ? 0.25 : 1) * ((c.cm || 0) > 0 ? 0.45 : 1); // (tired after a charge, or winding one up: slow to move)
       c.vx += n.mx * ACCEL * k * dt;
       c.vy += n.my * ACCEL * k * dt;
       const sp = Math.hypot(c.vx, c.vy), top = SPEED * (c.rec > 0 ? 0.6 : 1);
@@ -98,8 +105,8 @@ function step(s, inp, dt, api) {
       const together = charging ? (va + vb) / 2 : Math.max(-SHOVE, Math.min(SHOVE, (va + vb) / 2));
       a.vx += (together - va) * nx; a.vy += (together - va) * ny;
       b.vx += (together - vb) * nx; b.vy += (together - vb) * ny;
-      if (a.charge > 0) { b.vx += nx * KNOCK; b.vy += ny * KNOCK; a.charge = 0; a.rec = RECOVER; }
-      if (b.charge > 0) { a.vx -= nx * KNOCK; a.vy -= ny * KNOCK; b.charge = 0; b.rec = RECOVER; }
+      if (a.charge > 0) { const kk = KNOCK * (1 + 1.5 * a.pw); b.vx += nx * kk; b.vy += ny * kk; a.charge = 0; a.rec = RECOVER * (1 + 1.6 * a.pw); }
+      if (b.charge > 0) { const kk = KNOCK * (1 + 1.5 * b.pw); a.vx -= nx * kk; a.vy -= ny * kk; b.charge = 0; b.rec = RECOVER * (1 + 1.6 * b.pw); }
       if (Math.abs(va - vb) > 260) api.ev('thump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, big: charging ? 1 : 0 });
     }
   }
@@ -120,7 +127,7 @@ function step(s, inp, dt, api) {
 function snap(s) {
   return {
     w: s.wins, rd: s.round, ph: s.phase, rw: s.rw, rr: Math.round(ringR(s.t) * 10) / 10,
-    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), f: c.fx >= 0 ? 1 : -1, ch: c.charge > 0 ? 1 : 0, rc: c.rec > 0 ? 1 : 0 })),
+    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), f: c.fx >= 0 ? 1 : -1, ch: c.charge > 0 ? 1 : 0, rc: c.rec > 0 ? 1 : 0, cm: Math.round((c.cm || 0) * 20) / 20 })),
   };
 }
 
@@ -204,6 +211,12 @@ function draw(v, s) {
     v.dot(c.x - 8, c.y - 6, 10);
     v.catTop(i, c.x, c.y - 12, 1.15, { ring: false, lookRight: c.f > 0, tilt: c.rc ? Math.sin(v.now / 60) * 0.15 : 0, label: false });
     v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 44, 12, i === v.me ? '#ffd23f' : '#ffffff');
+    if (c.cm > 0) { // the charge meter
+      g.fillStyle = 'rgba(0, 0, 0, .6)';
+      v.roundRect(c.x - 26, c.y - 58, 52, 9, 4.5); g.fill();
+      g.fillStyle = c.cm < 0.5 ? '#7dff8a' : c.cm < 0.85 ? '#ffd23f' : '#ff5a5a';
+      v.roundRect(c.x - 25, c.y - 57, Math.max(3, 50 * c.cm), 7, 3.5); g.fill();
+    }
   });
   v.label('🤼 ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd, W / 2, 24, 16, '#ffffff');
   if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Both out! Again' : s.rw === v.me ? 'You win the round!' : v.names[s.rw] + ' wins the round!', 96, 34, '#ffd23f', 1);

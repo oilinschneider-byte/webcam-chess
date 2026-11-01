@@ -23,7 +23,14 @@ const FISH = [
   { n: 'Old boot', i: '👢', p: 0, w: 9, win: 0.6, d: 0.05 },
   { n: 'Lobster', i: '🦞', p: 8, w: 9, win: 0.45, d: 0.78 },
   { n: 'Golden fish', i: '✨', p: 15, w: 4, win: 0.38, d: 0.95 },
+  { n: 'Electric eel', i: '⚡', p: 10, w: 5, win: 0.4, d: 0.88 },
 ];
+// What bites depends on the bait. Safe bait: mostly small, easy fish. Risky bait: the big fish, which fight much harder
+// (and often get away), plus a better chance at the golden fish. (Weights, in the order of FISH.)
+const BAIT = [[46, 30, 9, 9, 5, 1, 0], [6, 14, 24, 8, 22, 6, 20]];
+const BAIT_NAME = ['🪱 Safe bait', '🦐 Risky bait'];
+// Bigger fish make the green zone smaller.
+const zoneOf = f => ZONE * (1 - 0.38 * FISH[f].d);
 const BANK = [{ x: 150, y: 330 }, { x: 810, y: 330 }];        // where each cat sits
 const SPOT = [{ x: 380, y: 300 }, { x: 580, y: 300 }];        // where each bobber lands
 
@@ -33,9 +40,10 @@ function hash(seed, n, k) {
   x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x846ca68b) >>> 0; x ^= x >>> 16;
   return (x >>> 0) / 4294967296;
 }
-function fishFor(seed, n) {
-  let r = hash(seed, n, 1) * FISH.reduce((a, f) => a + f.w, 0);
-  for (let k = 0; k < FISH.length; k++) { r -= FISH[k].w; if (r <= 0) return k; }
+function fishFor(seed, n, bait) {
+  const wts = BAIT[bait ? 1 : 0];
+  let r = hash(seed, n, 1) * wts.reduce((a, w) => a + w, 0);
+  for (let k = 0; k < FISH.length; k++) { r -= wts[k]; if (r <= 0 && wts[k] > 0) return k; }
   return 0;
 }
 
@@ -47,21 +55,24 @@ CA.games.add('pond', {
     const sound = CA.games.kit.sound;
     CA.duel.run(ctx, {
       id: 'pond', mode: 'own', mouse: true,
-      pad: { buttons: [{ k: 'a', label: '🎣 Cast / Reel', main: true }] },
-      help: 'Click (or Space) to cast · click when the bobber dips · then keep the fish in the green bar with W/S, the arrows or the mouse',
+      pad: { buttons: [{ k: 'b', label: '🪱 Bait' }, { k: 'a', label: '🎣 Cast / Reel', main: true }] },
+      keys: { KeyB: 'b' }, letters: { b: 'b' },
+      help: 'Click (or Space) to cast · B or right-click swaps bait · click when the bobber dips · then keep the fish in the green bar with W/S, the arrows or the mouse',
       helpTouch: 'Tap Cast, tap when the bobber dips, then drag up and down to keep the fish in the green bar',
       note: 'Most points in ' + LENGTH + ' seconds',
-      initMine(api, i) { return { i, t: 0, ph: 'idle', k: 0, n: 0, sc: 0, got: 0, last: -1, fish: 0, bot: { wait: 0.6 } }; },
+      initMine(api, i) { return { i, t: 0, bait: 0, stl: null, ph: 'idle', k: 0, n: 0, sc: 0, got: 0, last: -1, fish: 0, bot: { wait: 0.6 } }; },
       stepMine(p, inp, dt, api) {
         p.t += dt;
         if (p.t >= LENGTH) { p.ph = 'done'; return; }
         const act = inp.hit.fire || inp.hit.a;
         const me = api.self;
         p.k -= dt;
+        if (p.stl) { p.stl.k -= dt; if (p.stl.k <= 0) p.stl = null; }
+        if (p.ph === 'idle' && (inp.hit.b || inp.hit.alt)) { p.bait = 1 - p.bait; if (me) sound([[420 + 200 * p.bait, 0, 0.05]]); }
         if (p.ph === 'idle') {
           if (act) { p.ph = 'cast'; p.k = 0.5; p.n++; if (me) sound([[500, 0, 0.05], [700, 0.05, 0.05]]); }
         } else if (p.ph === 'cast') {
-          if (p.k <= 0) { p.ph = 'wait'; p.k = 1.4 + hash(seed, p.n, 2) * 3.8; p.fish = fishFor(seed, p.n); if (me) sound([[220, 0, 0.08]]); }
+          if (p.k <= 0) { p.ph = 'wait'; p.k = 1.4 + hash(seed, p.n, 2) * 3.8; p.fish = fishFor(seed, p.n, p.bait); if (me) sound([[220, 0, 0.08]]); }
         } else if (p.ph === 'wait') {
           if (act) { p.ph = 'early'; p.k = 1.1; if (me) sound('miss'); }
           else if (p.k <= 0) { p.ph = 'bite'; p.k = FISH[p.fish].win; if (me) sound([[880, 0, 0.06], [880, 0.09, 0.06]]); }
@@ -72,8 +83,12 @@ CA.games.add('pond', {
           const d = FISH[p.fish].d;
           // the fish darts to a new spot now and then (the same spots for both players), faster for a bigger fish
           p.rt -= dt;
-          if (p.rt <= 0) { p.rk++; p.rt = 1 - d * 0.6; p.ft = 0.08 + 0.84 * hash(seed, p.n, 20 + p.rk); }
-          const sp = (0.3 + d * 1.2) * dt;
+          if (p.rt <= 0) { p.rk++; p.rt = Math.max(0.3, 1 - d * 0.7);
+            const hh = hash(seed, p.n, 20 + p.rk);
+            p.ft = d > 0.5 && hash(seed, p.n, 70 + p.rk) < 0.25 ? (hh < 0.5 ? 0.04 : 0.96) : 0.08 + 0.84 * hh; // (the big ones sometimes dive right to the top or the bottom)
+          }
+          const sp = (0.3 + d * 1.6) * dt;
+          const Z = zoneOf(p.fish);
           p.fy += Math.max(-sp, Math.min(sp, p.ft - p.fy));
           // the green zone: W/S or the arrows move it, or it follows the mouse up and down the bar (the bot says where it wants it)
           const keys = -(inp.my || 0);
@@ -81,16 +96,24 @@ CA.games.add('pond', {
           if (inp.ay !== undefined && inp.ay !== p.lay) { if (p.lay !== undefined) p.mouse = true; p.lay = inp.ay; }
           const want = keys ? p.z + keys : p.mouse ? (REEL.top + REEL.h - inp.ay) / REEL.h : inp.want != null ? inp.want : p.z;
           p.z += Math.max(-ZONE_SPEED * dt, Math.min(ZONE_SPEED * dt, want - p.z));
-          p.z = Math.max(ZONE / 2, Math.min(1 - ZONE / 2, p.z));
-          p.m += Math.abs(p.fy - p.z) < ZONE / 2 ? FILL * dt : -(0.28 + 0.22 * d) * dt;
+          p.z = Math.max(Z / 2, Math.min(1 - Z / 2, p.z));
+          p.m += Math.abs(p.fy - p.z) < Z / 2 ? FILL * dt : -(0.28 + 0.22 * d) * dt;
           if (p.m >= 1) { p.ph = 'caught'; p.k = 1.3; p.sc += FISH[p.fish].p; p.got++; p.last = p.fish; if (me) sound(FISH[p.fish].p ? 'point' : 'draw'); }
-          else if (p.m <= 0) { p.ph = 'away'; p.k = 1; if (me) sound('miss'); }
+          else if (p.m <= 0) { p.ph = 'away'; p.k = 1; if (me) sound('miss'); if (FISH[p.fish].p >= 3) api.toOther({ t: 'lost', p: FISH[p.fish].p }); }
         } else if (p.k <= 0) p.ph = 'idle'; // (after a catch, a miss, or casting too early)
       },
       snapMine(p) {
         const r = v => Math.round(v * 1000) / 1000;
         return { ph: p.ph, k: Math.round(Math.max(0, p.k) * 100) / 100, sc: p.sc, got: p.got, last: p.last, f: p.fish, t: Math.round(p.t * 10) / 10,
-          z: r(p.z || 0), fy: r(p.fy || 0), m: r(p.m || 0) };
+          z: r(p.z || 0), fy: r(p.fy || 0), m: r(p.m || 0), bt: p.bait, sg: p.stl ? p.stl.g : 0 };
+      },
+      // Steal: when the other cat loses a good fish off the line while yours is biting or on the reel, you take half the points.
+      onMsg(p, m, api) {
+        if (!m || m.t !== 'lost' || (p.ph !== 'bite' && p.ph !== 'reel')) return;
+        const g = Math.max(1, Math.round((+m.p || 0) / 2));
+        p.sc += g;
+        p.stl = { k: 1.8, g };
+        if (api.self) CA.games.kit.sound('point');
       },
       referee(sn, api) {
         api.score(sn[0].sc, sn[1].sc);
@@ -99,6 +122,7 @@ CA.games.add('pond', {
       bot(p, i, dt, api) {
         const b = p.bot, out = { hit: {} };
         b.wait -= dt;
+        if (p.ph === 'idle' && Math.random() < 0.02 && (p.bait ? api.skill < 0.5 : api.skill > 0.5)) out.hit.b = true; // (good bots go for the big fish)
         if (p.ph === 'idle' && b.wait <= 0) { out.hit.a = true; b.wait = 0.3 + Math.random() * 0.7; }
         if (p.ph === 'wait' && b.early === undefined) b.early = Math.random() < 0.12 * (1 - api.skill) ? 0.4 + Math.random() : -1;
         if (p.ph === 'wait' && b.early > 0 && (b.early -= dt) <= 0) out.hit.a = true;
@@ -197,9 +221,10 @@ function draw(v, mine, theirs) {
       g.fillStyle = 'rgba(10, 30, 50, .82)';
       v.roundRect(rx, top - 6, bw, h + 12, 12); g.fill();
       g.fillStyle = 'rgba(80, 230, 120, .55)';
-      v.roundRect(rx + 4, y(p.z + ZONE / 2), bw - 8, ZONE * h, 8); g.fill();
+      const zn = zoneOf(p.f);
+      v.roundRect(rx + 4, y(p.z + zn / 2), bw - 8, zn * h, 8); g.fill();
       g.strokeStyle = '#7dff8a'; g.lineWidth = 2;
-      v.roundRect(rx + 4, y(p.z + ZONE / 2), bw - 8, ZONE * h, 8); g.stroke();
+      v.roundRect(rx + 4, y(p.z + zn / 2), bw - 8, zn * h, 8); g.stroke();
       v.label(FISH[p.f].i, rx + bw / 2, y(p.fy), 28, '#ffffff');
       const mx = i ? rx + bw + 6 : rx - 16;
       g.fillStyle = 'rgba(10, 30, 50, .82)';
@@ -214,6 +239,8 @@ function draw(v, mine, theirs) {
     v.roundRect(x - 120, 18, 240, 52, 14); g.fill();
     v.label((i === v.me ? 'You' : v.names[i]) + ': ' + p.sc + ' pts', x, 36, 17, v.team[i].light);
     v.label('🐟 × ' + p.got, x, 58, 13, '#ffffff');
+    v.label(BAIT_NAME[p.bt || 0] + (i === v.me ? ' (B or right-click to swap)' : ''), bank.x, bank.y + 78, 12, '#ffffff');
+    if (p.sg) v.label('🦹 STOLE +' + p.sg + '!', bank.x, bank.y - 120, 22, '#ffd23f');
   });
   const left = Math.max(0, LENGTH - (mine ? mine.t : 0));
   v.label('⏱ ' + Math.ceil(left), W / 2, 40, 22, '#ffffff');

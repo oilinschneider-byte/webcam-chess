@@ -103,6 +103,9 @@ function play(ctx) {
   let bv = 0, ack = 0, av = 0;    // (host) how often the ball changed; the guest's last ball event, and bv right after it
 
   const score = [0, 0];
+  const run = [0, 0];                // baskets in a row for each cat: 3 in a row and it is ON FIRE (until the other cat scores)
+  const hot = c => run[c.i] >= 3;
+  let puOn = false;                    // this possession is played with the big power ball (it goes in more easily)
   let phase = 'ready', readyT = 0, count = 0, goAt = 0, winner = null;
   let t = 0, pauseT = 0, nextPoss = 0, overtime = false, resetN = 0;
   let timeLeft = GAME_LEN;
@@ -159,7 +162,7 @@ function play(ctx) {
       if (c.dashT <= 0) c.vx = c.dashDir * 300; // (it stops sharply)
     } else {
       const shooting = c.meter >= 0;
-      const top = shooting ? 110 : c.hold ? 270 : 300;
+      const top = (shooting ? 110 : c.hold ? 270 : 300) * (hot(c) ? 1.15 : 1);
       const dir = free ? (inp.r ? 1 : 0) - (inp.l ? 1 : 0) : 0;
       if (dir) {
         c.vx = approach(c.vx, dir * top, (c.ground ? 2600 : 1500) * dt);
@@ -207,7 +210,7 @@ function play(ctx) {
     if (c.meter >= 0) {
       if (!c.hold) c.meter = -1; // (it got knocked out of your hands)
       else {
-        c.meter = Math.min(1, c.meter + dt / METER);
+        c.meter = Math.min(1, c.meter + dt / (METER * (hot(c) ? 0.7 : 1)));
         if (jRelease || c.meter >= 1 || (c.ground && c.meter > 0.2)) shoot(c, c.meter);
       }
     }
@@ -276,19 +279,21 @@ function play(ctx) {
     let chance, verdict = '';
     if (m === null) chance = dist < 190 ? 0.62 : pts === 2 ? 0.42 : 0.26;
     else {
-      const off = Math.abs(m - GREEN);
-      verdict = off <= GREEN_HALF ? 'perfect' : m < GREEN ? 'early' : 'late';
-      chance = off <= GREEN_HALF ? 0.92 : off <= GREEN_HALF + 0.12 ? 0.45 : 0.08;
+      const off = Math.abs(m - GREEN), gh = GREEN_HALF + (hot(c) ? 0.04 : 0); // (on fire: a wider green)
+      verdict = off <= gh ? 'perfect' : m < GREEN ? 'early' : 'late';
+      chance = off <= gh ? 0.92 : off <= gh + 0.12 ? 0.45 : 0.08;
     }
     if (pts === 3) chance *= 0.85;
     if (dist > 640) chance *= 0.55;
+    if (hot(c)) chance = Math.min(0.97, chance * 1.1);
+    if (puOn) chance = Math.min(0.97, chance * 1.3 + 0.08); // (the power ball)
     const guarded = contest(c);
     chance *= guarded;
     const make = Math.random() < chance;
     const dir = Math.sign(RIM_X[h] - from.x) || c.face;
     let aimX = RIM_X[h];
     if (!make) { // short (off the front of the rim) or long (off the back), or an air ball for a really bad one
-      const wild = m !== null && Math.abs(m - GREEN) > GREEN_HALF + 0.12 && Math.random() < 0.4;
+      const wild = m !== null && Math.abs(m - GREEN) > GREEN_HALF + (hot(c) ? 0.04 : 0) + 0.12 && Math.random() < 0.4;
       aimX += (Math.random() < 0.5 ? -1 : 1) * dir * (wild ? 44 + Math.random() * 40 : 23 + Math.random() * 10);
     }
     const v = aim(from.x, from.y, aimX, RIM_Y - 2);
@@ -540,6 +545,8 @@ function play(ctx) {
     const scorer = goal(0) === h ? 0 : 1;
     const pts = b.by === scorer ? b.pts : 2;
     score[scorer] += pts;
+    run[scorer]++;
+    run[1 - scorer] = 0;
     bv++;
     hoopEvent(h, b.dunk ? 'DUNK!' : (b.clean ? 'SWISH! ' : '') + '+' + pts);
     showScore();
@@ -595,10 +602,11 @@ function play(ctx) {
 
   function reset(pos, p) {
     resetN++;
+    puOn = host && p >= 0 && Math.random() < 0.3;
     for (const c of local) place(c, pos[c.i], p);
     if (p >= 0) setBall({ x: pos[p], y: FLOOR - 60, vx: 0, vy: 0, h: p, shot: false, scored: false, by: -1, age: 9, clean: true, dunk: false });
     else setBall(newBall());
-    if (online) ctx.send({ t: 'reset', pos, p, n: resetN });
+    if (online) ctx.send({ t: 'reset', pos, p, n: resetN, pu: puOn ? 1 : 0 });
     sound([[1900, 0, 0.1], [1900, 0.14, 0.18]]);
   }
 
@@ -719,7 +727,9 @@ function play(ctx) {
     }
     if (Array.isArray(m.sc) && m.sc.length === 2) {
       const a = num(m.sc[0], 0), b2 = num(m.sc[1], 0);
-      if (a !== score[0] || b2 !== score[1]) { score[0] = a; score[1] = b2; showScore(); }
+      if (a !== score[0] || b2 !== score[1]) {
+        if (a > score[0]) { run[0]++; run[1] = 0; } else if (b2 > score[1]) { run[1]++; run[0] = 0; }
+        score[0] = a; score[1] = b2; showScore(); }
     }
     if (Number.isFinite(m.tm)) timeLeft = clamp(m.tm, 0, GAME_LEN);
     if (typeof m.ph === 'string' && phase !== 'ready' && phase !== 'over' && ['play', 'score', 'buzz', 'ot'].includes(m.ph)) {
@@ -751,6 +761,7 @@ function play(ctx) {
       blocked(me, m.d);
     } else if (!host && m.t === 'reset' && Array.isArray(m.pos) && [-1, 0, 1].includes(m.p)) {
       place(me, clamp(num(m.pos[meI], W / 2), EDGE, W - EDGE), m.p);
+      puOn = !!m.pu;
       pred = null;
       blend = null;
     } else if (!host && m.t === 'deny') {
@@ -1198,9 +1209,10 @@ function play(ctx) {
     g.save();
     g.translate(sx(x), y);
     g.rotate(flip ? -rot : rot);
+    if (puOn) g.scale(1.35, 1.35);
     const grd = g.createRadialGradient(-4, -5, 2, 0, 0, BALL_R);
-    grd.addColorStop(0, '#ffb067');
-    grd.addColorStop(1, '#e0620f');
+    grd.addColorStop(0, puOn ? '#fff0a0' : '#ffb067');
+    grd.addColorStop(1, puOn ? '#e0a40f' : '#e0620f');
     g.fillStyle = grd;
     g.beginPath(); g.arc(0, 0, BALL_R, 0, Math.PI * 2); g.fill();
     g.strokeStyle = '#3b1d08';
@@ -1255,12 +1267,12 @@ function play(ctx) {
   }
 
   // The shot bar, next to a cat while it shoots: it fills from the bottom to the top, with the green in the middle.
-  function drawMeter(x, y, m) {
+  function drawMeter(x, y, m, fire) {
     const w = 18, h = 104, top = y;
     g.fillStyle = 'rgba(20, 10, 30, .85)';
     roundRect(x - w / 2 - 3, top - 3, w + 6, h + 6, 7);
     g.fill();
-    const lo = GREEN - GREEN_HALF, hi = GREEN + GREEN_HALF;
+    const gh = GREEN_HALF + (fire ? 0.04 : 0), lo = GREEN - gh, hi = GREEN + gh;
     const grd = g.createLinearGradient(0, top + h, 0, top);
     grd.addColorStop(0, '#4a1210');
     grd.addColorStop(0.18, '#c2410c');
@@ -1319,13 +1331,15 @@ function play(ctx) {
 
   // Names below each cat, the shot bars, and a "3PT" when you're past the line with the ball.
   function drawTags(now) {
+    if (puOn && playing()) label('⭐ POWER BALL: easier shots!', W / 2, 84, 14, '#ffd23f');
     for (const c of cats) {
       const v = vw(c);
       const X = sx(v.x);
       label(c === me ? 'You' : c.name, X, v.y + 16, 13, c === me ? '#ffd23f' : '#ffffff');
+      if (hot(c)) label('🔥 ON FIRE', X, v.y - 200 + Math.sin(now / 90) * 2, 14, '#ff9a3c');
       if (v.meter >= 0) {
         const lookRight = (flip ? -v.face : v.face) > 0;
-        drawMeter(X + (lookRight ? -48 : 48), v.y - 172, v.meter);
+        drawMeter(X + (lookRight ? -48 : 48), v.y - 172, v.meter, hot(c));
       }
     }
     if (shown.h === meI && me.meter < 0) {

@@ -23,11 +23,11 @@ CA.games.add('paint', {
   start(ctx) {
     CA.duel.run(ctx, {
       id: 'paint', mouse: true, sendMs: 66,
-      pad: { stick: true, buttons: [{ k: 'fire', label: '🎨 Spray', main: true }] },
-      help: 'WASD move · aim with the mouse · hold the button to spray · let go to refill',
+      pad: { stick: true, buttons: [{ k: 'a', label: '💣 Throw bomb' }, { k: 'fire', label: '🎨 Spray', main: true }] },
+      help: 'WASD move · aim with the mouse · hold the button to spray · pick up 💣 (Space throws it), 🛡️ (your paint is locked for a while) and 🪣 (a big splash)',
       helpTouch: 'Stick moves · touch the floor to spray there',
       note: 'Most floor after ' + LENGTH + ' seconds',
-      init, step, snap, bot, draw,
+      init, step, snap, bot, draw, event,
     });
   },
 });
@@ -35,11 +35,13 @@ CA.games.add('paint', {
 function init() {
   return {
     t: 0, grid: new Uint8Array(GC * GR).map((v, k) => (WALLED.includes(k) ? 3 : 0)), count: [0, 0],
-    cats: HOME.map(([x, y], i) => ({ x, y, vx: 0, vy: 0, ax: i ? -1 : 1, ay: 0, ink: 100, spray: false, rest: 0 })),
+    lock: new Float32Array(GC * GR), pu: [], bombs: [], nextPu: 4,
+    cats: HOME.map(([x, y], i) => ({ x, y, vx: 0, vy: 0, ax: i ? -1 : 1, ay: 0, ink: 100, spray: false, rest: 0, sh: 0, bomb: 0, inf: 0 })),
   };
 }
 
 function paintCone(s, i, c) {
+  const sh = c.sh > 0 ? c.sh : 0;
   const own = i + 1;
   const x0 = Math.max(0, Math.floor((c.x - REACH) / CS)), x1 = Math.min(GC - 1, Math.floor((c.x + REACH) / CS));
   const y0 = Math.max(0, Math.floor((c.y - REACH) / CS)), y1 = Math.min(GR - 1, Math.floor((c.y + REACH) / CS));
@@ -49,16 +51,55 @@ function paintCone(s, i, c) {
       const dx = (gx + 0.5) * CS - c.x, dy = (gy + 0.5) * CS - c.y, d = Math.hypot(dx, dy);
       if (d > REACH || (d > CS && (dx * c.ax + dy * c.ay) / d < cos)) continue;
       const k = gy * GC + gx, was = s.grid[k];
-      if (was === own || was === 3) continue;
+      if (was === 3) continue;
+      if (was === own) { if (sh) s.lock[k] = s.t + sh + 2; continue; }
+      if (was && s.lock[k] > s.t) continue; // (shielded paint can't be painted over)
       if (was) s.count[was - 1]--;
       s.grid[k] = own;
       s.count[i]++;
+      if (sh) s.lock[k] = s.t + sh + 2;
     }
   }
 }
 
+// A round splash of paint (a bomb, or a bucket): it paints over the other cat's color, but not shielded paint.
+function paintCircle(s, i, x, y, r) {
+  const own = i + 1, sh = s.cats[i].sh > 0 ? s.cats[i].sh : 0;
+  for (let gy = Math.max(0, Math.floor((y - r) / CS)); gy <= Math.min(GR - 1, Math.floor((y + r) / CS)); gy++) {
+    for (let gx = Math.max(0, Math.floor((x - r) / CS)); gx <= Math.min(GC - 1, Math.floor((x + r) / CS)); gx++) {
+      if (Math.hypot((gx + 0.5) * CS - x, (gy + 0.5) * CS - y) > r) continue;
+      const k = gy * GC + gx, was = s.grid[k];
+      if (was === 3 || was === own) continue;
+      if (was && s.lock[k] > s.t) continue;
+      if (was) s.count[was - 1]--;
+      s.grid[k] = own;
+      s.count[i]++;
+      if (sh) s.lock[k] = s.t + sh + 2;
+    }
+  }
+}
+
+const PICKS = ['bomb', 'shield', 'bucket'];
+
 function step(s, inp, dt, api) {
   s.t += dt;
+  // pickups appear now and then (never more than 3 at once): a bomb to throw, a shield for your paint, a bucket splash
+  s.nextPu -= dt;
+  if (s.nextPu <= 0) {
+    s.nextPu = 5 + Math.random() * 3;
+    if (s.pu.length < 3) {
+      let x = 0, y = 0, tries = 0;
+      do { x = 90 + Math.random() * (W - 180); y = 70 + Math.random() * (H - 140); } while (CA.camWalls.inWall(x, y, 40) && ++tries < 20);
+      s.pu.push({ x, y, type: PICKS[Math.floor(Math.random() * PICKS.length)] });
+    }
+  }
+  s.bombs = s.bombs.filter(b => {
+    b.t -= dt;
+    if (b.t > 0) return true;
+    paintCircle(s, b.i, b.x, b.y, 88);
+    api.ev('boom', { x: b.x, y: b.y, i: b.i });
+    return false;
+  });
   s.cats.forEach((c, i) => {
     const n = inp[i];
     const tx = n.mx * SPEED, ty = n.my * SPEED;
@@ -70,9 +111,26 @@ function step(s, inp, dt, api) {
     let ax = n.ax - c.x, ay = n.ay - c.y;
     const al = Math.hypot(ax, ay);
     if (al > 4) { c.ax = ax / al; c.ay = ay / al; }
-    c.spray = !!n.held.fire && c.ink > 0;
+    c.sh = Math.max(0, c.sh - dt);
+    c.inf = Math.max(0, c.inf - dt);
+    s.pu = s.pu.filter(p => {
+      if (Math.hypot(p.x - c.x, p.y - c.y) > 30) return true;
+      if (p.type === 'bomb') c.bomb = 1;
+      else if (p.type === 'shield') c.sh = 7;
+      else { paintCircle(s, i, p.x, p.y, 120); c.ink = 100; c.inf = 4; }
+      api.ev('pick', { x: p.x, y: p.y, t: p.type, i });
+      return false;
+    });
+    if (n.hit.a && c.bomb) { // throw it where you're aiming (up to 280 away); it goes off after a moment
+      let bx = n.ax - c.x, by = n.ay - c.y;
+      const bl = Math.hypot(bx, by) || 1, bd = Math.min(280, bl);
+      s.bombs.push({ x: c.x + bx / bl * bd, y: c.y + by / bl * bd, t: 0.7, i });
+      c.bomb = 0;
+      api.ev('throw', { x: c.x, y: c.y });
+    }
+    c.spray = !!n.held.fire && (c.ink > 0 || c.inf > 0);
     if (c.spray) {
-      c.ink = Math.max(0, c.ink - DRAIN * dt);
+      if (c.inf <= 0) c.ink = Math.max(0, c.ink - DRAIN * dt);
       c.rest = FILL_WAIT;
       paintCone(s, i, c);
     } else {
@@ -88,7 +146,8 @@ function step(s, inp, dt, api) {
 function snap(s) {
   return {
     t: Math.round(s.t * 10) / 10, g: Array.prototype.join.call(s.grid, ''), n: s.count,
-    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), ax: Math.round(c.ax * 100) / 100, ay: Math.round(c.ay * 100) / 100, i: Math.round(c.ink), s: c.spray ? 1 : 0 })),
+    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), ax: Math.round(c.ax * 100) / 100, ay: Math.round(c.ay * 100) / 100, i: Math.round(c.ink), s: c.spray ? 1 : 0, sh: c.sh > 0 ? 1 : 0, bb: c.bomb, inf: c.inf > 0 ? 1 : 0 })),
+    pu: s.pu.map(p => [Math.round(p.x), Math.round(p.y), PICKS.indexOf(p.type)]), bm: s.bombs.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.t * 100) / 100]),
   };
 }
 
@@ -113,13 +172,22 @@ function bot(s, i, dt, api) {
       sc -= Math.hypot(x - c.x, y - c.y) * 0.02;
       if (sc > best) { best = sc; st.gx = x; st.gy = y; }
     }
+    if (s.pu.length && Math.random() < 0.35 + 0.4 * api.skill) { const p = s.pu[0]; st.gx = p.x; st.gy = p.y; } // (go and get a pickup)
   }
   const dx = st.gx - c.x, dy = st.gy - c.y, d = Math.hypot(dx, dy) || 1;
   const keep = 8 + 25 * api.skill;
   if (c.ink < 3) st.spray = false;
   else if (c.ink > keep + 30) st.spray = true;
   else if (c.ink < keep && api.skill > 0.4) st.spray = false;
-  return { mx: d > 20 ? dx / d : 0, my: d > 20 ? dy / d : 0, ax: c.x + dx / d * 100, ay: c.y + dy / d * 100, held: st.spray ? { fire: true } : {} };
+  const out = { mx: d > 20 ? dx / d : 0, my: d > 20 ? dy / d : 0, ax: c.x + dx / d * 100, ay: c.y + dy / d * 100, held: st.spray ? { fire: true } : {}, hit: {} };
+  if (c.bomb && d > 140 && Math.random() < 0.03) { out.hit.a = true; out.ax = st.gx; out.ay = st.gy; } // (a bomb, on the patch it is heading for)
+  return out;
+}
+
+function event(v, e) {
+  if (e.type === 'pick') { v.ring(e.x, e.y, v.team[e.i].main, 14); v.burst(e.x, e.y, v.team[e.i].light, 10, 200); v.pop(e.x, e.y - 24, e.t === 'bomb' ? '💣 Bomb!' : e.t === 'shield' ? '🛡️ Shield!' : '🪣 Splash!', '#ffffff'); v.sound('point'); }
+  if (e.type === 'throw') v.sound([[500, 0, 0.05], [300, 0.05, 0.08]]);
+  if (e.type === 'boom') { v.burst(e.x, e.y, v.team[e.i].main, 28, 380); v.ring(e.x, e.y, v.team[e.i].light, 30); v.shake(7); v.sound('boom'); }
 }
 
 const off = { c: null, img: null };
@@ -142,7 +210,25 @@ function draw(v, s) {
   for (let x = 0; x <= W; x += 60) { g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, H); }
   for (let y = 0; y <= H; y += 60) { g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); }
   g.stroke();
+  (s.pu || []).forEach(([x, y, t]) => { // pickups
+    const bob = Math.sin(v.now / 220 + x) * 3;
+    g.fillStyle = 'rgba(255, 255, 255, .85)';
+    v.dot(x, y + bob, 19);
+    g.strokeStyle = '#ffd23f';
+    g.lineWidth = 3;
+    g.beginPath(); g.arc(x, y + bob, 19 + Math.sin(v.now / 160) * 1.5, 0, Math.PI * 2); g.stroke();
+    v.label(['💣', '🛡️', '🪣'][t] || '?', x, y + bob + 1, 22, '#000000');
+  });
+  (s.bm || []).forEach(([x, y, t]) => { // a bomb about to go off
+    g.fillStyle = 'rgba(0, 0, 0, .2)';
+    v.dot(x, y, 88 * (1 - t / 0.7) + 6);
+    g.strokeStyle = 'rgba(255, 60, 60, .8)';
+    g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, 88, 0, Math.PI * 2); g.setLineDash([6, 6]); g.stroke(); g.setLineDash([]);
+    v.label('💣', x, y, 24 + Math.sin(v.now / 40) * 3, '#000000');
+  });
   s.c.forEach((c, i) => {
+    if (c.sh) { g.strokeStyle = 'rgba(120, 220, 255, .85)'; g.lineWidth = 3; g.beginPath(); g.arc(c.x, c.y, 28 + Math.sin(v.now / 120) * 2, 0, Math.PI * 2); g.stroke(); }
     if (c.s) { // flying paint
       g.fillStyle = v.team[i].main;
       for (let k = 0; k < 10; k++) {
@@ -161,6 +247,7 @@ function draw(v, s) {
     g.lineWidth = 3;
     g.beginPath(); g.moveTo(c.x + c.ax * 20, c.y + c.ay * 20); g.lineTo(c.x + c.ax * 31, c.y + c.ay * 31); g.stroke();
     v.catTop(i, c.x, c.y, 1, { lookRight: c.ax >= 0 });
+    if (c.bb) v.label('💣', c.x + 22, c.y - 22, 18, '#000000');
     g.fillStyle = 'rgba(0, 0, 0, .55)'; // the paint meter
     v.roundRect(c.x - 22, c.y - 40, 44, 7, 3.5); g.fill();
     g.fillStyle = c.i > 25 ? v.team[i].light : '#ff6b6b';

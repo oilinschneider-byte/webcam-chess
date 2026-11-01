@@ -82,6 +82,7 @@ function newCat(x, face) {
     eOn: false, eT: 0, eWait: 0, grabWait: 0,     // E: down (blocking, charging a grab) and for how long; its rest; the grab's cooldown
     reach: null, caught: -1, fly: false, flyT: 0, dizzy: 0, // the grab this cat is doing; who's carrying this cat; thrown; dizzy
     head: null,                                   // after a critical hit: the head, bouncing away on its own
+    sta: 1, tired: false,                         // stamina: raising the sword, dashing and blocking use it up; resting fills it
   };
   c.arms = [0, 1].map(k => {
     const [sx, sy] = shoulder(c, k);
@@ -462,6 +463,23 @@ function step(s, inp, dt, api) {
     return;
   }
   s.t += dt;
+  // Stamina: swinging (arms up), dashing and blocking tire a cat out. Out of stamina, it can't lift the sword, dash or block
+  // until it has rested a little: no button mashing.
+  s.cats.forEach((c, i) => {
+    const n = inp[i];
+    if (c.ko) return;
+    if (c.tired) {
+      if (c.sta >= 0.35) c.tired = false;
+      else inp[i] = Object.assign({}, n, { held: Object.assign({}, n.held, { fire: false }), hit: Object.assign({}, n.hit, { dl: false, dr: false, sh: false, e: false }) });
+    }
+    const m = inp[i], up = !!m.held.fire && canAct(c);
+    if (up) c.sta -= 0.2 * dt;
+    if ((m.hit.dl || m.hit.dr || m.hit.sh) && c.dashWait <= 0) c.sta -= 0.16;
+    if (m.hit.e && !c.eOn && c.eWait <= 0) c.sta -= 0.18;
+    if (!up && !c.eOn && !c.tired) c.sta += 0.4 * dt; else if (c.tired) c.sta += 0.3 * dt;
+    c.sta = Math.max(0, Math.min(1, c.sta));
+    if (c.sta <= 0 && !c.tired) { c.tired = true; api.ev('tired', { x: c.x, y: c.y - 60 }); }
+  });
   s.cats.forEach((c, i) => {
     const n = inp[i];
     tick(c, dt);
@@ -617,7 +635,7 @@ function snap(s) {
       sq: c.ground && Math.abs(c.vx) > 40 && !c.ko ? Math.round(Math.abs(Math.sin(c.phase)) * 35) / 100 : 0,
       ar: c.arms.map(a => a.flatMap(p => [r(p.x), r(p.y)])), hp: Math.round(c.hp), h: c.hold,
       ko: c.ko ? 1 : 0, cl: c.cool > 0 ? 1 : 0, b: c.eOn ? 1 : 0, g: c.eOn && c.grabWait <= 0 ? Math.round(Math.min(1, c.eT / CHARGE) * 20) / 20 : 0,
-      w: Math.round(c.eWait * 10) / 10, gw: Math.round(c.grabWait * 10) / 10, z: c.dizzy > 0 ? 1 : 0, sh: c.caught >= 0 ? 1 : 0, ds: c.dashT > 0 ? c.dashDir : 0,
+      sa: Math.round(c.sta * 20) / 20, td: c.tired ? 1 : 0, w: Math.round(c.eWait * 10) / 10, gw: Math.round(c.grabWait * 10) / 10, z: c.dizzy > 0 ? 1 : 0, sh: c.caught >= 0 ? 1 : 0, ds: c.dashT > 0 ? c.dashDir : 0,
       hd: c.head ? [r(c.head.x), r(c.head.y), Math.round(c.head.a * 100) / 100] : 0,
       rp: c.reach ? (c.reach.ph === 'hold' ? 2 : 1) : 0, tv: c.reach && c.reach.ph === 'hold' ? throwSpeed(c.reach).map(Math.round) : [0, 0],
     })),
@@ -705,6 +723,7 @@ function bot(s, i, dt, api) {
 /* ---------- effects and drawing ---------- */
 
 function event(v, e) {
+  if (e.type === 'tired') { v.pop(e.x, e.y, 'Out of breath!', '#ff9a9a'); v.sound('miss'); }
   if (e.type === 'hit') { v.burst(e.x, e.y, '#fff3b0', 14, 260); v.pop(e.x, e.y - 20, (e.part === 'head' ? 'BONK! −' : 'WHACK! −') + e.dmg, '#ffd23f'); v.shake(e.part === 'head' ? 10 : 7); v.sound([[1400, 0, 0.03], [800, 0.02, 0.06], [300, 0.06, 0.1]]); }
   if (e.type === 'glance') { v.burst(e.x, e.y, '#ffffff', 4, 120); v.pop(e.x, e.y - 16, 'glance', '#cfd6e6'); v.sound([[1800, 0, 0.02], [1200, 0.02, 0.04]]); }
   if (e.type === 'clash') { v.burst(e.x, e.y, '#fff7c2', 18, 320); v.ring(e.x, e.y, '#ffe14d', 16); v.pop(e.x, e.y - 24, 'CLANG!', '#ffe14d'); v.shake(6); v.sound([[2600, 0, 0.03], [1900, 0.02, 0.05], [1300, 0.06, 0.08]]); }
@@ -843,6 +862,9 @@ function drawCat(v, s, c, i) {
   g.fillStyle = 'rgba(20, 10, 30, .7)'; v.roundRect(hx - 32, hy - 6, 64, 12, 6); g.fill();
   g.fillStyle = c.hp > 50 ? '#3ddc84' : c.hp > 25 ? '#ffd23f' : '#ff5a5a';
   if (c.hp > 0) { v.roundRect(hx - 30, hy - 4, 60 * c.hp / HP, 8, 4); g.fill(); }
+  g.fillStyle = 'rgba(20, 10, 30, .7)'; v.roundRect(hx - 32, hy + 8, 64, 8, 4); g.fill(); // the stamina bar (red while the cat is worn out)
+  g.fillStyle = c.td ? '#ff5a5a' : '#6ec3ff';
+  v.roundRect(hx - 30, hy + 10, Math.max(2, 60 * c.sa), 4, 2); g.fill();
   v.label(i === v.me ? 'You' : v.names[i], hx, hy - 16, 12, i === v.me ? '#ffd23f' : '#ffffff');
 }
 

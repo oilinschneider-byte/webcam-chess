@@ -49,8 +49,8 @@ const TEAM = [
 ];
 const SEND_MS = 50;
 const VIEW_DELAY = 110;          // the other player's cat is drawn this many ms in the past, so it moves smoothly
-const HELP = 'WASD move · mouse aim · click or hold to shoot · Space build · enemy walls hurt · shoot walls when they flash open · stay in the zone';
-const HELP_TOUCH = 'Stick moves · Shoot aims at the other cat · Build drops a dot · enemy walls hurt · shoot walls when they flash open · stay in the zone';
+const HELP = 'WASD move · mouse aim · click or hold to shoot · Space build · enemy walls hurt · shoot the DOTS when they flash open (only dots break) · pick up crates · stay in the zone';
+const HELP_TOUCH = 'Stick moves · Shoot aims at the other cat · Build drops a dot · enemy walls hurt · shoot the DOTS when they flash open (only dots break) · pick up crates · stay in the zone';
 
 CA.games.add('walls', {
   name: 'Wall Duel', icon: '🚧',
@@ -114,6 +114,7 @@ function play(ctx) {
     const [x, y] = HOME[i], [ox, oy] = HOME[1 - i], d = Math.hypot(ox - x, oy - y);
     return {
       i, name, fur: F.fur(eq), pics: pictures(eq), x, y, vx: 0, vy: 0, ax: (ox - x) / d, ay: (oy - y) / d,
+      extra: false, rapid: 0, bomb: 0,                      // power-ups: a second shield, rapid fire (seconds left), a wall bomb
       shield: true, hurtT: 0, outT: 0, dead: false, why: '', spin: 0, fireCd: 0, buildCd: 0, lastBuild: -99, pb: false, rv: null,
     };
   }
@@ -132,6 +133,9 @@ function play(ctx) {
   const ends = (o, l) => [walls[o].dots.get(l.a), walls[o].dots.get(l.b)];
   const bullets = [];
   const shotN = [1, 1];
+  const bombs = [];       // wall bombs on their way: { x, y, t, by }
+  let picks = [], pickId = 0, nextPick = 6;  // crates lying about (the host makes them): { id, x, y, type }
+  const taken = new Set();
   const liveShots = o => bullets.reduce((n, b) => n + (b.o === o && !b.gone && b.fade < 0 ? 1 : 0), 0);
 
   let phase = 'ready', t = 0, count = 0, goAt = 0, winner = null, zoneNoted = false;
@@ -278,13 +282,13 @@ function play(ctx) {
   /* ---------- shooting ---------- */
 
   function shoot(c, dx, dy) { // (true if it fired)
-    if (phase !== 'play' || c.dead || c.fireCd > 0 || liveShots(c.i) >= MAX_SHOTS) return false;
+    if (phase !== 'play' || c.dead || c.fireCd > 0 || liveShots(c.i) >= (c.rapid > 0 ? 8 : MAX_SHOTS)) return false;
     const len = Math.hypot(dx, dy);
     if (!len) return false;
     c.ax = dx / len;
     c.ay = dy / len;
     const b = addBullet(c.i, shotN[c.i]++, c.x, c.y, c.ax * BS, c.ay * BS);
-    c.fireCd = FIRE_WAIT;
+    c.fireCd = c.rapid > 0 ? FIRE_WAIT * 0.3 : FIRE_WAIT;
     fx.push({ k: 'ring', x: c.x + c.ax * (CR + 6), y: c.y + c.ay * (CR + 6), vx: 0, vy: 0, life: 0.15, max: 0.15, r: 3, c: '#fff6c8' });
     sound([[900, 0, 0.03], [600, 0.02, 0.05]]);
     if (online && c === me) ctx.send({ t: 'shot', id: b.id, x: r1(b.x), y: r1(b.y), vx: Math.round(b.vx), vy: Math.round(b.vy) });
@@ -341,7 +345,7 @@ function play(ctx) {
     }
     b.ignore = still;
     if (!hit) return null;
-    if (openLeft(hit.p, at) > 0) return { open: hit };
+    if (hit.k === 'd' && openLeft(hit.p, at) > 0) return { open: hit }; // (only a dot breaks: the walls themselves can't be shot through)
     const vn = b.vx * hit.nx + b.vy * hit.ny;
     if (vn < 0) { b.vx -= 2 * vn * hit.nx; b.vy -= 2 * vn * hit.ny; }
     const cx = hit.k === 'd' ? hit.p.x : hit.px, cy = hit.k === 'd' ? hit.p.y : hit.py;
@@ -377,6 +381,7 @@ function play(ctx) {
 
   function stepCat(c, inp, dt) {
     c.fireCd = Math.max(0, c.fireCd - dt);
+    c.rapid = Math.max(0, c.rapid - dt);
     c.buildCd = Math.max(0, c.buildCd - dt);
     c.hurtT = Math.max(0, c.hurtT - dt);
     if (c.dead) { // (knocked out: it slides and spins)
@@ -403,11 +408,67 @@ function play(ctx) {
     const al = Math.hypot(inp.ax, inp.ay);
     if (al > 1) { c.ax = inp.ax / al; c.ay = inp.ay / al; }
     if (!free) return;
-    if (inp.build) build(c);
+    if (inp.build) { if (c.bomb) throwBomb(c); else build(c); }
     if (inp.fire && al > 1) {
       let fx2 = inp.ax, fy2 = inp.ay;
       if (inp.spread) { const e = gauss(0, 0.06), cs = Math.cos(e), sn = Math.sin(e); fx2 = inp.ax * cs - inp.ay * sn; fy2 = inp.ax * sn + inp.ay * cs; }
       if (shoot(c, fx2, fy2) && c === me) { fireAt = -1e9; tapAim = null; }
+    }
+  }
+
+  // A wall bomb: thrown where you aim (up to 230 away), it goes off a moment later and breaks every dot of the other cat's that
+  // is near it (the host's app does the breaking).
+  const BOMB_R = 95;
+  function addBomb(x, y, by) {
+    bombs.push({ x, y, t: 0.9, by });
+    sound([[600, 0, 0.04], [420, 0.04, 0.06]]);
+  }
+  function throwBomb(c) {
+    c.bomb = 0;
+    const tx = clamp(c.x + c.ax * 230, EDGE + 10, W - EDGE - 10), ty = clamp(c.y + c.ay * 230, EDGE + 10, H - EDGE - 10);
+    addBomb(tx, ty, c.i);
+    if (online && c === me) ctx.send({ t: 'bomb', x: r1(tx), y: r1(ty) });
+  }
+  function stepBombs(dt) {
+    for (let k = bombs.length - 1; k >= 0; k--) {
+      const b = bombs[k];
+      b.t -= dt;
+      if (b.t > 0) continue;
+      bombs.splice(k, 1);
+      burst(b.x, b.y, TEAM[b.by].main, 26, 380);
+      fx.push({ k: 'ring', x: b.x, y: b.y, vx: 0, vy: 0, life: 0.5, max: 0.5, r: BOMB_R * 0.7, c: '#ffd23f' });
+      shake = Math.max(shake, 10);
+      sound('boom');
+      if (host) for (const d of [...walls[1 - b.by].dots.values()]) if (Math.hypot(d.x - b.x, d.y - b.y) < BOMB_R) breakPiece(1 - b.by, 'd', d.id, { o: b.by, id: 0 });
+    }
+  }
+
+  // (host) A crate lands somewhere in the zone every so often (at most 2 at a time).
+  function stepPicks(dt) {
+    if (host && phase === 'play') {
+      nextPick -= dt;
+      if (nextPick <= 0 && picks.length < 2) {
+        nextPick = 9 + Math.random() * 5;
+        for (let tries = 0; tries < 30; tries++) {
+          const x = 90 + Math.random() * (W - 180), y = 70 + Math.random() * (H - 140);
+          if (CA.camWalls.inWall(x, y, 30) || Math.hypot(x - ZX, y - ZY) > zoneR() - 40) continue;
+          picks.push({ id: ++pickId, x, y, type: Math.floor(Math.random() * 3) });
+          break;
+        }
+      }
+    }
+    for (const c of local) { // your own cat picks one up by touching it
+      if (c.dead || phase !== 'play') continue;
+      for (const p of picks.slice()) {
+        if (Math.hypot(p.x - c.x, p.y - c.y) > CR + 16) continue;
+        if (p.type === 0) c.rapid = 8;
+        else if (p.type === 1) { if (!c.shield) { c.shield = true; showScore(); } else c.extra = true; }
+        else c.bomb = 1;
+        pop(c.x, c.y - 44, ['RAPID FIRE!', 'SHIELD UP!', 'WALL BOMB! (Space)'][p.type], '#ffd23f');
+        sound('point');
+        picks = picks.filter(x => x !== p);
+        if (!host) { taken.add(p.id); ctx.send({ t: 'pkt', id: p.id }); }
+      }
     }
   }
 
@@ -447,6 +508,18 @@ function play(ctx) {
   // A hit (from (x, y)) breaks your shield, and gives you a moment when nothing can hurt you. Without a shield, it's
   // a K.O.
   function hurt(c, why, x, y) {
+    if (c.extra) { // the extra shield takes this one
+      c.extra = false;
+      c.hurtT = HIT_SAFE * 0.6;
+      const dd = Math.hypot(c.x - x, c.y - y) || 1;
+      c.vx = (c.x - x) / dd * 240;
+      c.vy = (c.y - y) / dd * 240;
+      const v = vw(c);
+      burst(v.x, v.y, '#ffd23f', 14, 240);
+      pop(v.x, v.y - 40, 'EXTRA SHIELD!', '#ffd23f');
+      sound([[1500, 0, 0.04], [900, 0.04, 0.08]]);
+      return;
+    }
     if (!c.shield) { knockOut(c, why, x, y); return; }
     c.shield = false;
     c.hurtT = HIT_SAFE;
@@ -593,7 +666,7 @@ function play(ctx) {
   function packCat(c) {
     return {
       x: r1(c.x), y: r1(c.y), vx: Math.round(c.vx), vy: Math.round(c.vy), ax: r2(c.ax), ay: r2(c.ay),
-      sh: c.shield ? 1 : 0, h: c.hurtT > 0 ? 1 : 0, d: c.dead ? 1 : 0,
+      sh: c.shield ? 1 : 0, ex: c.extra ? 1 : 0, rp: c.rapid > 0 ? 1 : 0, bm: c.bomb, h: c.hurtT > 0 ? 1 : 0, d: c.dead ? 1 : 0,
     };
   }
 
@@ -608,6 +681,9 @@ function play(ctx) {
     });
     if (rbuf.length > 40) rbuf.shift();
     if (s.sh === 0) remoteHurt();
+    them.extra = !!s.ex;
+    them.rapid = s.rp ? 1 : 0;
+    them.bomb = s.bm ? 1 : 0;
     if (s.d) remoteOut('');
     if (!host && Number.isFinite(m.T)) { // (the host's clock, a little out of date by the time it gets here)
       const d = m.T - t;
@@ -687,6 +763,9 @@ function play(ctx) {
     if (m.t === 's') onRemoteCat(m);
     else if (m.t === 'dot') onDot(m);
     else if (m.t === 'shot') onShot(m);
+    else if (m.t === 'bomb' && Number.isFinite(m.x) && Number.isFinite(m.y)) addBomb(clamp(m.x, 0, W), clamp(m.y, 0, H), themI);
+    else if (host && m.t === 'pkt') picks = picks.filter(p => p.id !== m.id);
+    else if (!host && m.t === 'pk' && Array.isArray(m.l)) picks = m.l.filter(a => Array.isArray(a) && !taken.has(a[0])).map(a => ({ id: a[0], x: clamp(num(a[1], 0), 0, W), y: clamp(num(a[2], 0), 0, H), type: clamp(num(a[3], 0), 0, 2) }));
     else if (m.t === 'hurt') remoteHurt();
     else if (m.t === 'dead') remoteOut(m.w);
     else if (!host && m.t === 'brk') onBreak(m);
@@ -881,6 +960,8 @@ function play(ctx) {
     if (ctx.bot) stepCat(them, botInput(them, dt), dt);
     stepBullets(dt);
     for (const c of local) checkCat(c, dt);
+    stepBombs(dt);
+    stepPicks(dt);
     if (phase === 'play' && !zoneNoted && playT() >= ZONE_START) {
       zoneNoted = true;
       ctx.note('🌀 The zone is closing in! Stay inside it');
@@ -918,6 +999,7 @@ function play(ctx) {
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
     ctx.every(() => ctx.send(host ? { t: 's', c: packCat(me), T: r3(t) } : { t: 's', c: packCat(me) }), SEND_MS);
+    ctx.every(() => { if (host) ctx.send({ t: 'pk', l: picks.map(p => [p.id, Math.round(p.x), Math.round(p.y), p.type]) }); }, 300);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
@@ -1053,6 +1135,7 @@ function play(ctx) {
     drawWalls(now);
     drawPreview();
     drawBullets();
+    drawExtras(now);
     drawCat(them, now);
     drawCat(me, now);
     drawFx();
@@ -1171,6 +1254,32 @@ function play(ctx) {
     g.setLineDash([]);
   }
 
+  function drawExtras(now) {
+    for (const p of picks) {
+      const X = sx(p.x), Y = p.y + Math.sin(now / 240 + p.id) * 2;
+      g.fillStyle = 'rgba(255, 255, 255, .88)';
+      dot(X, Y, 17);
+      g.strokeStyle = '#ffd23f';
+      g.lineWidth = 3;
+      g.beginPath(); g.arc(X, Y, 17 + Math.sin(now / 160) * 1.5, 0, Math.PI * 2); g.stroke();
+      label(['🔫', '🛡️', '💣'][p.type] || '?', X, Y + 1, 20, '#000000');
+    }
+    for (const b of bombs) {
+      const X = sx(b.x), k = 1 - b.t / 0.9;
+      g.globalAlpha = 0.18 + 0.25 * k;
+      g.fillStyle = '#ff5a5a';
+      dot(X, b.y, BOMB_R);
+      g.globalAlpha = 0.8;
+      g.strokeStyle = '#ff5a5a';
+      g.lineWidth = 2;
+      g.setLineDash([6, 6]);
+      g.beginPath(); g.arc(X, b.y, BOMB_R, 0, Math.PI * 2); g.stroke();
+      g.setLineDash([]);
+      g.globalAlpha = 1;
+      label('💣', X, b.y, 22 + Math.sin(now / 40) * 3, '#000000');
+    }
+  }
+
   function drawBullets() {
     for (const b of bullets) {
       if (b.gone) continue;
@@ -1242,6 +1351,9 @@ function play(ctx) {
       g.beginPath(); g.arc(X, Y - 2, r - 4, -2.5 + now / 900, -1.7 + now / 900); g.stroke();
       g.globalAlpha = 1;
     }
+    if (c.extra && !c.dead) { g.globalAlpha = 0.9; g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.beginPath(); g.arc(X, Y - 2, CR + 17 + Math.sin(now / 200) * 1.2, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; } // (an extra shield: gold)
+    if (c.bomb && !c.dead) label('💣', X + 18, Y - 28, 16, '#000000');
+    if (c.rapid > 0 && !c.dead) label('🔫', X - 18, Y - 28, 16, '#000000');
     label((c === me ? 'You' : c.name) + (c.dead ? '' : c.shield ? ' 🛡️' : ' ❤️'), X, Y + 33, 12, c === me ? '#ffd23f' : '#ffffff');
   }
 

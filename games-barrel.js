@@ -42,7 +42,7 @@ const READY = 1.8;               // the 3-2-1 countdown
 const SEND_MS = 50;
 const VIEW_DELAY = 110;          // the other player's cat is drawn this many ms in the past, so it moves smoothly
 const BANNERS = {
-  crack: '⚠️ The ground is cracking!', quake: '💥 EARTHQUAKE!', last: '🌋 The ground holds… for now!', fewer: '🌋 More ground is falling!',
+  crack: '⚠️ The lava is creeping in from the sides!', quake: '💥 EARTHQUAKE!', last: '🌋 The ground holds… for now!', fewer: '🌋 The lava creeps in a little more!',
 };
 
 CA.games.add('barrel', {
@@ -82,6 +82,7 @@ function play(ctx) {
       lives: LIVES, out: false, hold: false, holdT: 0, stun: 0, inv: 0, respawn: 0, chute: false, kHit: 0, kFall: 0,
       power: -1, windT: 0, toss: -1, tossPow: 0,           // winding up a throw (0 to 1), then the swing over the head (degrees)
       slapT: 0, slapCd: 0, dashT: 0, dashDir: 1, dashCd: 0, airDash: false,
+      pSpd: 0, pBig: 0, pShd: 0,                          // power-ups (seconds left): speed, big slap, shield
       pj: false, pb: false, pv: false, jumpBuf: 0, slapSeen: false,
       rv: null,                                         // (the other player's cat, as drawn: see updateViews)
       arms: null, walk: 0, squash: 0, spin: 0, spinV: 0, splashed: false,
@@ -109,6 +110,9 @@ function play(ctx) {
   let t = 0;                                 // (host) seconds of play: this drives the ground
   let nextCrumble = L(40000) / 1000, crumbles = 0, minLeft = 14, floorSince = -1;
   let bannerN = 0, bannerKey = '', bannerAt = -1e9;
+  let crates = [], crateId = 0, nextCrate = 9;      // power-up crates: the host makes them, and both apps see them
+  const taken = new Set();                           // (crates this app already picked up, until the host has removed them)
+  const powerBits = c => (c.pSpd > 0 ? 1 : 0) | (c.pBig > 0 ? 2 : 0) | (c.pShd > 0 ? 4 : 0);
   let shake = 0, lastThud = 0, lastMsg = performance.now();
   const fx = [];
   const chunks = [];
@@ -196,6 +200,9 @@ function play(ctx) {
     c.slapT = Math.max(0, c.slapT - dt);
     c.slapCd = Math.max(0, c.slapCd - dt);
     c.dashCd = Math.max(0, c.dashCd - dt);
+    c.pSpd = Math.max(0, c.pSpd - dt);
+    c.pBig = Math.max(0, c.pBig - dt);
+    c.pShd = Math.max(0, c.pShd - dt);
     const free = c.stun <= 0 && phase === 'play';
     const winding = c.power >= 0, tossing = c.toss >= 0;
     const dir = free ? (inp.r ? 1 : 0) - (inp.l ? 1 : 0) : 0;
@@ -219,7 +226,7 @@ function play(ctx) {
       c.vy = 0;
       if (c.dashT <= 0) c.vx = c.dashDir * 285; // (it stops sharply)
     } else {
-      const top = winding || tossing ? 150 : c.hold ? 205 : 285;
+      const top = (winding || tossing ? 150 : c.hold ? 205 : 285) * (c.pSpd > 0 ? 1.35 : 1);
       if (dir) {
         c.vx = approach(c.vx, dir * top, (c.ground ? 2600 : 1600) * dt);
         if (!tossing) c.face = dir;
@@ -385,22 +392,26 @@ function play(ctx) {
     const o = c === me ? them : me;
     const v = vw(o);
     if (v.out || v.respawn > 0 || v.chute) return;
+    // every life you have lost makes your slap stronger (and so does the big-slap power-up)
+    const lost = LIVES - c.lives, big = c.pBig > 0 ? 1 : 0;
+    const reach = SLAP_REACH * (1 + 0.1 * lost + 0.45 * big), kk = 1 + 0.25 * lost + 0.7 * big;
     const ahead = (v.x - c.x) * c.face;
-    if (ahead < -18 || ahead > SLAP_REACH || Math.abs(v.y - c.y) > 75) return;
-    if (local.includes(o)) knock(o, c.face);
-    else { ctx.send({ t: 'slap', d: c.face }); whap(v.x, v.y - 50); }
+    if (ahead < -18 || ahead > reach || Math.abs(v.y - c.y) > 75) return;
+    if (local.includes(o)) knock(o, c.face, kk);
+    else { ctx.send({ t: 'slap', d: c.face, k: kk }); whap(v.x, v.y - 50); }
   }
 
-  function knock(c, dir) {
+  function knock(c, dir, k) {
+    k = k || 1;
     if (c.out || c.respawn > 0 || c.chute) return;
     if (c.hold) dropBarrel(c, dir);
     c.power = -1;
     c.toss = -1;
     c.dashT = 0;
-    c.vx = dir * 480;
-    c.vy = -410;
+    c.vx = dir * 480 * k;
+    c.vy = -410 * Math.min(1.4, 1 + (k - 1) * 0.3);
     c.ground = false;
-    c.stun = 0.4;
+    c.stun = 0.4 * (k > 1.5 ? 1.25 : 1);
     whap(c.x, c.y - 50);
   }
 
@@ -413,7 +424,8 @@ function play(ctx) {
     const nx = clamp(b.x, c.x - HW, c.x + HW), ny = clamp(b.y, c.y - HH, c.y);
     if ((b.x - nx) ** 2 + (b.y - ny) ** 2 > BR * BR) return;
     const nb = { x: b.x, y: b.y, vx: -b.vx * 0.25, vy: -Math.abs(b.vy) * 0.25 - 330, spin: -b.spin * 0.5, h: -1, live: false, by: b.by, age: 9, chute: false, lava: 0 };
-    loseLife(c, 'hit', b);
+    if (c.pShd > 0) { c.pShd = 0; c.inv = 0.6; pop(c.x, c.y - 100, '🛡️ BLOCKED!', '#8fd3ff'); sound('point'); } // (the shield takes the hit)
+    else loseLife(c, 'hit', b);
     if (host) setBarrel(nb);
     else guestEvent('hit', nb);
   }
@@ -461,6 +473,7 @@ function play(ctx) {
     t += dt;
     for (let i = 0; i < NT; i++) if (tiles[i] === 1 && t - crackAt[i] >= CRACK) setTile(i, 2);
     if (phase === 'play' && t >= nextCrumble) crumble();
+    if (phase === 'play') stepCrates(dt);
     const b = barrel;
     if (b.h >= 0) {
       const v = vw(cats[b.h]);
@@ -491,13 +504,37 @@ function play(ctx) {
     const n = Math.min(quake ? 2 : 1, solid.length - minLeft);
     for (let k = 0; k < n; k++) {
       const left = solid.filter(i => tiles[i] === 0);
-      const edges = left.filter(i => tiles[i - 1] === 2 || tiles[i + 1] === 2); // holes like to grow
-      const list = edges.length && ctx.rng() < 0.45 ? edges : left;
-      setTile(list[Math.floor(ctx.rng() * list.length)], 1);
+      // the lava creeps in from the sides: the outermost standing tile, from the left, then from the right
+      setTile((crumbles + k) % 2 ? left[left.length - 1] : left[0], 1);
     }
     if (crumbles === 1) banner('crack');
     else if (quake) banner('quake');
     nextCrumble = t + Math.max(3, 6 * Math.pow(0.97, crumbles));
+  }
+
+  // (host) A crate lands on a standing tile now and then (at most 2), and goes away again if nobody takes it.
+  function stepCrates(dt) {
+    crates.forEach(c => { c.age += dt; });
+    crates = crates.filter(c => c.age < 14);
+    if (t < nextCrate || crates.length >= 2) return;
+    const solid = [];
+    for (let i = 2; i < NT - 2; i++) if (tiles[i] === 0) solid.push(i);
+    if (!solid.length) return;
+    nextCrate = t + 10 + ctx.rng() * 6;
+    crates.push({ id: ++crateId, x: (solid[Math.floor(ctx.rng() * solid.length)] + 0.5) * TILE, type: Math.floor(ctx.rng() * 3), age: 0 });
+  }
+
+  // Your own cat picks up a crate by touching it (each app decides for its own cat).
+  function pickCrates(c) {
+    if (c.out || c.respawn > 0 || c.chute || phase !== 'play') return;
+    for (const cr of crates.slice()) {
+      if (Math.abs(cr.x - c.x) > 34 || Math.abs((GY - 20) - (c.y - 36)) > 70) continue;
+      if (cr.type === 0) c.pSpd = 9; else if (cr.type === 1) c.pBig = 12; else c.pShd = 10;
+      pop(c.x, c.y - 130, ['⚡ SPEED!', '🥊 BIG SLAP!', '🛡️ SHIELD!'][cr.type], '#ffd23f');
+      sound('point');
+      crates = crates.filter(x => x !== cr);
+      if (!host) { taken.add(cr.id); ctx.send({ t: 'crate', id: cr.id }); }
+    }
   }
 
   function setTile(i, s) {
@@ -543,7 +580,7 @@ function play(ctx) {
       x: r1(c.x), y: r1(c.y), vx: Math.round(c.vx), vy: Math.round(c.vy), f: c.face,
       pw: c.power < 0 ? -1 : Math.round(c.power * 100) / 100, ts: c.toss < 0 ? -1 : r1(c.toss),
       h: c.hold ? 1 : 0, s: c.stun > 0 ? 1 : 0, i: c.inv > 0 ? 1 : 0, l: c.lives, r: c.respawn > 0 ? 1 : 0, o: c.out ? 1 : 0,
-      p: c.chute ? 1 : 0, kh: c.kHit, kf: c.kFall, w: c.slapT > 0 ? 1 : 0, ds: c.dashT > 0 ? 1 : 0,
+      p: c.chute ? 1 : 0, pu: powerBits(c), kh: c.kHit, kf: c.kFall, w: c.slapT > 0 ? 1 : 0, ds: c.dashT > 0 ? 1 : 0,
     };
   }
   function packBarrel(b) {
@@ -607,6 +644,9 @@ function play(ctx) {
     if (rbuf.length > 40) rbuf.shift();
     const kh = num(s.kh, 0), kf = num(s.kf, 0);
     them.out = !!s.o;
+    them.pSpd = s.pu & 1 ? 1 : 0;
+    them.pBig = s.pu & 2 ? 1 : 0;
+    them.pShd = s.pu & 4 ? 1 : 0;
     const lostOne = kh > them.kHit || kf > them.kFall;
     const fell = kf > them.kFall;
     them.kHit = Math.max(them.kHit, kh);
@@ -640,6 +680,7 @@ function play(ctx) {
     if (typeof m.g === 'string' && m.g.length === NT) {
       for (let i = 0; i < NT; i++) { const s = +m.g[i]; if (s >= 0 && s <= 2) setTile(i, s); }
     }
+    if (Array.isArray(m.cr)) crates = m.cr.filter(a => Array.isArray(a) && !taken.has(a[0])).map(a => ({ id: a[0], x: clamp(num(a[1], 0), 0, W), type: clamp(num(a[2], 0), 0, 2), age: 0 }));
     if (Number.isFinite(m.bn) && m.bn > bannerN) { bannerN = m.bn; showBanner(m.bt); }
   }
 
@@ -654,10 +695,12 @@ function play(ctx) {
     if (m.t === 's') {
       onRemoteCat(m.c);
       if (!host) onSnapshot(m);
+    } else if (host && m.t === 'crate') {
+      crates = crates.filter(c => c.id !== m.id);
     } else if (host && ['grab', 'throw', 'drop', 'hit'].includes(m.t)) {
       onGuestEvent(m);
     } else if (m.t === 'slap' && (m.d === 1 || m.d === -1)) {
-      knock(me, m.d); // (they reached you on their screen)
+      knock(me, m.d, clamp(num(m.k, 1), 1, 3)); // (they reached you on their screen)
     } else if (!host && m.t === 'deny') {
       if (pred && num(m.id, 0) >= pred.id) endPred();
       if (num(m.id, 0) === evId) { me.hold = false; me.power = -1; me.toss = -1; }
@@ -864,6 +907,7 @@ function play(ctx) {
     else stepPred(dt);
     const b = barrelNow();
     for (const c of local) checkHit(c, b);
+    for (const c of local) pickCrates(c);
     if (host && phase === 'play' && (me.out || them.out)) endGame(me.out && them.out ? -1 : me.out ? themI : meI);
   }
 
@@ -899,7 +943,7 @@ function play(ctx) {
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
     ctx.every(() => ctx.send(host
-      ? { t: 's', c: packCat(me), b: packBarrel(barrel), g: tiles.join(''), k: ack, v: av, n: bv, bn: bannerN, bt: bannerKey }
+      ? { t: 's', c: packCat(me), b: packBarrel(barrel), g: tiles.join(''), k: ack, v: av, n: bv, bn: bannerN, bt: bannerKey, cr: crates.map(c => [c.id, Math.round(c.x), c.type]) }
       : { t: 's', c: packCat(me) }), SEND_MS);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
@@ -1062,6 +1106,7 @@ function play(ctx) {
     g.translate(ox, oy);
     drawLava(now / 1000);
     drawTiles(now);
+    drawCrates(now);
     drawChunks(dt);
     const b = shown;
     const freeB = b.h < 0 && !b.lava;
@@ -1248,6 +1293,19 @@ function play(ctx) {
     for (let i = 0; i < NT; i++) if (tiles[i] === 2) g.fillRect(flip ? W - (i + 1) * TILE : i * TILE, GY, TILE, LAVA - GY);
   }
 
+  function drawCrates(now) {
+    for (const cr of crates) {
+      const x = sx(cr.x), y = GY - 22 + Math.sin(now / 250 + cr.id) * 2;
+      g.fillStyle = 'rgba(0, 0, 0, .3)';
+      g.beginPath(); g.ellipse(x, GY - 2, 22, 6, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#c58a47';
+      roundRect(x - 20, y - 20, 40, 40, 6); g.fill();
+      g.strokeStyle = '#6b4420'; g.lineWidth = 3; roundRect(x - 20, y - 20, 40, 40, 6); g.stroke();
+      label(['⚡', '🥊', '🛡️'][cr.type] || '?', x, y + 1, 24, '#ffffff');
+      if (cr.age > 10) { g.globalAlpha = 0.5 + 0.5 * Math.sin(now / 60); g.strokeStyle = '#ff5a5a'; roundRect(x - 22, y - 22, 44, 44, 7); g.stroke(); g.globalAlpha = 1; }
+    }
+  }
+
   function drawTiles(now) {
     for (let i = 0; i < NT; i++) {
       if (tiles[i] === 2) continue;
@@ -1352,6 +1410,10 @@ function play(ctx) {
       const X = sx(v.x);
       for (let k = 0; k < LIVES; k++) heart(X + (k - (LIVES - 1) / 2) * 16, v.y - 100, k < c.lives);
       label(c === me ? 'You' : c.name, X, v.y + 16, 13, c === me ? '#ffd23f' : '#ffffff');
+      { // power-ups on, and the slap level (a lost life makes it stronger)
+        const icons = (c.pSpd > 0 ? '⚡' : '') + (c.pBig > 0 ? '🥊' : '') + (c.pShd > 0 ? '🛡️' : '') + (c.lives < LIVES ? '💪' + (LIVES - c.lives) : '');
+        if (icons) label(icons, X, v.y - 142, 15, '#ffffff');
+      }
       if (v.power >= 0) {
         g.fillStyle = 'rgba(20, 10, 30, .85)';
         roundRect(X - 27, v.y - 124, 54, 11, 5);

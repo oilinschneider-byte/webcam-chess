@@ -104,15 +104,24 @@ CA.games.add('timing', {
 /* ================= DODGE ================= */
 
 CA.games.add('dodge', {
-  name: 'Dodge', icon: '☄️', blurb: 'Move left and right to dodge the falling rocks. You have 3 lives. Whoever lasts longest wins!',
+  name: 'Dodge', icon: '☄️', blurb: 'Move left and right to dodge the falling rocks, which get faster and faster (and some chase you!). Catch 🛡️ for a shield, ⏱️ for slow motion and 🎁 to drop extra rocks on the other player. You have 3 lives. Whoever lasts longest wins!',
   start(ctx) {
     const LEN = L(25000);
     const ROCKS = ['☄️', '🪨', '💣', '🌵'];
     const falls = [];
-    for (let t = 700; t < LEN + 1500;) {
+    for (let t = 700; t < LEN + 1500;) { // (the rocks speed up faster than they used to; some home in on you; now and then a pickup comes down too)
       const k = t / LEN;
-      falls.push({ at: t, x: 0.05 + ctx.rng() * 0.9, r: 0.035 + ctx.rng() * 0.03, v: 0.45 + k * 0.6 + ctx.rng() * 0.3, e: ROCKS[Math.floor(ctx.rng() * ROCKS.length)] });
-      t += Math.max(150, 560 - k * 380) * (0.55 + ctx.rng() * 0.9);
+      const roll = ctx.rng();
+      const f = { at: t, x: 0.05 + ctx.rng() * 0.9, r: 0.035 + ctx.rng() * 0.03, v: 0.45 + k * 1.0 + ctx.rng() * 0.3, e: ROCKS[Math.floor(ctx.rng() * ROCKS.length)], home: ctx.rng() < 0.1 + 0.25 * k };
+      if (t > 2500 && roll < 0.13) {
+        f.kind = roll < 0.05 ? 'shield' : roll < 0.09 ? 'slow' : 'send';
+        f.e = { shield: '🛡️', slow: '⏱️', send: '🎁' }[f.kind];
+        f.v = 0.38;
+        f.r = 0.04;
+        f.home = false;
+      }
+      falls.push(f);
+      t += Math.max(130, 560 - k * 440) * (0.55 + ctx.rng() * 0.9);
     }
     const full = LEN / 100; // scores are tenths of a second; lasting the whole time adds 100 for each life left
     let finalize = null;
@@ -131,6 +140,9 @@ CA.games.add('dodge', {
         const g = cv.getContext('2d');
         const W = cv.width, H = cv.height, PY = H * 0.86, PR = W * 0.035;
         let x = 0.5, lives = 3, safeUntil = 0, left = false, right = false, dead = false, last = performance.now();
+        let tw = 0, shieldOn = false, slowUntil = 0, pending = 0; // (the rocks' own clock, which slow motion slows; a shield; rocks the other player sent you)
+        const dyn = [];
+        ctx.on(m => { if (m && m.t === 'dgrock' && pending < 6) pending += 3; });
         const moveTo = e => { const r = cv.getBoundingClientRect(); x = clamp((e.clientX - r.left) / r.width, 0.04, 0.96); };
         ctx.listen(cv, 'pointermove', moveTo);
         ctx.listen(cv, 'pointerdown', e => { moveTo(e); try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } });
@@ -152,36 +164,54 @@ CA.games.add('dodge', {
           if (left) x = clamp(x - 0.9 * dt, 0.04, 0.96);
           if (right) x = clamp(x + 0.9 * dt, 0.04, 0.96);
           const t = api.elapsed();
+          tw += dt * 1000 * (now < slowUntil ? 0.5 : 1);
+          const tf = tw;
           g.clearRect(0, 0, W, H);
           g.fillStyle = 'rgba(255,255,255,.06)';
           g.fillRect(0, PY + PR + 6, W, H);
-          g.fillStyle = '#fff'; // (emoji are drawn with this color's see-through-ness)
-          for (const f of falls) {
-            if (f.at > t) break;
-            const y = (t - f.at) / 1000 * f.v * H - f.r * W;
-            if (y > H + 40) continue;
-            const fx = f.x * W, fr = f.r * W;
+          if (now < slowUntil) { g.fillStyle = 'rgba(120, 160, 255, .12)'; g.fillRect(0, 0, W, H); }
+          while (pending > 0) { pending--; dyn.push({ at: tf, x: clamp(x + (Math.random() - 0.5) * 0.5, 0.05, 0.95), r: 0.045, v: 0.95, e: '☄️', home: true }); }
+          let over = false;
+          const proc = f => {
+            const y = (tf - f.at) / 1000 * f.v * H - f.r * W;
+            if (y > H + 40 || (f.kind && f.hit)) return;
+            const fr = f.r * W;
+            if (f.cx === undefined) f.cx = f.x * W;
+            if (f.home && !f.hit && y < PY - 120) f.cx += clamp(x * W - f.cx, -70 * dt, 70 * dt); // (a homing rock drifts towards you until it is close)
+            const fx = f.cx;
+            g.fillStyle = 'rgba(255, 70, 70, .28)';
+            if (f.home) { g.beginPath(); g.arc(fx, y, fr * 1.2, 0, Math.PI * 2); g.fill(); }
+            g.fillStyle = '#fff'; // (emoji are drawn with this color's see-through-ness)
             g.font = Math.round(fr * 2.1) + 'px ' + EMOJI_FONT;
             g.fillText(f.e, fx, y);
-            if (!f.hit && now > safeUntil && Math.hypot(fx - x * W, y - PY) < fr + PR * 0.8) {
+            if (!f.hit && Math.hypot(fx - x * W, y - PY) < fr + (f.kind ? PR : PR * 0.8) && (f.kind || now > safeUntil)) {
               f.hit = true;
-              lives--;
-              safeUntil = now + 1000;
-              sound('miss');
-              setMsg('dgLives', '❤️'.repeat(lives) + '🖤'.repeat(3 - lives));
-              if (lives <= 0) {
-                dead = true;
-                setMsg('dgMsg', 'Out of lives! You lasted ' + (t / 1000).toFixed(1) + 's.');
-                api.set(Math.max(1, Math.floor(t / 100)));
-                api.done();
-                return;
+              if (f.kind === 'shield') { shieldOn = true; sound('point'); setMsg('dgMsg', '🛡️ Shield: it takes the next hit!'); }
+              else if (f.kind === 'slow') { slowUntil = now + 3500; sound('point'); setMsg('dgMsg', '⏱️ Slow motion!'); }
+              else if (f.kind === 'send') { sound('point'); setMsg('dgMsg', '🎁 Rocks sent to the other player!'); try { ctx.send({ t: 'dgrock' }); } catch (err) { /* ignore */ } }
+              else if (shieldOn) { shieldOn = false; safeUntil = now + 700; sound('point'); setMsg('dgMsg', '🛡️ Blocked!'); }
+              else {
+                lives--;
+                safeUntil = now + 1000;
+                sound('miss');
+                setMsg('dgLives', '❤️'.repeat(lives) + '🖤'.repeat(3 - lives));
+                if (lives <= 0) {
+                  dead = true;
+                  setMsg('dgMsg', 'Out of lives! You lasted ' + (t / 1000).toFixed(1) + 's.');
+                  api.set(Math.max(1, Math.floor(t / 100)));
+                  api.done();
+                  over = true;
+                }
               }
             }
-          }
+          };
+          for (const f of falls) { if (f.at > tf) break; proc(f); if (over) return; }
+          for (const f of dyn) { proc(f); if (over) return; }
           if (!(now < safeUntil && Math.floor(now / 100) % 2)) {
             g.font = Math.round(PR * 2.2) + 'px ' + EMOJI_FONT;
             g.fillText('🐱', x * W, PY);
           }
+          if (shieldOn) { g.strokeStyle = 'rgba(125, 211, 255, .9)'; g.lineWidth = 3; g.beginPath(); g.arc(x * W, PY, PR * 1.7, 0, Math.PI * 2); g.stroke(); }
           api.set(Math.max(1, Math.floor(t / 100)));
           requestAnimationFrame(frame);
         };

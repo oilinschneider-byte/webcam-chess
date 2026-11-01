@@ -1,5 +1,5 @@
 /* Classic Games: Block Battle. Falling-block puzzles side by side. Clear lines to send junk rows (with one gap) to
-   the other player's board: 2 lines send 1 row, 3 send 2, 4 send 4. If a new piece can't fit at the top, you're
+   the other player's board: 2 lines send 2 rows, 3 send 3, 4 send 5, and clearing lines piece after piece adds more. If a new piece can't fit at the top, you're
    out. Both players get the same pieces in the same order (from the match's seed). Each app runs its own board so it
    reacts instantly; the host's app is the referee (see games-duel.js). */
 (() => {
@@ -18,7 +18,7 @@ const SHAPES = { // each piece: its 4 rotations, as [x, y] cells
 };
 const TYPES = 'IOTSZJL';
 const COLORS = ['#000', '#3fd8e8', '#f5d43b', '#b05ce8', '#5ad65a', '#ef4f4f', '#4a6cf0', '#f59a3b', '#8a8f9c'];
-const SEND = [0, 0, 1, 2, 4];
+const SEND = [0, 0, 2, 3, 5]; // (junk rows sent for 0 to 4 lines cleared at once; back-to-back clears add a bonus)
 const LIMIT = 180;
 
 function hash(seed, n, k) {
@@ -42,7 +42,7 @@ function fits(b, t, r, x, y) {
 
 CA.games.add('blocks', {
   name: 'Block Battle', icon: '🧱',
-  blurb: 'Falling blocks, side by side! Fill rows to clear them and send junk to the other board. A/D move, W rotates, S drops faster, Space drops all the way. Don\'t reach the top!',
+  blurb: 'Falling blocks, side by side! Fill rows to clear them and send junk to the other board (clear lines piece after piece for a combo). The blocks fall faster and faster. A/D move, W rotates, S drops faster, Space drops all the way. Don\'t reach the top!',
   start(ctx) {
     const seed = Math.floor(ctx.rng() * 4294967296) >>> 0;
     const sound = CA.games.kit.sound;
@@ -66,14 +66,15 @@ CA.games.add('blocks', {
       }
       if (cleared) {
         p.lines += cleared;
-        let send = SEND[cleared];
+        p.combo = (p.combo || 0) + 1;
+        let send = SEND[cleared] + (SEND[cleared] > 0 || p.combo > 1 ? Math.min(3, p.combo - 1) : 0); // (combo: clearing on piece after piece)
         const cancel = Math.min(send, p.inc); // (sending cancels junk that's on its way to you)
         p.inc -= cancel;
         send -= cancel;
         if (send > 0) { p.sent += send; api.toOther({ g: send, hole: Math.floor(hash(seed, 999, p.lines) * COLS) }); }
         p.flash = 0.3;
         if (api.self) sound(cleared >= 4 ? 'win' : 'point');
-      } else if (api.self) sound([[180, 0, 0.04]]);
+      } else { p.combo = 0; if (api.self) sound([[180, 0, 0.04]]); }
       if (p.inc > 0) { // junk arrives: rows at the bottom with one gap
         const n = Math.min(p.inc, ROWS);
         p.b.copyWithin(0, n * COLS);
@@ -117,7 +118,7 @@ CA.games.add('blocks', {
         }
         if (inp.hit.u) { if (tryMove(0, 0, 1) && api.self) sound([[620, 0, 0.03]]); }
         if (inp.hit.a) { while (fits(p.b, p.t, p.r, p.x, p.y + 1)) p.y++; lock(p, api); return; }
-        const gravity = Math.max(0.07, 0.75 - p.time * 0.0045);
+        const gravity = Math.max(0.05, 0.7 - p.time * 0.0075); // (it keeps getting faster: top speed after about 90 seconds)
         p.fall += dt;
         const every = inp.held.d ? Math.min(0.04, gravity) : gravity;
         while (p.fall >= every) {

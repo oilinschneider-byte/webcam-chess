@@ -10,7 +10,7 @@
 
    Space takes out a giant fish in your other paw (Space again puts it away). While it's out, the mouse swings the fish, and
    your climbing paw just keeps holding on where it is. A fast swing that hits the other cat knocks them loose, but
-   the fish only lasts 2 slaps. First to the top wins (after 4 minutes, whoever got further wins).
+   the fish only lasts 3 slaps. First to the top wins (after 4 minutes, whoever got further wins).
 
    The cats are solid, but when they're stuck against each other for a moment they slip through each other for a few
    seconds, so nobody can block the way. Every gap on the course is either too small to fall into or big enough to
@@ -43,7 +43,7 @@ const MAX_V = 1400;
 const MU = { dirt: 2.6, rock: 2.4, wood: 2.4, rubber: 3, fabric: 3, grip: 3, gold: 2.6, wall: 0.35, metal: 0.12 }; // how well claws grip it
 const SLIPPERY = { wall: 1, metal: 1 };
 const SENS = 1.1;                // how far the paw moves for the mouse
-const FISH_LEN = 112, FISH_USES = 2, SLAP_SPEED = 950; // a slap needs the fish swinging at least this fast
+const FISH_LEN = 112, FISH_USES = 3, SLAP_SPEED = 950; // a slap needs the fish swinging at least this fast
 const TIME_LIMIT = 240;          // seconds; then whoever got further wins
 const READY = 2.4;               // the 3-2-1 countdown
 const GHOST_AFTER = 1.1, GHOST_FOR = 2.5; // stuck against each other this long: slip through each other this long
@@ -53,7 +53,7 @@ const START_X = [150, 265];      // where the cats start (the host's on the left
 CA.games.add('climb', {
   name: 'Claw Climb', icon: '🧗',
   blurb: 'Race up the junk mountain! Move the mouse and your long claw arm follows: press the paw on things to push ' +
-    'and pull yourself up (no jumping!). Space takes out a giant fish: swing it fast to slap the other cat down (2 slaps). Space puts it away.',
+    'and pull yourself up (no jumping!). Space takes out a giant fish: swing it fast to slap the other cat down (3 slaps). A jetpack drops somewhere on the tower now and then: grab it and point where you want to fly. Space puts it away.',
   prepare() { setTimeout(() => courseRoute(theCourse()), 30); }, // (the route is worked out while you look at each other)
   start(ctx) { play(ctx); },
 });
@@ -420,6 +420,7 @@ function play(ctx) {
       i, name, fur: F.fur(eq), pics: bodyPics(eq),
       x, y, vx: 0, vy: 0, ground: null,
       aim, aimV: { x: 0, y: 0 }, paw: { x: S.x + aim.x, y: S.y + aim.y }, hold: null,
+      jet: 0,                                    // jetpack seconds left (for the other cat: just on or off)
       fish: false, uses: FISH_USES, fishAim: { x: -50, y: 20 }, fishPaw: { x: x, y: y }, tip: { x: x, y: y }, tipV: { x: 0, y: 0 },
       slapCd: 0, stun: 0, done: false, legs: null, arm2: null, landV: 0,
     };
@@ -609,6 +610,13 @@ function play(ctx) {
       c.vx += gn * was.nx;
       c.vy += gn * was.ny;
     } else c.vy += G * dt;
+    if (c.jet > 0) { // jetpack: it carries you towards where you point (and nearly cancels gravity)
+      if (c === me) c.jet -= dt;
+      const al = Math.hypot(c.aim.x, c.aim.y), ux = al > 4 ? c.aim.x / al : 0, uy = al > 4 ? c.aim.y / al : -1;
+      c.vx += ux * 2400 * dt;
+      c.vy += (uy * 2400 - G * 0.9) * dt;
+      if (Math.random() < dt * 80) fxDust(c.x - ux * 14, c.y + 16);
+    }
     if (ax || ay) { // (the arm is springy: damp it, toward moving the way the mouse moves your cat)
       const f = Math.hypot(ax, ay), ux = ax / f, uy = ay / f, k = Math.min(1, DAMP * dt);
       const along = (c.vx + c.aimV.x) * ux + (c.vy + c.aimV.y) * uy;
@@ -745,10 +753,28 @@ function play(ctx) {
   /* ---------- online ---------- */
 
   const rbuf = []; // the other cat's recent states
+  // The jetpack: the host drops one at a random spot along the way up (one at a time); whoever touches it first gets it.
+  let jp = null, jpId = 0, nextJp = 16;
+  const jpTaken = new Set();
+  function spawnJetpack() {
+    const R = courseRoute(course);
+    if (!R) { nextJp = 5; return; }
+    const lo = Math.floor(R.pts.length * 0.12), hi = Math.floor(R.pts.length * 0.85);
+    const p = R.pts[lo + Math.floor(Math.random() * (hi - lo))];
+    jp = { id: ++jpId, x: p.x, y: p.y };
+  }
+  function takeJetpack() {
+    me.jet = 3.6;
+    pop(jp.x, jp.y - 30, '🚀 JETPACK!', '#ffd23f');
+    hint('🚀 Jetpack! It flies you towards where you point');
+    sound('point');
+    if (host) { jp = null; nextJp = 14 + Math.random() * 10; }
+    else { jpTaken.add(jp.id); ctx.send({ t: 'jpt', id: jp.id }); jp = null; }
+  }
   function packMe() {
     return {
       t: 's', x: r1(me.x), y: r1(me.y), vx: Math.round(me.vx), vy: Math.round(me.vy), px: r1(me.paw.x), py: r1(me.paw.y),
-      h: me.hold ? 1 : 0, f: me.fish ? 1 : 0, fx: r1(me.fishPaw.x), fy: r1(me.fishPaw.y), u: me.uses, s: me.stun > 0 ? 1 : 0,
+      h: me.hold ? 1 : 0, f: me.fish ? 1 : 0, fx: r1(me.fishPaw.x), fy: r1(me.fishPaw.y), u: me.uses, s: me.stun > 0 ? 1 : 0, jt: me.jet > 0 ? 1 : 0, jp: host ? (jp ? [jp.id, r1(jp.x), r1(jp.y)] : 0) : undefined,
     };
   }
   function onRemote(s) { // (it comes from the other app: check everything)
@@ -761,6 +787,8 @@ function play(ctx) {
       hold: !!s.h, fish: !!s.f, stun: !!s.s,
     });
     them.uses = clamp(Math.floor(num(s.u, them.uses)), 0, FISH_USES);
+    them.jet = s.jt ? 1 : 0;
+    if (!host) jp = Array.isArray(s.jp) && !jpTaken.has(s.jp[0]) ? { id: s.jp[0], x: num(s.jp[1], 0), y: num(s.jp[2], 0) } : null;
     if (rbuf.length > 40) rbuf.shift();
   }
   // The other cat as this app shows it: { x, y, vx, vy, px, py (the claw paw), hold, fish, fx, fy (the fish paw), stun }
@@ -776,6 +804,8 @@ function play(ctx) {
     if (m.t === 's') onRemote(m);
     else if (m.t === 'slap' && Number.isFinite(m.vx) && Number.isFinite(m.vy)) { // (their fish hit you on their screen)
       if (phase === 'play' && !me.done) getSlapped(me, clamp(m.vx, -1200, 1200), clamp(m.vy, -1200, 1200));
+    } else if (host && m.t === 'jpt') {
+      if (jp && jp.id === m.id) { jp = null; nextJp = 14 + Math.random() * 10; }
     } else if (host && m.t === 'top') {
       if (phase === 'play') endGame(1 - meI);
     } else if (!host && m.t === 'end' && [-1, 0, 1].includes(m.w)) {
@@ -906,6 +936,8 @@ function play(ctx) {
     if (phase === 'play') clock += dt;
     me.stun = Math.max(0, me.stun - dt);
     me.slapCd = Math.max(0, me.slapCd - dt);
+    if (host && phase === 'play' && !jp && (nextJp -= dt) <= 0) spawnJetpack();
+    if (jp && phase === 'play' && !me.done && Math.abs(me.x - jp.x) < 48 && Math.abs(me.y - jp.y) < 60) takeJetpack();
     const [ax, ay] = me.done ? [0, 0] : stepArm(me, dt);
     if (me.fish) stepFish(me, dt);
     moveBody(me, dt, ax, ay, tv);
@@ -996,10 +1028,14 @@ function play(ctx) {
     for (const s of shapes) if (s.look !== 'none' && s.x2 > camX - 20 && s.x1 < camX + W + 20 && s.y2 > camY - 20 && s.y1 < camY + H + 20) drawShape(s);
     drawDecor(true);
     drawFinish(now);
+    if (jp) { const bob = Math.sin(now / 220) * 4; g.fillStyle = 'rgba(255, 210, 63, .25)'; dot(jp.x, jp.y + bob, 34); label('🚀', jp.x, jp.y + bob, 40, '#ffffff'); }
     stepLimbs(them, tv, dt);
     stepLimbs(me, mv, dt);
     drawCat(them, tv, now, ghostT > 0, false);
     drawCat(me, mv, now, false, true);
+    for (const [c, v] of [[them, tv], [me, mv]]) if (c.jet > 0) { // the jetpack flames
+      for (let k = 0; k < 3; k++) { g.fillStyle = k ? '#ffd23f' : '#ff7a1a'; g.beginPath(); g.moveTo(v.x - 16 + k * 3, v.y + 14); g.lineTo(v.x - 10 - k * 3, v.y + 14); g.lineTo(v.x - 13, v.y + 30 + Math.random() * 22 - k * 6); g.fill(); }
+    }
     for (const p of fxs) {
       p.life -= dt;
       p.x += p.vx * dt;

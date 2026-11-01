@@ -17,6 +17,7 @@ const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 const WIN = 2, MAX_ROUNDS = 4, ROUND = 40, SETUP_WAIT = 25, LOST_PAUSE = 0.4, LOST_RESET = 8, GRACE = 0.7;
 let detector = null, loading = null;
+let dis = null;                                   // the latest distraction: { to, k, at }
 
 function loadDetector() {
   if (detector) return Promise.resolve(detector);
@@ -53,7 +54,7 @@ CA.games.add('stare', {
     // the start, so squinting while it gets ready doesn't help: squinted eyes count as closed.
     // Real blinks are quick (about a tenth of a second), so the camera is read on every new video frame (about 30 times
     // a second) and a blink counts after two closed frames in a row, or one frame of eyes squeezed fully shut.
-    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: 0.5, strong: 0.85, closed: 0, sent: false, ph: '', rd: 0, raw: null, vt: -1, flash: 0 };
+    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: 0.27, strong: 0.5, rdy: 0.45, closed: 0, sent: false, ph: '', rd: 0, raw: null, vt: -1, flash: 0 };
 
     // Reads the camera (about 15 times a second) and turns it into controls: 'face' (held while your face is
     // seen), 'ready' (held once your eyes are properly open) and 'blink' (pressed once when you blink).
@@ -98,7 +99,7 @@ CA.games.add('stare', {
       eye.open = 1 - blink;
       if (!fresh) return;
       if (s.ph === 'calib') { // ready once your eyes have been properly open for a moment (squinting doesn't count)
-        if (blink > eye.thr) eye.openSince = 0;
+        if (blink > eye.rdy) eye.openSince = 0;
         else if (!eye.openSince) eye.openSince = now;
         if (eye.openSince && now - eye.openSince >= 600) v.hold('ready', true);
         else v.hold('ready', false);
@@ -168,14 +169,29 @@ CA.games.add('stare', {
         v.roundRect(40, 66, Math.max(8, 880 * Math.min(1, s.t / ROUND)), 8, 4); g.fill();
       }
       // your eyes, as the camera sees them
-      if (eye.face) {
-        g.fillStyle = 'rgba(0, 0, 0, .5)';
-        v.roundRect(40, 478, 400, 14, 7); g.fill();
-        g.fillStyle = eye.open > 1 - eye.thr ? '#7dff8a' : '#ff5a5a';
-        v.roundRect(41, 479, Math.max(6, 398 * eye.open), 12, 6); g.fill();
+      if (eye.face) { // the calm bar: full when your eyes are wide open, and the nearer it gets to the white line, the nearer you are to blinking
+        const closeness = Math.max(0, Math.min(1, (1 - eye.open) / eye.thr)); // 0 = wide open, 1 = at the line
+        g.fillStyle = 'rgba(0, 0, 0, .55)';
+        v.roundRect(40, 472, 880, 22, 11); g.fill();
+        g.fillStyle = closeness > 0.75 ? '#ff5a5a' : closeness > 0.45 ? '#ffd23f' : '#7dff8a';
+        v.roundRect(42, 474, Math.max(8, 876 * (1 - closeness * 0.85)), 18, 9); g.fill();
         g.fillStyle = '#ffffff';
-        g.fillRect(40 + 400 * (1 - eye.thr), 474, 2, 22);
-        v.label('👁 how open your eyes are', 240, 508, 12, '#cccccc');
+        g.fillRect(40 + 880 * 0.15 - 1, 468, 3, 30); // (the blink line)
+        v.label(closeness > 0.75 ? '😬 ABOUT TO BLINK!' : '👁 stay calm: eyes wide open', 480, 508, 13, closeness > 0.75 ? '#ff9a9a' : '#cccccc');
+      }
+      if (s.ph === 'stare') { // the distraction button
+        const cd = Math.max(0, s.dc[v.me] || 0);
+        v.label(cd > 0 ? '😜 Distract them in ' + Math.ceil(cd) + 's' : '😜 Space: distract them!', 480, 456, 13, cd > 0 ? '#999999' : '#ffd23f');
+      }
+      if (dis && v.now - dis.at < 1500) { // a (harmless) distraction on the panel of whoever it was aimed at
+        const t = (v.now - dis.at) / 1500, onLeft = v.me === dis.to ? 40 : 520;
+        g.save();
+        g.beginPath(); v.roundRect(onLeft, 110, 400, 300, 22); g.clip();
+        if (dis.k === 0) { v.label('🙀', onLeft + 200, 260, 140 * Math.sin(Math.min(1, t * 1.6) * Math.PI), '#ffffff'); }
+        else if (dis.k === 1) { g.fillStyle = 'rgba(255, 255, 255, ' + 0.5 * Math.sin(t * Math.PI) + ')'; g.fillRect(onLeft, 110, 400, 300); }
+        else if (dis.k === 2) { for (let k = 0; k < 9; k++) v.label('🐟', onLeft + 40 + k * 40, 100 + ((t * 420 + k * 70) % 330), 34, '#ffffff'); }
+        else { v.label('BOO!', onLeft + 200 + Math.sin(v.now / 40) * 8, 260, 70, '#ff5aa5'); }
+        g.restore();
       }
       if (!CA.voice.cameraOn() && !window.__fakeFace) v.msg('Turn your camera on to play (📷 at the top)! It\'s only checked on this computer.', true);
       else if (status === 'loading' && !window.__fakeFace) v.msg('Getting the face detector ready…');
@@ -184,9 +200,10 @@ CA.games.add('stare', {
 
     CA.duel.run(ctx, {
       id: 'stare', bigCams: true,
-      help: "Don't blink! · your camera is only checked on this computer: nothing is recorded or sent",
+      pad: { buttons: [{ k: 'a', label: '😜 Distract', main: true }] },
+      help: "Don't blink! · Space sends a (harmless) distraction to the other player · your camera is only checked on this computer",
       note: 'First to ' + WIN + ' rounds',
-      init: () => ({ ph: 'calib', rd: 1, w: [0, 0], rw: -1, t: 0, wait: 0, lost: 0, paused: 0, grace: 0, res: 0, face: [false, false], ready: [false, false] }),
+      init: () => ({ ph: 'calib', rd: 1, w: [0, 0], rw: -1, t: 0, wait: 0, lost: 0, paused: 0, grace: 0, res: 0, face: [false, false], ready: [false, false], dc: [4, 4] }),
       step(s, inp, dt, api) {
         s.face = inp.map(n => !!n.held.face);
         s.ready = inp.map(n => !!n.held.ready && !!n.held.face);
@@ -206,6 +223,11 @@ CA.games.add('stare', {
           s.lost = 0;
           s.t += dt;
           s.grace -= dt;
+          s.dc = s.dc.map((d, i) => { // distractions: one every few seconds, aimed at the other player
+            d = Math.max(0, d - dt);
+            if (d <= 0 && inp[i].hit.a && s.grace <= 0) { d = 7; api.ev('distract', { to: 1 - i, k: Math.floor(Math.random() * 4) }); }
+            return d;
+          });
           const blinked = inp.map(n => !!n.hit.blink && s.grace <= 0);
           if (blinked[0] || blinked[1] || s.t >= ROUND) {
             const rw = blinked[0] && blinked[1] ? -1 : blinked[0] ? 1 : blinked[1] ? 0 : -1;
@@ -224,7 +246,7 @@ CA.games.add('stare', {
           }
         }
       },
-      snap: s => ({ ph: s.ph, rd: s.rd, w: s.w, rw: s.rw, t: Math.round(s.t * 10) / 10, f: s.face.map(Number), rdy: s.ready.map(Number) }),
+      snap: s => ({ ph: s.ph, rd: s.rd, w: s.w, rw: s.rw, t: Math.round(s.t * 10) / 10, f: s.face.map(Number), rdy: s.ready.map(Number), dc: s.dc.map(d => Math.round(d * 10) / 10) }),
       // The bot has its eyes open from the start, and blinks after a while (good bots last a lot longer).
       bot(s, i, dt, api) {
         const b = s.bs || (s.bs = { at: 0, rd: 0 });
@@ -233,11 +255,13 @@ CA.games.add('stare', {
         if (s.ph !== 'calib') out.held.ready = true;
         if (b.rd !== s.rd) { b.rd = s.rd; b.at = Math.max(3, CA.games.kit.gauss(9 + 22 * api.skill, 5)); }
         if (s.ph === 'stare' && s.t >= b.at) out.hit.blink = true;
+        if (s.ph === 'stare' && Math.random() < 0.003 * (0.5 + api.skill)) out.hit.a = true;
         return out;
       },
       local, draw,
       event(v, e) {
         if (e.type === 'go') { v.sound('go'); }
+        if (e.type === 'distract') { dis = { to: e.to, k: e.k, at: v.now }; v.sound(e.to === v.me ? [[500, 0, 0.06], [420, 0.06, 0.08]] : [[700, 0, 0.04]]); }
         if (e.type === 'round') v.sound(e.rw === v.me ? 'point' : e.rw < 0 ? 'draw' : 'miss');
       },
     });

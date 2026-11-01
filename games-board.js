@@ -240,6 +240,7 @@ CA.games.add('speedchess', {
     let endDue = false;
     let over = false;
     let selected = null;
+    let pre = null;      // a premove: { from, to }, picked while it is the other player's turn, played as soon as it is yours
     let targets = [];
     let dragFrom = null;
     let lastMove = null;
@@ -282,6 +283,7 @@ CA.games.add('speedchess', {
         el.className = 'sq ' + el.dataset.shade +
           (lastMove && (sq === lastMove.from || sq === lastMove.to) ? ' last' : '') +
           (sq === selected ? ' sel' : '') +
+          (pre && (sq === pre.from || sq === pre.to) ? ' pre' : '') +
           (tset.has(sq) ? (p ? ' capture' : ' target') : '') +
           (sq === check ? ' check' : '') +
           (warning() && inZone(sq) ? ' danger' : '');
@@ -323,7 +325,22 @@ CA.games.add('speedchess', {
     });
 
     function pick(sq) {
-      if (!myTurn()) return;
+      if (over) return;
+      if (!myTurn()) { // premove: pick your piece, then where it should go (it is played, if it is legal then, when your turn comes)
+        const own = chess.get(sq);
+        if (pre && pre.from === sq) { pre = null; selected = null; render(); return; }
+        if (selected && !(own && own.color === myColor)) {
+          pre = { from: selected, to: sq };
+          selected = null;
+          setMsg('scMsg', 'Premove set: it plays as soon as it is your turn (tap the piece to cancel)');
+          render();
+          return;
+        }
+        selected = own && own.color === myColor ? sq : null;
+        pre = null;
+        render();
+        return;
+      }
       if (selected && targets.some(m => m.to === sq)) { tryMove(selected, sq); return; }
       const p = chess.get(sq);
       if (p && p.color === myColor && sq !== selected) {
@@ -386,6 +403,11 @@ CA.games.add('speedchess', {
       const at = ply;
       if (myTurn()) {
         setMsg('scTurn', 'Your move');
+        if (pre) {
+          const p = pre;
+          pre = null;
+          ctx.later(() => { if (!over && myTurn() && ply === at && !tryMove(p.from, p.to)) { setMsg('scMsg', 'Your premove was not possible any more'); render(); } }, 150);
+        }
         turnTimer = ctx.later(() => {
           if (ply !== at || !myTurn()) return;
           const all = chess.moves({ verbose: true });
@@ -458,6 +480,7 @@ CA.games.add('speedchess', {
     }
 
     function applyNuke(fen) {
+      pre = null;
       if (!new Chess().load(fen)) return;
       const before = ALL_SQUARES.filter(sq => chess.get(sq));
       chess.load(fen);

@@ -1,6 +1,6 @@
 /* Classic Games: Box King. A cardboard box sits in the middle of the room. Standing in it alone earns you time; when
    both cats are in it, nobody scores until one gets knocked out. Space throws your boomerang the way you're facing
-   (or at the other cat, if you're standing still): it flies out slowly in a curve, so it can be dodged, and comes
+   (or at the other cat, if you're standing still): it flies out slowly in a curve (bouncing off the walls twice) and comes
    back to you. If it hits the other cat, they're knocked back and dazed for a moment. One boomerang each: you can
    throw again once it's back in your paws. First to 20 seconds in the box, or the most after 75 seconds. (The host's
    app runs the boomerangs and decides who's in the box: see games-duel.js.) */
@@ -10,7 +10,7 @@
 const W = 960, H = 540, WALL = 22;
 const R = 20;                                    // a cat's size
 const SPEED = 215, ACCEL = 1500;
-const BOOM_SPEED = 260, BOOM_OUT = 1.1, BOOM_BACK = 320, BOOM_TURN = 1.3, BOOM_R = 14, BOOM_MAX = 4;
+const BOOM_SPEED = 260, BOOM_OUT = 1.1, BOOM_BACK = 320, BOOM_TURN = 1.3, BOOM_R = 14, BOOM_MAX = 5;
 const KNOCK = 520, STUN = 0.45;
 const BOX = { x: W / 2 - 75, y: H / 2 - 75, w: 150, h: 150 };
 const GOAL = 20, LENGTH = 75;
@@ -59,10 +59,16 @@ function stepBoom(s, i, dt, api) {
   b.x += b.vx * dt;
   b.y += b.vy * dt;
   // the walls (and the camera walls in the top corners) turn it back
-  const hitWall = b.x < WALL + BOOM_R || b.x > W - WALL - BOOM_R || b.y < WALL + BOOM_R || b.y > H - WALL - BOOM_R || CA.camWalls.bounce(b, BOOM_R, 0.6);
+  const hx = b.x < WALL + BOOM_R || b.x > W - WALL - BOOM_R, hy = b.y < WALL + BOOM_R || b.y > H - WALL - BOOM_R;
+  if (hx) b.vx = -b.vx;
+  if (hy) b.vy = -b.vy;
+  const hitWall = hx || hy || CA.camWalls.bounce(b, BOOM_R, 1);
   b.x = Math.max(WALL + BOOM_R, Math.min(W - WALL - BOOM_R, b.x));
   b.y = Math.max(WALL + BOOM_R, Math.min(H - WALL - BOOM_R, b.y));
-  if (hitWall && b.out) { b.out = false; api.ev('tink', { x: b.x, y: b.y }); }
+  if (hitWall && b.out) { // the boomerang bounces off the walls, twice, before it turns back
+    if (b.bn < 2) { b.bn++; b.t = Math.max(0, b.t - 0.3); } else b.out = false;
+    api.ev('tink', { x: b.x, y: b.y });
+  }
   // the other cat: knocked back the way it was flying, and dazed (once a throw)
   if (!b.hit && Math.hypot(o.x - b.x, o.y - b.y) < R + BOOM_R) {
     const sp = Math.hypot(b.vx, b.vy) || 1;
@@ -87,7 +93,7 @@ function step(s, inp, dt, api) {
       if (!n.mx && !n.my) { const dx = o.x - c.x, dy = o.y - c.y, l = Math.hypot(dx, dy) || 1; fx = dx / l; fy = dy / l; }
       // (it curves, so it leaves a little to one side of where you aim: it bends back onto the line)
       const curve = i ? -1 : 1, a = Math.atan2(fy, fx) - curve * BOOM_TURN * BOOM_OUT * 0.35;
-      c.boom = { x: c.x + fx * (R + 8), y: c.y + fy * (R + 8), vx: Math.cos(a) * BOOM_SPEED, vy: Math.sin(a) * BOOM_SPEED, t: 0, out: true, hit: false, spin: 0, curve };
+      c.boom = { x: c.x + fx * (R + 8), y: c.y + fy * (R + 8), vx: Math.cos(a) * BOOM_SPEED, vy: Math.sin(a) * BOOM_SPEED, t: 0, out: true, hit: false, spin: 0, curve, bn: 0 };
       api.ev('whoosh', { x: c.x, y: c.y });
     }
     const k = c.stun > 0 ? 0 : 1;

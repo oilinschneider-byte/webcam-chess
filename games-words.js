@@ -132,7 +132,7 @@ const SENTENCES = [
 ];
 
 CA.games.add('type', {
-  name: 'Type Race', icon: '📝', blurb: 'Type the short passage exactly, as fast as you can. First to finish wins! (If time runs out, whoever typed more wins.)',
+  name: 'Type Race', icon: '📝', blurb: 'Type the short passage exactly, as fast as you can. A wrong key freezes you for a moment! You can see how far the other player has got. First to finish wins! (If time runs out, whoever typed more wins.)',
   start(ctx) {
     const LEN = L(75000);
     const text = SENTENCES[Math.floor(ctx.rng() * SENTENCES.length)];
@@ -150,6 +150,14 @@ CA.games.add('type', {
     let t0 = 0;
     let finishRace = null;
     const pct = () => good / text.length * 100;
+    let wasBad = false;
+    // A wrong key: you can't type for 0.7 seconds.
+    function penalty() {
+      sound('miss');
+      setMsg('trMsg', '❌ Wrong key! Frozen for a moment…');
+      input.disabled = true;
+      ctx.later(() => { if (running) { input.disabled = false; input.focus(); setMsg('trMsg', 'Backspace and keep going!'); } }, 700);
+    }
 
     function show() {
       const v = input.value;
@@ -162,6 +170,8 @@ CA.games.add('type', {
         (bad ? '<span class="bad">' + esc(text.slice(ok, ok + bad)) + '</span>' : '') +
         '<span class="cur">' + esc(text.slice(ok + bad, ok + bad + 1)) + '</span>' + esc(text.slice(ok + bad + 1));
       input.classList.toggle('wrong', v.length > ok);
+      if (bad > 0 && !wasBad && running) penalty();
+      wasBad = bad > 0;
       bars.set('me', pct(), Math.floor(pct()) + '%');
     }
 

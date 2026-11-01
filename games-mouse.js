@@ -10,6 +10,10 @@ const CW = 23, CH = 13, TILE = 40, X0 = (W - CW * TILE) / 2, Y0 = (H - CH * TILE
 const R = 13;
 const SPEED = { cat: 172, mouse: 158 }, DASH = 2.2, DASH_TIME = 0.25, DASH_WAIT = { cat: 3, mouse: 1.6 };
 const ROUND = 45;
+const SHRINK_AT = [12, 21, 30, 38], WARN = 3;    // the maze closes in from the edges (4 times), with a warning first
+const JUMP_TIME = 0.34, JUMP_SPEED = 300, JUMP_WAIT = 9;   // the cat can leap over a wall now and then
+const TRAP_STUN = 1.3, CHEESE_BOOST = 3;
+let INS = 0;                                      // how many cells in from the edge the maze has closed (set by step and bot)
 const START = { mouse: [0, CH - 1], cat: [CW - 1, 4] };      // (the same spots in both rounds, clear of the camera walls)
 // The cells under the camera walls (the top corners: see cam-walls.js) aren't part of the maze.
 const BLOCKED = (x, y) => y <= 3 && (x <= 3 || x >= CW - 4);
@@ -21,8 +25,9 @@ CA.games.add('mouse', {
   start(ctx) {
     CA.duel.run(ctx, {
       id: 'mouse',
-      pad: { stick: true, buttons: [{ k: 'a', label: '💨 Dash', main: true }] },
-      help: 'WASD move · Space dash · as the mouse, survive · as the cat, catch!',
+      pad: { stick: true, buttons: [{ k: 'b', label: '🦘 Leap (cat)' }, { k: 'a', label: '💨 Dash', main: true }] },
+      keys: { KeyB: 'b' }, letters: { b: 'b' },
+      help: 'WASD move · Space dash · B leaps over a wall (cat only, long wait) · 🧀 speeds you up, 🪤 traps stun · the maze closes in!',
       helpTouch: 'Stick moves · Dash · as the mouse, survive · as the cat, catch!',
       note: 'Survive longer as the mouse',
       init, step, snap, bot, draw, event,
@@ -72,7 +77,7 @@ function wallsOf(m) {
 // Can you go from cell (x, y) one step in (dx, dy)?
 function canGo(m, x, y, dx, dy) {
   const nx = x + dx, ny = y + dy;
-  if (nx < 0 || ny < 0 || nx >= CW || ny >= CH) return false;
+  if (nx < INS || ny < INS || nx >= CW - INS || ny >= CH - INS) return false;
   if (dx === 1) return !(m[y * CW + x] & 1);
   if (dx === -1) return !(m[y * CW + nx] & 1);
   if (dy === 1) return !(m[y * CW + x] & 2);
@@ -97,7 +102,7 @@ const cellOf = (x, y) => [Math.max(0, Math.min(CW - 1, Math.floor((x - X0) / TIL
 
 function init(api) {
   const maze = makeMaze(api.rng);
-  const s = { maze, mz: maze.join(''), walls: wallsOf(maze), round: 0, times: [null, null], phase: 'chase', pause: 0, t: 0, movers: [] };
+  const s = { maze, mz: maze.join(''), walls: wallsOf(maze), round: 0, times: [null, null], phase: 'chase', pause: 0, t: 0, movers: [], ins: 0, pu: [], nextPu: 5 };
   newRound(s, api);
   return s;
 }
@@ -105,15 +110,47 @@ function init(api) {
 function newRound(s, api) {
   s.round++;
   s.t = 0;
+  s.ins = 0;
+  s.pu = [];
+  s.nextPu = 4;
+  if (!s.base) s.base = s.walls.slice(); // (the maze's own walls; the closing edge walls get added to these)
+  s.walls = s.base;
   s.phase = 'chase';
   const mouseI = s.round === 1 ? 0 : 1;
   s.mouseI = mouseI;
   s.movers = [0, 1].map(i => {
     const role = i === mouseI ? 'mouse' : 'cat';
     const [x, y] = center(...START[role]);
-    return { role, x, y, vx: 0, vy: 0, dash: 0, wait: 0.5, fx: 1 };
+    return { role, x, y, vx: 0, vy: 0, dash: 0, wait: 0.5, fx: 1, jump: 0, jw: 0, stun: 0, boost: 0 };
   });
   api.ev('round', { m: mouseI });
+}
+
+// The maze closes in by one more ring of cells: a wall goes up round the new edge and anyone outside is moved in.
+function closeIn(s, api) {
+  const x1 = X0 + s.ins * TILE, y1 = Y0 + s.ins * TILE, x2 = X0 + (CW - s.ins) * TILE, y2 = Y0 + (CH - s.ins) * TILE;
+  s.walls = s.base.concat([[x1, y1, x2, y1], [x2, y1, x2, y2], [x2, y2, x1, y2], [x1, y2, x1, y1]]);
+  s.movers.forEach(c => {
+    c.x = Math.max(x1 + R + 3, Math.min(x2 - R - 3, c.x));
+    c.y = Math.max(y1 + R + 3, Math.min(y2 - R - 3, c.y));
+    const [bx, by] = cellOf(c.x, c.y);
+    if (BLOCKED(bx, by)) c.y = Y0 + 4.5 * TILE;
+  });
+  s.pu = s.pu.filter(p => p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2);
+  api.ev('close', { n: s.ins });
+}
+
+// A cheese (0) or a trap (1) on a free cell, away from both players.
+function spawnPickup(s) {
+  if (s.pu.length >= 5) return;
+  for (let tries = 0; tries < 25; tries++) {
+    const cx = s.ins + Math.floor(Math.random() * (CW - 2 * s.ins)), cy = s.ins + Math.floor(Math.random() * (CH - 2 * s.ins));
+    if (BLOCKED(cx, cy)) continue;
+    const [x, y] = center(cx, cy);
+    if (s.movers.some(c => Math.hypot(c.x - x, c.y - y) < 120)) continue;
+    s.pu.push({ x, y, type: Math.random() < 0.55 ? 0 : 1, age: 0 });
+    return;
+  }
 }
 
 function step(s, inp, dt, api) {
@@ -129,18 +166,41 @@ function step(s, inp, dt, api) {
     return;
   }
   s.t += dt;
+  INS = s.ins;
+  if (SHRINK_AT[s.ins] !== undefined && s.t >= SHRINK_AT[s.ins]) { s.ins++; INS = s.ins; closeIn(s, api); } // the maze closes in
+  s.nextPu -= dt;
+  if (s.nextPu <= 0) { s.nextPu = 5 + Math.random() * 3; spawnPickup(s); }
+  s.pu.forEach(p => { p.age += dt; });
+  s.pu = s.pu.filter(p => p.type === 1 || p.age < 16); // (a cheese goes off after a while; traps stay)
   s.movers.forEach((c, i) => {
     const n = inp[i];
     c.wait = Math.max(0, c.wait - dt);
-    if (n.hit.a && c.wait <= 0) { c.dash = DASH_TIME; c.wait = DASH_WAIT[c.role]; api.ev('dash', { x: c.x, y: c.y }); }
-    const sp = SPEED[c.role] * (c.dash > 0 ? DASH : 1) * (n.slow || 1);
+    c.jw = Math.max(0, c.jw - dt);
+    c.stun = Math.max(0, c.stun - dt);
+    c.boost = Math.max(0, c.boost - dt);
+    if (c.stun <= 0 && n.hit.a && c.wait <= 0) { c.dash = DASH_TIME; c.wait = DASH_WAIT[c.role]; api.ev('dash', { x: c.x, y: c.y }); }
+    if (c.role === 'cat' && c.stun <= 0 && c.jump <= 0 && n.hit.b && c.jw <= 0) { // the cat leaps over a wall (then waits a long time)
+      let jx = n.mx, jy = n.my;
+      if (!jx && !jy) { jx = c.fx; jy = 0; }
+      const jl = Math.hypot(jx, jy) || 1;
+      c.jump = JUMP_TIME; c.jw = JUMP_WAIT; c.jx = jx / jl; c.jy = jy / jl;
+      api.ev('leap', { x: c.x, y: c.y });
+    }
+    const flying = c.jump > 0;
+    let sp = SPEED[c.role] * (c.role === 'mouse' ? 1 + 0.4 * Math.min(1, s.t / ROUND) : 1) * (c.dash > 0 ? DASH : 1) * (c.boost > 0 ? 1.35 : 1) * (n.slow || 1);
+    if (c.stun > 0) sp = 0;
     c.dash = Math.max(0, c.dash - dt);
-    c.vx = n.mx * sp;
-    c.vy = n.my * sp;
+    if (flying) { c.jump -= dt; c.vx = c.jx * JUMP_SPEED; c.vy = c.jy * JUMP_SPEED; }
+    else { c.vx = n.mx * sp; c.vy = n.my * sp; }
     if (n.mx) c.fx = Math.sign(n.mx);
     for (let k = 0; k < 2; k++) {
       c.x += c.vx * dt / 2;
       c.y += c.vy * dt / 2;
+      if (flying) { // (over the walls, but not out of the maze)
+        c.x = Math.max(X0 + s.ins * TILE + R + 3, Math.min(X0 + (CW - s.ins) * TILE - R - 3, c.x));
+        c.y = Math.max(Y0 + s.ins * TILE + R + 3, Math.min(Y0 + (CH - s.ins) * TILE - R - 3, c.y));
+        continue;
+      }
       for (const [x1, y1, x2, y2] of s.walls) {
         const p = CA.duel.nearest(c.x, c.y, x1, y1, x2, y2);
         if (p.d >= R + 2) continue;
@@ -149,6 +209,17 @@ function step(s, inp, dt, api) {
         c.y = p.y + ny * (R + 2.01);
       }
     }
+    const [bx, by] = cellOf(c.x, c.y);
+    if (BLOCKED(bx, by)) c.y = Y0 + 4.5 * TILE; // (a leap can't land behind a camera)
+  });
+  s.pu = s.pu.filter(p => { // pickups: a cheese speeds you up (and gives you back your dash); a trap stuns
+    for (const c of s.movers) {
+      if (Math.hypot(p.x - c.x, p.y - c.y) > R + 10) continue;
+      if (p.type === 0) { c.boost = CHEESE_BOOST; c.wait = 0; api.ev('cheese', { x: p.x, y: p.y }); }
+      else { c.stun = TRAP_STUN; api.ev('trap', { x: p.x, y: p.y }); }
+      return false;
+    }
+    return true;
   });
   const [a, b] = s.movers;
   const caught = Math.hypot(a.x - b.x, a.y - b.y) < R * 2 - 2;
@@ -164,8 +235,10 @@ function step(s, inp, dt, api) {
 
 function snap(s) {
   return {
+    ins: s.ins, nx: SHRINK_AT[s.ins] === undefined ? -1 : Math.round((SHRINK_AT[s.ins] - s.t) * 10) / 10,
+    pu: s.pu.map(p => [Math.round(p.x), Math.round(p.y), p.type]),
     mz: s.mz, rd: s.round, mi: s.mouseI, t: Math.round(s.t * 10) / 10, ph: s.phase, tm: s.times.map(v => (v == null ? -1 : Math.round(v * 10) / 10)),
-    c: s.movers.map(c => ({ x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, r: c.role === 'cat' ? 1 : 0, d: c.dash > 0 ? 1 : 0, f: c.fx, w: Math.round(c.wait * 10) / 10 })),
+    c: s.movers.map(c => ({ x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, r: c.role === 'cat' ? 1 : 0, d: c.dash > 0 ? 1 : 0, f: c.fx, w: Math.round(c.wait * 10) / 10, j: c.jump > 0 ? 1 : 0, jw: Math.round(c.jw * 10) / 10, st: c.stun > 0 ? 1 : 0, bo: c.boost > 0 ? 1 : 0 })),
   };
 }
 
@@ -173,6 +246,7 @@ function snap(s) {
 // nearby spot that's furthest (by the maze) from the cat. Easy bots think slower and walk a bit slower.
 function bot(s, i, dt, api) {
   const st = s.bs || (s.bs = { think: 0, tx: 0, ty: 0, dash: false });
+  INS = s.ins;
   if (s.phase !== 'chase') return {};
   const me = s.movers[i], them = s.movers[1 - i];
   st.think -= dt;
@@ -211,6 +285,10 @@ function bot(s, i, dt, api) {
 
 function event(v, e) {
   if (e.type === 'dash') v.sound([[640, 0, 0.04], [460, 0.03, 0.05]]);
+  if (e.type === 'leap') { v.burst(e.x, e.y, '#ffffff', 8, 200); v.sound([[300, 0, 0.05], [520, 0.05, 0.08]]); }
+  if (e.type === 'cheese') { v.pop(e.x, e.y - 24, '🧀 Speed!', '#ffd23f'); v.burst(e.x, e.y, '#ffd23f', 10, 200); v.sound('point'); }
+  if (e.type === 'trap') { v.pop(e.x, e.y - 24, '🪤 SNAP!', '#ff5a5a'); v.burst(e.x, e.y, '#ff5a5a', 12, 240); v.shake(6); v.sound('miss'); }
+  if (e.type === 'close') { v.note('The maze is closing in!'); v.sound([[200, 0, 0.1], [150, 0.08, 0.15]]); v.shake(6); }
   if (e.type === 'caught') { v.burst(e.x, e.y, '#ffd23f', 22, 300); v.pop(e.x, e.y - 30, 'CAUGHT! ' + e.t + 's', '#ff5a5a'); v.shake(10); v.sound(e.m === v.me ? 'miss' : 'point'); }
   if (e.type === 'safe') { v.pop(e.x, e.y - 30, 'SURVIVED!', '#7dff8a'); v.sound(e.m === v.me ? 'win' : 'miss'); }
   if (e.type === 'round') { v.sound('notify'); v.note(e.m === v.me ? 'Round ' + (e.m + 1) + ': you are the mouse 🐭' : 'Round ' + (e.m + 1) + ': you are the cat 🐱'); }
@@ -273,17 +351,38 @@ function drawMouse(v, i, x, y, f) {
 function draw(v, s) {
   const g = v.g;
   g.drawImage(mazeArt(s.mz), 0, 0, W, H);
+  const ins = Math.round(s.ins);
+  const ring = (n, a) => { // the cells that are n or more rings in from the edge... the ring at n, as a red band
+    g.fillStyle = 'rgba(190, 30, 30, ' + a + ')';
+    const x1 = X0 + n * TILE, y1 = Y0 + n * TILE, x2 = X0 + (CW - n) * TILE, y2 = Y0 + (CH - n) * TILE;
+    g.fillRect(x1, y1, x2 - x1, TILE); g.fillRect(x1, y2 - TILE, x2 - x1, TILE);
+    g.fillRect(x1, y1 + TILE, TILE, y2 - y1 - 2 * TILE); g.fillRect(x2 - TILE, y1 + TILE, TILE, y2 - y1 - 2 * TILE);
+  };
+  for (let n = 0; n < ins; n++) ring(n, 0.55); // (already closed)
+  if (s.nx >= 0 && s.nx <= WARN && ins < SHRINK_AT.length) ring(ins, 0.2 + 0.25 * Math.abs(Math.sin(v.now / 120))); // (closing next)
+  (s.pu || []).forEach(([x, y, t]) => {
+    const bob = Math.sin(v.now / 250 + x) * 2;
+    g.globalAlpha = t ? 0.75 : 1;
+    v.label(t ? '🪤' : '🧀', x, y + bob, 24, '#000000');
+    g.globalAlpha = 1;
+  });
   s.c.forEach((c, i) => {
     if (c.d) { g.globalAlpha = 0.35; g.fillStyle = v.team[i].light; v.dot(c.x - c.f * 12, c.y, 14); g.globalAlpha = 1; }
-    if (c.r) v.catTop(i, c.x, c.y - 2, 0.85, { lookRight: c.f >= 0 });
+    if (c.bo) { g.strokeStyle = '#ffd23f'; g.lineWidth = 2; g.beginPath(); g.arc(c.x, c.y, 20 + Math.sin(v.now / 70) * 2, 0, Math.PI * 2); g.stroke(); }
+    const up = c.j ? 14 : 0;
+    if (c.j) { g.fillStyle = 'rgba(0, 0, 0, .25)'; g.beginPath(); g.ellipse(c.x, c.y + 12, 16, 6, 0, 0, Math.PI * 2); g.fill(); }
+    if (c.r) v.catTop(i, c.x, c.y - 2 - up, 0.85, { lookRight: c.f >= 0 });
     else drawMouse(v, i, c.x, c.y, c.f >= 0 ? 1 : -1);
+    if (c.st) { v.label('💫', c.x, c.y - 28, 20, '#ffffff'); }
   });
+  if (s.ph === 'chase' && s.nx >= 0 && s.nx <= WARN) v.label('The maze closes in ' + Math.ceil(s.nx) + '…', W / 2, H - 14, 14, '#ff9a9a');
   g.fillStyle = 'rgba(30, 20, 15, .8)';
   v.roundRect(W / 2 - 210, 3, 420, 24, 12); g.fill();
   const tm = i => (s.tm[i] < 0 ? '—' : s.tm[i].toFixed(1) + 's');
   v.label('Round ' + s.rd + '/2 · ⏱ ' + Math.max(0, Math.ceil(ROUND - s.t)) + ' · as the mouse: ' + v.names[0] + ' ' + tm(0) + ', ' + v.names[1] + ' ' + tm(1), W / 2, 15, 12, '#ffffff');
   const mineC = s.c[v.me];
-  if (mineC && s.ph === 'chase') v.msg((mineC.r ? "You're the CAT: catch the mouse!" : "You're the MOUSE: don't get caught!") + (mineC.w > 0 ? ' · dash in ' + mineC.w.toFixed(1) + 's' : ' · Space to dash'));
+  const leapTxt = mineC && mineC.r ? (mineC.jw > 0 ? ' · leap (B) in ' + mineC.jw.toFixed(0) + 's' : ' · B to leap over a wall!') : '';
+  if (mineC && s.ph === 'chase') v.msg((mineC.r ? "You're the CAT: catch the mouse!" : "You're the MOUSE: don't get caught!") + (mineC.w > 0 ? ' · dash in ' + mineC.w.toFixed(1) + 's' : ' · Space to dash') + leapTxt);
 }
 
 })();

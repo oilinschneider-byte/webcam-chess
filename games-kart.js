@@ -12,8 +12,8 @@ const LAPS = 3, CPS = 8, LIMIT = 240;
 // (the road bends round the camera walls in the top corners: see cam-walls.js)
 const KEYS = [[330, 90], [480, 80], [630, 90], [720, 185], [850, 280], [870, 380], [780, 450], [600, 455], [480, 340], [360, 455], [180, 450], [90, 370], [100, 270], [230, 200]];
 
-// The road's middle line: a smooth loop through KEYS.
-const PATH = (() => {
+// The road's middle line: a smooth loop through the key points.
+function pathFrom(KEYS) {
   const out = [], n = KEYS.length;
   for (let k = 0; k < n; k++) {
     const p0 = KEYS[(k - 1 + n) % n], p1 = KEYS[k], p2 = KEYS[(k + 1) % n], p3 = KEYS[(k + 2) % n];
@@ -24,8 +24,19 @@ const PATH = (() => {
     }
   }
   return out;
-})();
+}
+let PATH = pathFrom(KEYS), LAYOUT = 0;
 const N = PATH.length;
+// Four layouts of the same track (the camera walls are the same in both top corners, so a mirror is just as good):
+// 0 as it is, 1 mirrored, 2 the other way round, 3 mirrored and the other way round.
+function useLayout(l) {
+  l = l | 0;
+  if (l === LAYOUT) return;
+  LAYOUT = l;
+  let k = KEYS.map(p => (l & 1 ? [W - p[0], p[1]] : p));
+  if (l & 2) k = k.slice().reverse();
+  PATH = pathFrom(k);
+}
 const CP_AT = Array.from({ length: CPS }, (_, k) => Math.round(k * N / CPS)); // checkpoint 0 is the start line
 
 // The nearest point of the road's middle line to (x, y), searching near index `hint`.
@@ -58,15 +69,18 @@ CA.games.add('kart', {
 function lerp(a, b, f) {
   const o = CA.duel.deepLerp(a, b, f, ['h'], 80);
   o.lead = b.lead;
+  o.l = b.l;
   o.k.forEach((k, i) => { k.lap = b.k[i].lap; k.cp = b.k[i].cp; k.b = b.k[i].b; k.w = b.k[i].w; });
   return o;
 }
 
-function init() {
+function init(api) {
+  const layout = Math.floor(api.rng() * 4);
+  useLayout(layout);
   const k0 = N - 5, dir = Math.atan2(PATH[0][1] - PATH[k0][1], PATH[0][0] - PATH[k0][0]);
   const nx = -Math.sin(dir), ny = Math.cos(dir);
   return {
-    t: 0, done: -1,
+    l: layout, t: 0, done: -1,
     karts: [-1, 1].map(side => ({
       x: PATH[k0][0] + nx * side * 22, y: PATH[k0][1] + ny * side * 22, h: dir, v: 0, idx: k0, lap: 0, cp: 0, go: false, boost: 0, wait: 0, fin: 0,
     })),
@@ -74,6 +88,7 @@ function init() {
 }
 
 function step(s, inp, dt, api) {
+  useLayout(s.l);
   s.t += dt;
   s.karts.forEach((k, i) => {
     const n = inp[i];
@@ -138,7 +153,7 @@ function progress(k) {
 function snap(s) {
   const p = s.karts.map(progress);
   return {
-    t: Math.round(s.t * 10) / 10, lead: p[0] === p[1] ? -1 : p[0] > p[1] ? 0 : 1,
+    l: s.l, t: Math.round(s.t * 10) / 10, lead: p[0] === p[1] ? -1 : p[0] > p[1] ? 0 : 1,
     k: s.karts.map(k => ({ x: Math.round(k.x * 10) / 10, y: Math.round(k.y * 10) / 10, h: Math.round(k.h * 100) / 100, v: Math.round(k.v), lap: k.lap, cp: k.cp, b: k.boost > 0 ? 1 : 0, w: Math.round(k.wait * 10) / 10 })),
   };
 }
@@ -170,7 +185,7 @@ function event(v, e) {
   }
 }
 
-let art = null;
+const arts = {};
 function makeArt() {
   const c = document.createElement('canvas');
   c.width = W;
@@ -202,8 +217,9 @@ function makeArt() {
 
 function draw(v, s) {
   const g = v.g;
-  if (!art) art = makeArt();
-  g.drawImage(art, 0, 0, W, H);
+  useLayout(s.l);
+  if (!arts[s.l]) arts[s.l] = makeArt();
+  g.drawImage(arts[s.l], 0, 0, W, H);
   s.k.forEach((k, i) => { // the next checkpoint for you, highlighted
     if (i !== v.me) return;
     const idx = CP_AT[Math.round(k.cp) % CPS], [x, y] = PATH[idx], [x2, y2] = PATH[(idx + 1) % N], a = Math.atan2(y2 - y, x2 - x), nx = -Math.sin(a), ny = Math.cos(a);
