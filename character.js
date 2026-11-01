@@ -51,7 +51,7 @@ function renderPreviewBar() {
 function renderGrid() {
   const p = CA.profile;
   const info = slotInfo(slot);
-  const all = CA.ITEMS.filter(i => i.slot === slot);
+  const all = CA.ITEMS.filter(i => i.slot === slot && (!i.only || p.owned.includes(i.id))); // (an item made for one account only shows for that account)
   const list = tab === 'wardrobe' ? all.filter(i => p.owned.includes(i.id)) : all;
   const tiles = [];
   if (tab === 'wardrobe' && !info.required) {

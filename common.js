@@ -33,6 +33,7 @@ const INK = '#1c1714';
 const EDGE = 'stroke="rgba(0,0,0,.25)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"';
 const HEAD = 'M100 28 C140 28 165 55 165 92 C165 126 138 143 100 143 C62 143 35 126 35 92 C35 55 60 28 100 28 Z';
 const BODY = 'M75 140 C68 152 64 168 66 180 C68 191 79 196 100 196 C121 196 132 191 134 180 C136 168 132 152 125 140 Z';
+const JBODY = 'M72 138 C50 139 38 156 40 176 C42 194 66 204 100 204 C134 204 158 194 160 176 C162 156 150 139 128 138 Z'; // (the jacked cat's chest and shoulders: see the DAME tee)
 const ARMS = 'M69 150 C61 160 57 172 56 183 M131 150 C139 160 143 172 144 183';
 const SLEEVES = 'M69 150 C65 155 62 160 60.5 166 M131 150 C135 155 138 160 139.5 166';
 
@@ -204,6 +205,18 @@ const ITEMS = [
     '<rect x="50" y="185" width="100" height="6" fill="#ffd23f"/>',
     back: () => '<path d="M76 146 Q64 186 50 222 Q100 232 150 222 Q136 186 124 146 Z" fill="#ff3b5c" ' + EDGE + '/>' },
 
+  // The DAME tee: only for the accounts named in `only` (dame and habernoto). It makes the cat jacked, with very skinny legs (see catSVG: `jacked`).
+  { id: 'shirt-dame', slot: 'shirt', name: 'DAME Jacked Tee', only: ['dame', 'habernoto'], jacked: true, sleeve: '#f4f5fa', art: () =>
+    '<rect x="30" y="134" width="140" height="75" fill="#f4f5fa"/>' +
+    '<path d="M72 138 Q100 152 128 138" fill="none" stroke="#d5d9e6" stroke-width="3"/>' +
+    '<text x="100" y="162" text-anchor="middle" font-family="Georgia, Times New Roman, serif" font-weight="900" font-size="23" letter-spacing="1" fill="#1b2a7a" stroke="#1b2a7a" stroke-width="0.8">DAME</text>' +
+    '<path d="M80 168 L80 198 L122 198" fill="none" stroke="#111" stroke-width="1.6"/>' +
+    '<path d="M83 196 L118 171" fill="none" stroke="#d11d1d" stroke-width="2"/><path d="M83 171 L118 196" fill="none" stroke="#1a3fd0" stroke-width="2"/>' +
+    '<path d="M80 183.5 L100 183.5 M100.5 183.5 L100.5 198" fill="none" stroke="#111" stroke-width="1" stroke-dasharray="2 2"/>' +
+    '<circle cx="100.5" cy="183.5" r="2.6" fill="#ffc83d" stroke="#111" stroke-width="1"/>' +
+    '<text x="72" y="171" font-size="7" font-weight="700" font-family="Arial, sans-serif" fill="#111">P</text><text x="124" y="201" font-size="7" font-weight="700" font-family="Arial, sans-serif" fill="#111">Q</text>' +
+    '<text x="112" y="169" font-size="6" font-weight="700" font-family="Arial, sans-serif" fill="#d11d1d">Supply</text><text x="104" y="196" font-size="6" font-weight="700" font-family="Arial, sans-serif" fill="#1a3fd0">Demand</text>' },
+
   { id: 'neck-bowtie', slot: 'neck', name: 'Bow Tie', price: 25, art: () =>
     '<path d="M100 150 L84 141 L84 159 Z" fill="#ff3b5c" ' + EDGE + '/>' +
     '<path d="M100 150 L116 141 L116 159 Z" fill="#ff3b5c" ' + EDGE + '/>' +
@@ -325,6 +338,7 @@ function catSVG(equip, opts) {
   const hat = pick('hat');
   const eyes = pick('eyes');
   const shirt = pick('shirt');
+  const jacked = !!(shirt && shirt.jacked);
   const neck = pick('neck');
   const hand = pick('hand');
   const [light, mid, shadow] = fur.c;
@@ -333,6 +347,7 @@ function catSVG(equip, opts) {
       '<stop offset=".55" stop-color="' + mid + '"/><stop offset="1" stop-color="' + shadow + '"/></radialGradient>',
     '<clipPath id="' + uid + '-body"><path d="' + BODY + '"/></clipPath>',
     '<clipPath id="' + uid + '-head"><path d="' + HEAD + '"/></clipPath>',
+    '<clipPath id="' + uid + '-jb"><path d="' + JBODY + '"/></clipPath>',
     '<clipPath id="' + uid + '-mouth"><ellipse cx="100" cy="117" rx="8.5" ry="8"/></clipPath>',
     '<radialGradient id="' + uid + '-sheen"><stop offset="0" stop-color="#fff" stop-opacity=".26"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>',
   ];
@@ -349,11 +364,24 @@ function catSVG(equip, opts) {
   }
   if (shirt && shirt.back) p.push(shirt.back(c));
   p.push('<g class="cat-tail"><path d="M132 188 C150 190 166 178 162 156" fill="none" stroke="' + shadow + '" stroke-width="12" stroke-linecap="round"/></g>');
-  p.push('<rect x="74" y="186" width="16" height="34" rx="8" fill="' + mid + '"/><rect x="110" y="186" width="16" height="34" rx="8" fill="' + mid + '"/>');
-  p.push('<ellipse cx="82" cy="225" rx="11" ry="7.5" fill="' + fill + '"/><ellipse cx="118" cy="225" rx="11" ry="7.5" fill="' + fill + '"/>');
-  p.push('<path d="' + BODY + '" fill="' + fill + '"/>');
-  if (shirt) p.push('<g clip-path="url(#' + uid + '-body)">' + shirt.art(c) + '</g>');
-  if (arms) {
+  if (jacked) { // very skinny legs, tiny feet
+    p.push('<rect x="81.5" y="196" width="5" height="30" rx="2.5" fill="' + mid + '"/><rect x="113.5" y="196" width="5" height="30" rx="2.5" fill="' + mid + '"/>');
+    p.push('<ellipse cx="84" cy="228" rx="9" ry="5" fill="' + fill + '"/><ellipse cx="116" cy="228" rx="9" ry="5" fill="' + fill + '"/>');
+  } else {
+    p.push('<rect x="74" y="186" width="16" height="34" rx="8" fill="' + mid + '"/><rect x="110" y="186" width="16" height="34" rx="8" fill="' + mid + '"/>');
+    p.push('<ellipse cx="82" cy="225" rx="11" ry="7.5" fill="' + fill + '"/><ellipse cx="118" cy="225" rx="11" ry="7.5" fill="' + fill + '"/>');
+  }
+  p.push('<path d="' + (jacked ? JBODY : BODY) + '" fill="' + fill + '"/>');
+  if (shirt) p.push('<g clip-path="url(#' + uid + (jacked ? '-jb' : '-body') + ')">' + shirt.art(c) + '</g>');
+  if (arms && jacked) { // huge arms: shoulders, biceps, forearms and fists
+    for (const sx of [-1, 1]) {
+      p.push('<ellipse cx="' + (100 + sx * 61) + '" cy="168" rx="17" ry="22" fill="' + fill + '"/>');
+      p.push('<ellipse cx="' + (100 + sx * 63) + '" cy="191" rx="12.5" ry="15" fill="' + fill + '"/>');
+      p.push('<circle cx="' + (100 + sx * 60) + '" cy="206" r="12" fill="' + fill + '"/>');
+      p.push('<ellipse cx="' + (100 + sx * 58) + '" cy="162" rx="5" ry="9" fill="#fff" opacity=".16"/>');
+      p.push('<ellipse cx="' + (100 + sx * 61) + '" cy="153" rx="14" ry="11" fill="#f4f5fa"/>');
+    }
+  } else if (arms) {
     p.push('<path d="' + ARMS + '" fill="none" stroke="' + mid + '" stroke-width="15" stroke-linecap="round"/>');
     if (shirt && shirt.sleeve) p.push('<path d="' + SLEEVES + '" fill="none" stroke="' + shirt.sleeve + '" stroke-width="17" stroke-linecap="round"/>');
     p.push('<circle cx="56" cy="188" r="11" fill="' + fill + '"/><circle cx="144" cy="188" r="11" fill="' + fill + '"/>');
@@ -524,7 +552,8 @@ function normalize(p, name) {
   const out = fresh(name);
   if (!p || typeof p !== 'object') return out;
   for (const k of ['fish', 'xp', 'streak', 'best', 'wins', 'losses', 'draws', 'friendly', 'mathBest', 'savedAt']) out[k] = Math.max(0, Math.floor(Number(p[k]) || 0));
-  if (Array.isArray(p.owned)) for (const id of p.owned) if (ITEM[id] && !out.owned.includes(id)) out.owned.push(id);
+  if (Array.isArray(p.owned)) for (const id of p.owned) if (ITEM[id] && (!ITEM[id].only || ITEM[id].only.includes(String(name || '').toLowerCase())) && !out.owned.includes(id)) out.owned.push(id);
+  for (const it of ITEMS) if (it.only && it.only.includes(String(name || '').toLowerCase()) && !out.owned.includes(it.id)) out.owned.push(it.id); // (those accounts always have the DAME tee)
   if (p.equip && typeof p.equip === 'object') {
     for (const s of SLOTS) {
       const id = p.equip[s.id];
@@ -555,6 +584,8 @@ function applyStats(me) {
   profile.adult = !!me.adult;
   profile.bannedUntil = me.banned_until || null;
   profile.banReason = me.ban_reason || null;
+  profile.test = !!me.test;              // a test account (testplayer.js plays it by itself)
+  profile.testWith = me.test_with || null;
 }
 
 // Fresh numbers from the server (after a game, or every minute). Streaks always come from the server.
@@ -572,6 +603,7 @@ function setStats(me) {
 function cacheOf() {
   return {
     id: profile.id, name: profile.name, adult: profile.adult, banned_until: profile.bannedUntil, ban_reason: profile.banReason,
+    test: profile.test, test_with: profile.testWith,
     streak: profile.streak, best: profile.best, wins: profile.wins, losses: profile.losses, draws: profile.draws,
     friendly: profile.friendly, profile: looks(profile),
   };
