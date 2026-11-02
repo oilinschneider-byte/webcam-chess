@@ -33,8 +33,10 @@ function fillBirthday() {
   $('authYear').innerHTML = years;
 }
 
+let authOpenedAt = Date.now(); // (people take a moment to fill in the form; bots don't)
 function setAuthMode(mode) {
   authMode = mode;
+  authOpenedAt = Date.now();
   document.querySelectorAll('[data-auth]').forEach(b => b.classList.toggle('active', b.dataset.auth === mode));
   const signup = mode === 'signup';
   $('authPass2Row').classList.toggle('hidden', !signup);
@@ -66,7 +68,9 @@ async function submitAuth(e) {
     if (ageBlocked()) { msg.textContent = 'Sorry, you have to be 13 or older to play CamArcade.'; return; }
     const bad = CA.checkUsername(name);
     if (bad) { msg.textContent = bad; $('authUser').focus(); return; }
-    if (pass.length < 4) { msg.textContent = 'Pick a password with at least 4 characters.'; $('authPass').focus(); return; }
+    if (pass.length < 6) { msg.textContent = 'Pick a password with at least 6 characters.'; $('authPass').focus(); return; }
+    if (pass.toLowerCase() === name.toLowerCase()) { msg.textContent = "Your password can't be your username."; $('authPass').focus(); return; }
+    if ($('authWebsite').value || Date.now() - authOpenedAt < 1500) { msg.textContent = 'Something went wrong. Please try again.'; return; } // (a bot: filled the hidden box, or too fast)
     if (pass !== $('authPass2').value) { msg.textContent = "The two passwords don't match."; $('authPass2').focus(); return; }
     birth = { month: +$('authMonth').value, year: +$('authYear').value };
     if (!birth.month || !birth.year) { msg.textContent = 'Pick the month and year you were born.'; $('authMonth').focus(); return; }

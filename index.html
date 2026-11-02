@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
-<link rel="stylesheet" href="style.css?v=80">
-<link rel="stylesheet" href="pieces.css?v=80">
+<link rel="stylesheet" href="style.css?v=81">
+<link rel="stylesheet" href="pieces.css?v=81">
 </head>
 <body>
 
@@ -51,6 +51,8 @@
         <button class="tab" type="button" data-auth="login">Log in</button>
       </div>
       <form id="authForm" novalidate>
+        <!-- A bot trap: people never see this box, but form-filling bots fill it in. -->
+        <input id="authWebsite" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
         <label class="field">
           <span>Username</span>
           <input id="authUser" maxlength="16" autocomplete="username" spellcheck="false" autocapitalize="off">
@@ -598,47 +600,47 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=80"></script>
-<script src="server.js?v=80"></script>
-<script src="common.js?v=80"></script>
-<script src="solos.js?v=80"></script>
-<script src="games-quick.js?v=80"></script>
-<script src="games-words.js?v=80"></script>
-<script src="games-board.js?v=80"></script>
-<script src="games-world.js?v=80"></script>
+<script src="config.js?v=81"></script>
+<script src="server.js?v=81"></script>
+<script src="common.js?v=81"></script>
+<script src="solos.js?v=81"></script>
+<script src="games-quick.js?v=81"></script>
+<script src="games-words.js?v=81"></script>
+<script src="games-board.js?v=81"></script>
+<script src="games-world.js?v=81"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=80"></script>
-<script src="games-quiz.js?v=80"></script>
-<script src="games-mind.js?v=80"></script>
-<script src="games-pose.js?v=80"></script>
-<script src="cam-walls.js?v=80"></script>
-<script src="games-floppy.js?v=80"></script>
-<script src="games-barrel.js?v=80"></script>
-<script src="games-walls.js?v=80"></script>
-<script src="games-duel.js?v=80"></script>
-<script src="games-trails.js?v=80"></script>
-<script src="games-box.js?v=80"></script>
-<script src="games-sumo.js?v=80"></script>
-<script src="games-pond.js?v=80"></script>
-<script src="games-hockey.js?v=80"></script>
-<script src="games-paint.js?v=80"></script>
-<script src="games-cannons.js?v=80"></script>
-<script src="games-golf.js?v=80"></script>
-<script src="games-mouse.js?v=80"></script>
-<script src="games-kart.js?v=80"></script>
-<script src="games-swords.js?v=80"></script>
-<script src="games-stare.js?v=80"></script>
-<script src="games-boxing.js?v=80"></script>
-<script src="games-dodge.js?v=80"></script>
-<script src="games-parkour.js?v=80"></script>
-<script src="games-poop.js?v=80"></script>
-<script src="games-hoops.js?v=80"></script>
-<script src="games-simon.js?v=80"></script>
-<script src="games-climb.js?v=80"></script>
-<script src="chess.js?v=80"></script>
-<script src="pass.js?v=80"></script>
-<script src="character.js?v=80"></script>
-<script src="leaders.js?v=80"></script>
-<script src="app.js?v=80"></script>
+<script src="games-action.js?v=81"></script>
+<script src="games-quiz.js?v=81"></script>
+<script src="games-mind.js?v=81"></script>
+<script src="games-pose.js?v=81"></script>
+<script src="cam-walls.js?v=81"></script>
+<script src="games-floppy.js?v=81"></script>
+<script src="games-barrel.js?v=81"></script>
+<script src="games-walls.js?v=81"></script>
+<script src="games-duel.js?v=81"></script>
+<script src="games-trails.js?v=81"></script>
+<script src="games-box.js?v=81"></script>
+<script src="games-sumo.js?v=81"></script>
+<script src="games-pond.js?v=81"></script>
+<script src="games-hockey.js?v=81"></script>
+<script src="games-paint.js?v=81"></script>
+<script src="games-cannons.js?v=81"></script>
+<script src="games-golf.js?v=81"></script>
+<script src="games-mouse.js?v=81"></script>
+<script src="games-kart.js?v=81"></script>
+<script src="games-swords.js?v=81"></script>
+<script src="games-stare.js?v=81"></script>
+<script src="games-boxing.js?v=81"></script>
+<script src="games-dodge.js?v=81"></script>
+<script src="games-parkour.js?v=81"></script>
+<script src="games-poop.js?v=81"></script>
+<script src="games-hoops.js?v=81"></script>
+<script src="games-simon.js?v=81"></script>
+<script src="games-climb.js?v=81"></script>
+<script src="chess.js?v=81"></script>
+<script src="pass.js?v=81"></script>
+<script src="character.js?v=81"></script>
+<script src="leaders.js?v=81"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>

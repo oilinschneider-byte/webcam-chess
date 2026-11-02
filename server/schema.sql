@@ -74,7 +74,7 @@ create table if not exists camarcade.sessions (
   player_id bigint not null references camarcade.players on delete cascade,
   created_at timestamptz not null default now(),
   used_at timestamptz not null default now()
-);aaaaaaaaaaaaaaaaaaaaaadddddddddddddddddddddd
+);
 create index if not exists sessions_player on camarcade.sessions (player_id);
 
 create table if not exists camarcade.login_fails (
@@ -88,6 +88,13 @@ create table if not exists camarcade.signups (
   at timestamptz not null default now()
 );
 create index if not exists signups_net on camarcade.signups (net, at);
+
+-- Rate limits (see camarcade.throttle): one row per counted action, kept for a day.
+create table if not exists camarcade.hits (
+  k text not null,                          -- what was done, and by whom: like 'profile:42' or 'loginfail:<net>'
+  at timestamptz not null default now()
+);
+create index if not exists hits_k on camarcade.hits (k, at);
 
 -- Players looking for a match right now.
 create table if not exists camarcade.queue (
@@ -154,6 +161,7 @@ create table if not exists camarcade.reports (
 );
 create index if not exists reports_reported on camarcade.reports (reported, at);
 create index if not exists reports_reporter on camarcade.reports (reporter, at);
+alter table camarcade.reports add column if not exists net text; -- the reporter's internet connection (so one house can't gang up)
 
 -- One row per visitor per day (a random id their browser keeps), for counting how many people play.
 create table if not exists camarcade.visits (
@@ -166,7 +174,7 @@ create table if not exists camarcade.visits (
 do $$
 declare t text;
 begin
-  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits'] loop
+  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits'] loop
     execute format('alter table camarcade.%I enable row level security', t);
   end loop;
 end $$;
@@ -223,7 +231,15 @@ begin
   if p is null or jsonb_typeof(p) <> 'object' then return '{}'::jsonb; end if;
   if octet_length(p::text) > 20000 then raise exception 'profile_too_big'; end if;
   return coalesce(
-    (select jsonb_object_agg(key, value) from jsonb_each(p) where key in ('fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'savedAt')),
+    (select jsonb_object_agg(key, case
+       -- (numbers must be real, whole and not silly: a hacked browser can't send a billion fish or junk)
+       when key in ('fish', 'xp', 'mathBest') then
+         case when jsonb_typeof(value) = 'number' then to_jsonb(least(greatest(floor((value #>> '{}')::numeric), 0), 100000000)) else '0'::jsonb end
+       else value end)
+     from jsonb_each(p)
+     where key in ('fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'savedAt')
+       and (key not in ('owned', 'claimed') or jsonb_typeof(value) = 'array')
+       and (key <> 'equip' or jsonb_typeof(value) = 'object')),
     '{}'::jsonb);
 end $$;
 
@@ -232,8 +248,28 @@ language plpgsql set search_path = '' as $$
 declare t text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   delete from camarcade.sessions where player_id = p_id and used_at < now() - interval '30 days';
+  delete from camarcade.sessions where player_id = p_id and token_hash not in -- (at most 10 logins at once: the oldest go)
+    (select token_hash from camarcade.sessions where player_id = p_id order by used_at desc limit 9);
   insert into camarcade.sessions (token_hash, player_id) values (camarcade.sha(t), p_id);
   return t;
+end $$;
+
+-- Rate limits. True (and counted) if p_key has been done fewer than p_max times in the last p_window; false if not.
+-- (p_window can be up to a day.)
+create or replace function camarcade.throttle(p_key text, p_max int, p_window interval) returns boolean
+language plpgsql set search_path = '' as $$
+begin
+  if random() < 0.01 then delete from camarcade.hits where at < now() - interval '1 day'; end if;
+  if (select count(*) from camarcade.hits where k = p_key and at > now() - p_window) >= p_max then return false; end if;
+  insert into camarcade.hits (k) values (p_key);
+  return true;
+end $$;
+
+-- The same, but stops the call with 'slow_down'.
+create or replace function camarcade.limit_rate(p_key text, p_max int, p_window interval) returns void
+language plpgsql set search_path = '' as $$
+begin
+  if not camarcade.throttle(p_key, p_max, p_window) then raise exception 'slow_down'; end if;
 end $$;
 
 -- How many players are online right now, counting internet connections (one house = one).
@@ -292,14 +328,18 @@ declare
   v_id bigint;
 begin
   if p_name is null or p_name !~ '^[A-Za-z0-9_]{3,16}$' then raise exception 'bad_name'; end if;
-  if p_pass is null or length(p_pass) < 4 or octet_length(p_pass) > 72 then raise exception 'bad_password'; end if;
+  if p_pass is null or length(p_pass) < 6 or octet_length(p_pass) > 72 then raise exception 'bad_password'; end if;
+  if lower(p_pass) = lower(p_name) or lower(p_pass) in ('123456', '1234567', '12345678', '123456789', 'password', 'qwerty', 'abcdef', '111111', '000000', 'camarcade') then
+    raise exception 'weak_password';
+  end if;
   if p_year is null or p_month is null or p_month not between 1 and 12
      or p_year not between 1900 and extract(year from current_date)::int then
     raise exception 'bad_birthday';
   end if;
   v_born := (make_date(p_year, p_month, 1) + interval '1 month' - interval '1 day')::date;
   if v_born + interval '13 years' > current_date then raise exception 'too_young'; end if;
-  if (select count(*) from camarcade.signups where net = p_net and at > now() - interval '1 hour') >= 30 then
+  if (select count(*) from camarcade.signups where net = p_net and at > now() - interval '1 hour') >= 30
+     or (select count(*) from camarcade.signups where net = p_net and at > now() - interval '1 day') >= 60 then -- (bots making piles of accounts)
     raise exception 'too_many_signups';
   end if;
   if exists (select 1 from camarcade.players where name_key = lower(p_name)) then raise exception 'name_taken'; end if;
@@ -318,16 +358,25 @@ create or replace function camarcade.log_in(p_name text, p_pass text) returns js
 language plpgsql set search_path = '' as $$
 declare
   k text := lower(coalesce(p_name, ''));
+  n text := 'loginfail:' || camarcade.net();
   p camarcade.players;
 begin
   delete from camarcade.login_fails where at < now() - interval '1 day';
   if (select count(*) from camarcade.login_fails where name_key = k and at > now() - interval '15 minutes') >= 10 then
     return jsonb_build_object('error', 'too_many_tries');
   end if;
+  -- (one internet connection guessing at lots of different accounts)
+  if (select count(*) from camarcade.hits where camarcade.hits.k = n and at > now() - interval '15 minutes') >= 40 then
+    return jsonb_build_object('error', 'too_many_tries');
+  end if;
   select * into p from camarcade.players where name_key = k;
-  if not found then return jsonb_build_object('error', 'no_such_name'); end if;
+  if not found then
+    insert into camarcade.hits (k) values (n);
+    return jsonb_build_object('error', 'no_such_name');
+  end if;
   if p.pass_hash <> extensions.crypt(coalesce(p_pass, ''), p.pass_hash) then
     insert into camarcade.login_fails (name_key) values (k);
+    insert into camarcade.hits (k) values (n);
     return jsonb_build_object('error', 'wrong_password');
   end if;
   return jsonb_build_object('token', camarcade.new_session(p.id), 'me', camarcade.me_json(p.id));
@@ -665,9 +714,13 @@ begin
   if (select count(*) from camarcade.reports where reporter = p_me and at > now() - interval '24 hours') >= 20 then
     raise exception 'too_many_reports';
   end if;
-  insert into camarcade.reports (reporter, reported, reported_name, match_id, reason, note)
-  values (p_me, v_other, (select name from camarcade.players where id = v_other), p_match, p_reason, left(p_note, 500));
-  if (select count(distinct reporter) from camarcade.reports where reported = v_other and at > now() - interval '24 hours') >= 3 then
+  insert into camarcade.reports (reporter, reported, reported_name, match_id, reason, note, net)
+  values (p_me, v_other, (select name from camarcade.players where id = v_other), p_match, p_reason, left(p_note, 500), camarcade.net());
+  -- (Only reports from 3 different internet connections, by accounts over an hour old, count: someone can't make
+  -- a few new accounts and get a player banned.)
+  if (select count(distinct coalesce(r.net, r.reporter::text)) from camarcade.reports r
+      join camarcade.players rp on rp.id = r.reporter
+      where r.reported = v_other and r.at > now() - interval '24 hours' and rp.created_at < r.at - interval '1 hour') >= 3 then
     update camarcade.players
     set banned_until = greatest(coalesce(banned_until, now()), now() + interval '24 hours'),
         ban_reason = coalesce(ban_reason, 'reports')
@@ -796,6 +849,7 @@ create or replace function public.ca_save_profile(p_token text, p_profile jsonb)
 language plpgsql security definer set search_path = '' as $$
 declare v_id bigint := camarcade.auth(p_token);
 begin
+  perform camarcade.limit_rate('profile:' || v_id, 40, interval '1 minute');
   update camarcade.players set profile = camarcade.clean_profile(p_profile) where id = v_id;
 end $$;
 
@@ -839,8 +893,10 @@ end $$;
 
 create or replace function public.ca_block(p_token text, p_player bigint) returns void
 language plpgsql security definer set search_path = '' as $$
+declare v_id bigint := camarcade.auth(p_token);
 begin
-  perform camarcade.block(camarcade.auth(p_token), p_player);
+  perform camarcade.limit_rate('block:' || v_id, 60, interval '1 hour');
+  perform camarcade.block(v_id, p_player);
 end $$;
 
 create or replace function public.ca_report_player(p_token text, p_match bigint, p_reason text, p_note text default null) returns jsonb
@@ -864,6 +920,8 @@ create or replace function public.ca_visit(p_visitor text) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
   if p_visitor is null or p_visitor !~ '^[a-z0-9]{6,32}$' then return; end if;
+  -- (a bot making up visitor ids can't pump up the visitor count: at most 300 a day per internet connection)
+  if (select count(*) from camarcade.visits where day = current_date and net = camarcade.net()) >= 300 then return; end if;
   insert into camarcade.visits (day, visitor, net) values (current_date, p_visitor, camarcade.net()) on conflict do nothing;
 end $$;
 
@@ -885,6 +943,7 @@ declare
 begin
   select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'cloudflare_turn_token' limit 1;
   if v_secret is null then return null; end if;
+  if not camarcade.throttle('turn:' || v_id, 30, interval '1 hour') then return null; end if; -- (relay logins cost money)
   select * into r from extensions.http((
     'POST',
     'https://rtc.live.cloudflare.com/v1/turn/keys/' || camarcade.turn_key_id() || '/credentials/generate-ice-servers',
@@ -1016,6 +1075,20 @@ begin
       and not (j->'profile' ? 'streak'), 'a saved profile cannot change the streak');
     e := camarcade.t_err(format('select camarcade.clean_profile(%L::jsonb)', jsonb_build_object('fish', repeat('9', 30000))));
     v_log := v_log || camarcade.t(e = 'profile_too_big', 'huge profiles are refused');
+    j := camarcade.clean_profile('{"fish": 1e15, "xp": -50, "mathBest": "lots", "owned": "x", "equip": {"hat": "hat-crown"}}');
+    v_log := v_log || camarcade.t((j->>'fish')::numeric = 100000000 and (j->>'xp')::numeric = 0 and (j->>'mathBest')::numeric = 0
+      and not (j ? 'owned') and j ? 'equip', 'silly fish, xp and junk in a profile are cleaned up');
+    e := camarcade.t_err(format('select camarcade.sign_up(%L, %L, 1990, 1, null, %L)', 'tpw' || substr(md5(random()::text), 1, 6), '123456', 'netP'));
+    v_log := v_log || camarcade.t(e = 'weak_password', 'very common passwords are refused');
+    e := camarcade.t_err(format('select camarcade.sign_up(%L, %L, 1990, 1, null, %L)', 'tpw' || substr(md5(random()::text), 1, 6), 'abc', 'netP'));
+    v_log := v_log || camarcade.t(e = 'bad_password', 'short passwords are refused');
+    n := 0;
+    for i in 1..12 loop if camarcade.throttle('test:' || a, 10, interval '1 minute') then n := n + 1; end if; end loop;
+    v_log := v_log || camarcade.t(n = 10, 'rate limits stop the 11th try');
+    for i in 1..45 loop perform camarcade.log_in('tnobody' || i, 'whatever'); end loop;
+    j := camarcade.log_in((select name from camarcade.players where id = b), 'secret');
+    v_log := v_log || camarcade.t(j->>'error' = 'too_many_tries', 'one connection guessing at lots of accounts gets stopped');
+    delete from camarcade.hits;
 
     -- ---------- matchmaking: 40 players at once, no limit ----------
     delete from camarcade.queue;
@@ -1162,10 +1235,20 @@ begin
 
     -- ---------- reports + bans ----------
     x := camarcade.t_player('bad', true, 'netBad');
+    for i in 1..3 loop -- (three brand-new accounts in one house: not enough)
+      y := camarcade.t_player('g' || i, true, 'netG');
+      m := camarcade.t_match(x, y, 'netBad', 'netG');
+      perform camarcade.report_player(y, m, 'nudity', null);
+    end loop;
+    j := camarcade.poll(x, 'peer-bad-12345', null, 'netBad');
+    v_log := v_log || camarcade.t(not coalesce((j->>'banned')::boolean, false), 'new accounts from one house can''t get someone banned');
+    delete from camarcade.queue;
     for i in 1..3 loop
       y := camarcade.t_player('r' || i, true, 'netR' || i);
+      update camarcade.players set created_at = now() - interval '2 hours' where id = y;
       m := camarcade.t_match(x, y, 'netBad', 'netR' || i);
       perform camarcade.report_player(y, m, 'nudity', null);
+      update camarcade.reports set net = 'netR' || i where reporter = y; -- (the test runs without a real internet connection)
     end loop;
     v_log := v_log || camarcade.t(exists (select 1 from camarcade.blocks where blocker = y and blocked = x), 'reporting someone also blocks them');
     j := camarcade.poll(x, 'peer-bad-12345', null, 'netBad');

@@ -495,7 +495,7 @@ async function signUp(name, password, birth) {
   name = String(name || '').trim();
   const bad = checkUsername(name);
   if (bad) throw new Error(bad);
-  if (String(password).length < 4) throw new Error('Pick a password with at least 4 characters.');
+  if (String(password).length < 6) throw new Error('Pick a password with at least 6 characters.');
   const old = await oldProfile(name, password);
   const r = await CAServer.call('ca_sign_up', {
     p_name: name, p_pass: password, p_year: birth.year, p_month: birth.month, p_profile: old || looks(fresh(name)),
