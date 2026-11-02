@@ -273,20 +273,34 @@ function drawBg(v) {
   });
 }
 
+const jig = [{ x: 0, y: 0, vx: 0, vy: 0 }, { x: 0, y: 0, vx: 0, vy: 0 }]; // a spring per butt, so they flop about after you move
+
 function drawButt(v, i, c) {
-  const g = v.g, fur = v.looks[i].fur, d = -c.f;
-  const bx = c.x + d * 24, by = c.y - 28;
-  const wob = c.st ? 1 + 0.14 * Math.sin(v.now / 32) : 1;
+  const g = v.g, fur = v.looks[i].fur, d = -c.f, dt = Math.min(v.dt || 0.016, 0.05), j = jig[i] || (jig[i] = { x: 0, y: 0, vx: 0, vy: 0 });
+  const strain = c.st ? Math.sin(v.now / 28) * 7 : 0; // a strong shake while pooping
+  const tx = -(c.vx || 0) * 0.07 * d + strain, ty = -(c.vy || 0) * 0.06; // it lags behind when you move
+  j.vx += ((tx - j.x) * 380 - j.vx * 7) * dt; j.vy += ((ty - j.y) * 380 - j.vy * 7) * dt;
+  j.x += j.vx * dt; j.y += j.vy * dt;
+  const idle = Math.sin(v.now / 170 + i) * 1.6;
+  const jx = clamp(j.x, -16, 16), jy = clamp(j.y + idle, -16, 16);
+  const bx = c.x + d * 20, by = c.y - 34;
   g.save();
   g.translate(bx, by);
-  g.scale(wob, 1 / wob);
-  const gr = g.createRadialGradient(-d * 4, -10, 4, 0, 0, 30);
+  g.scale(d, 1); // from here +x is out the back
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  const gr = g.createRadialGradient(10, -8, 4, 14, 0, 46);
   gr.addColorStop(0, fur.light); gr.addColorStop(1, fur.mid);
   g.fillStyle = gr; g.strokeStyle = fur.dark; g.lineWidth = 3;
-  [[0, -11], [0, 11]].forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 19, 0, Math.PI * 2); g.fill(); g.stroke(); }); // two big cheeks
-  g.beginPath(); g.arc(0, -11, 17, 0, Math.PI * 2); g.fillStyle = gr; g.fill(); // (the top one on top, so the seam shows)
-  g.strokeStyle = fur.dark; g.lineWidth = 2.5; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(-d * 6, -1); g.quadraticCurveTo(d * 3, 0, d * 17, 0); g.stroke();
+  const cheek = (y0, y1, k, w) => { // one fat D-shaped cheek, bulging out the back
+    const ox = jx * k, oy = jy * k * 1.3, sq = 1 + Math.abs(jx) * 0.012 * k;
+    g.save(); g.translate(ox, oy); g.scale(sq, 1 / sq);
+    g.beginPath(); g.moveTo(-8, y0); g.bezierCurveTo(w, y0 - 6, w + 10, y1 + 6, -8, y1); g.closePath(); g.fill(); g.stroke();
+    g.restore();
+  };
+  cheek(-4, 40, 1.0, 50);   // the lower cheek (behind)
+  cheek(-36, 6, 1.5, 48);   // the upper cheek, jiggles more
+  g.strokeStyle = fur.dark; g.lineWidth = 2.5; // the seam between them
+  g.beginPath(); g.moveTo(-4, 2); g.quadraticCurveTo(18 + jx * 1.2, 4 + jy, 40 + jx * 1.5, 0 + jy * 1.2); g.stroke();
   g.restore();
 }
 
