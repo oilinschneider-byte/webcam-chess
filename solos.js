@@ -1755,7 +1755,7 @@ let relay = null, relayAt = 0;
 async function peerOpts() {
   if (!relay || Date.now() - relayAt > RELAY_MS) {
     const got = await Promise.race([CA.server.call('ca_turn', { p_token: CA.token }).catch(() => null), sleep(4000).then(() => null)]);
-    if (got) { relay = [].concat(got); relayAt = Date.now(); }
+    if (got) { relay = [].concat(got); relayAt = Date.now(); } else console.warn('No Cloudflare relay login from the server (ca_turn gave nothing): using the free relays only');
   }
   return Object.assign({}, PEER_OPTS, { config: { iceServers: BASE_ICE.concat(relay || []) } });
 }

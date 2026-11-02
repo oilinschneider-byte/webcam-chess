@@ -74,7 +74,7 @@ create table if not exists camarcade.sessions (
   player_id bigint not null references camarcade.players on delete cascade,
   created_at timestamptz not null default now(),
   used_at timestamptz not null default now()
-);
+);aaaaaaaaaaaaaaaaaaaaaadddddddddddddddddddddd
 create index if not exists sessions_player on camarcade.sessions (player_id);
 
 create table if not exists camarcade.login_fails (
