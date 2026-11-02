@@ -27,6 +27,39 @@ function loadDetector() {
   return loading;
 }
 
+// Reads body points from a camera, for Pose Match and Simon Says. Each game makes its own reader(); it:
+// - only runs the detector on a new camera picture (the same picture again gives the same answer, so that's saved),
+// - gives the detector the steadily rising times it needs (the games share one detector, and a time earlier than the
+//   last one makes it throw, which used to blank the tracking for a moment),
+// - smooths the points: a lot while you hold still, so they don't jitter back and forth across the edge of a pose, and
+//   hardly at all while you move, so they keep up with you.
+// read(video) → the 33 body points, or null when nobody is seen.
+let lastStamp = 0;
+function reader() {
+  let vt = -1, last = null, at = 0;
+  return function read(video) {
+    if (!detector || !video || video.readyState < 2) { vt = -1; last = null; return null; }
+    if (video.currentTime === vt) return last;
+    vt = video.currentTime;
+    const now = performance.now();
+    const stamp = lastStamp = Math.max(now, lastStamp + 1);
+    let p = null;
+    try { const res = detector.detectForVideo(video, stamp); p = res.landmarks && res.landmarks[0]; } catch (e) { p = null; }
+    if (!p) { last = null; return null; }
+    const dt = Math.max(0.001, (now - at) / 1000);
+    const prev = last && dt < 0.5 ? last : null; // (after a gap, start afresh)
+    at = now;
+    last = p.map((q, i) => {
+      const o = prev && prev[i];
+      if (!o) return { x: q.x, y: q.y, visibility: q.visibility };
+      const speed = Math.hypot(q.x - o.x, q.y - o.y) / dt;    // in camera pictures a second
+      const f = Math.min(1, 0.35 + speed * 1.2);              // still: 0.35 of the way; a quick move: all the way
+      return { x: o.x + (q.x - o.x) * f, y: o.y + (q.y - o.y) * f, visibility: q.visibility };
+    });
+    return last;
+  };
+}
+
 // Body points (MediaPipe numbering): 0 nose, 11/12 left/right shoulder, 13/14 elbows, 15/16 wrists, 23/24 hips.
 function body(p) {
   const seen = i => p[i] && (p[i].visibility == null || p[i].visibility > 0.5);
@@ -66,7 +99,17 @@ function fakeBody(name) {
   set(13, (0.6 + wrists[0]) / 2, (0.45 + wrists[1]) / 2); set(14, (0.4 + wrists[2]) / 2, (0.45 + wrists[3]) / 2);
   return p;
 }
-CA.games.pose = { POSES, body, fakeBody, loadDetector };
+CA.games.pose = { POSES, body, fakeBody, loadDetector, reader };
+
+// Does p (body points) show the pose? Simon Says' checks are used when they're there (they're the same poses, measured
+// the right way round for the camera's shape, and they still count hands raised past the top of the picture), so a
+// pose that works in one game works in the other.
+function matches(name, p, tall) {
+  const S = CA.games.simon;
+  if (S && S.POSES[name]) { const b = S.bodyOf(p, tall); return !!(b && S.POSES[name].test(b)); }
+  const b = body(p);
+  return !!(b && POSES[name].test(b));
+}
 
 const LINKS = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24]];
 
@@ -90,6 +133,7 @@ CA.games.add('pose', {
     let giveUp = null;
     let heldSince = 0;
     let lastRun = 0;
+    const read = reader();
     loadDetector().then(() => { status = 'ready'; }, () => { status = 'failed'; setMsg('psMsg', "The pose detector couldn't load. It needs the internet the first time."); });
 
     function draw(p) {
@@ -115,15 +159,13 @@ CA.games.add('pose', {
       const cam = CA.voice.camera;
       if (cam && video.srcObject !== cam) { video.srcObject = cam; video.play().catch(() => {}); }
       const now = performance.now();
-      if (now - lastRun < 70) return;
+      if (now - lastRun < 45) return;
       lastRun = now;
       let p = window.__fakeBody || null; // (the tests put made-up body points here)
-      if (!p && detector && CA.voice.cameraOn() && video.readyState >= 2) {
-        try { const res = detector.detectForVideo(video, now); p = res.landmarks && res.landmarks[0]; } catch (e) { p = null; }
-      }
+      if (!p && CA.voice.cameraOn()) p = read(video);
       draw(p);
-      const b = p ? body(p) : null;
-      const ok = !!(target && b && POSES[target].test(b));
+      const tall = video.videoWidth ? video.videoHeight / video.videoWidth : 0.75;
+      const ok = !!(target && p && matches(target, p, tall));
       $('psOk').classList.toggle('hidden', !ok);
       if (!ok) { heldSince = 0; return; }
       if (!heldSince) heldSince = now;

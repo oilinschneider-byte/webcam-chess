@@ -348,11 +348,21 @@ function run(ctx, def) {
   /* ---------- online ---------- */
 
   const sbuf = [];                    // (guest) the host's recent snaps
+  // (guest) How far the host's game clock (in ms) is ahead of this computer's. Each snap says when the host made it, so
+  // it can be shown when it happened, not when it arrived: a snap held up on the way and then two arriving together
+  // still play back evenly. The quickest snap is the best guess; it creeps down slowly in case the delay grew.
+  let hostAhead = null, lastSnapAt = 0;
   ctx.on(m => {
     if (!m || typeof m !== 'object') return;
     lastMsg = performance.now();
     if (m.t === 's' && !host && !own) {
-      sbuf.push({ at: performance.now(), g: m.g });
+      const at = performance.now(), hT = Number.isFinite(m.T) ? m.T * 1000 : NaN;
+      if (Number.isFinite(hT)) {
+        const ahead = hT - at;
+        hostAhead = hostAhead === null ? ahead : Math.max(ahead, hostAhead - (at - lastSnapAt) * 0.01);
+        lastSnapAt = at;
+      }
+      sbuf.push({ at, hT, g: m.g });
       if (sbuf.length > 30) sbuf.shift();
       clock(m.T);
       if (Array.isArray(m.sc)) { score = [num(m.sc[0], 0), num(m.sc[1], 0)]; ctx.score(score[meI], score[themI]); }
@@ -380,12 +390,14 @@ function run(ctx, def) {
   // (guest) the game as it was VIEW_DELAY ms ago, smoothed between two snaps
   function guestView(now) {
     if (!sbuf.length) return null;
-    const rt = now - VIEW_DELAY;
+    const byHost = hostAhead !== null && Number.isFinite(sbuf[0].hT); // (by the host's clock: see hostAhead)
+    const when = byHost ? (sn => sn.hT) : (sn => sn.at);
+    const rt = byHost ? now + hostAhead - VIEW_DELAY : now - VIEW_DELAY;
     let k = sbuf.length - 1;
-    while (k > 0 && sbuf[k].at > rt) k--;
+    while (k > 0 && when(sbuf[k]) > rt) k--;
     const a = sbuf[k], b = sbuf[k + 1];
     if (!b) return a.g;
-    const f = clamp((rt - a.at) / Math.max(1, b.at - a.at), 0, 1);
+    const f = clamp((rt - when(a)) / Math.max(1, when(b) - when(a)), 0, 1);
     return def.lerp ? def.lerp(a.g, b.g, f) : deepLerp(a.g, b.g, f, def.angles, def.jump || 80);
   }
 

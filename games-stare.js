@@ -3,9 +3,10 @@
 
    Your camera is checked on your own computer with Google's MediaPipe face detector (Apache 2.0, about 4 MB, loaded
    the first time). It measures how open your eyes are; nothing is recorded, and no video goes anywhere for this.
-   Everybody has the same line for "closed": it isn't measured from your eyes at the start, so squinting doesn't
-   help (squinted eyes count as closed). Each round starts once both players' eyes are properly open, and a blink
-   only counts when your eyes are closed for a couple of checks in a row, so a flicker of the tracking doesn't count.
+   The line for "closed" moves up a little (never far) for eyes the camera sees as partly closed even when wide open,
+   so squinting doesn't help (squinted eyes count as closed). A blink has to shut both eyes: a wink doesn't count.
+   Each round starts once both players' eyes are properly open, and a blink only counts when your eyes are closed for
+   a couple of checks in a row, so a flicker of the tracking doesn't count.
    If a camera loses the face, the round pauses (and starts over if it stays lost), instead of anyone losing. It's a
    casual game: a camera can be fooled.
    The host's app keeps the score (see games-duel.js). */
@@ -50,18 +51,26 @@ CA.games.add('stare', {
     ctx.onEnd(() => { video.srcObject = null; their.srcObject = null; });
     let status = detector ? 'ready' : 'loading';
     loadDetector().then(() => { status = 'ready'; }, () => { status = 'failed'; });
-    // thr: one fixed line for everybody (how closed your eyes are, 0 to 1). It isn't measured from your own eyes at
-    // the start, so squinting while it gets ready doesn't help: squinted eyes count as closed.
+    // thr: the line for "closed" (how closed your eyes are, 0 to 1). It starts at BASE_THR, and each round it moves up a
+    // little for eyes that the camera sees as partly closed even when they're wide open (some eyes, glasses, or looking
+    // down at a laptop screen): it sits a step above how your eyes looked while the round got ready, but never above
+    // MAX_THR. So squinting while it gets ready helps hardly at all (squinted eyes are past MAX_THR: they count as closed).
     // Real blinks are quick (about a tenth of a second), so the camera is read on every new video frame (about 30 times
     // a second) and a blink counts after two closed frames in a row, or one frame of eyes squeezed fully shut.
-    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: 0.27, strong: 0.5, rdy: 0.45, closed: 0, sent: false, ph: '', rd: 0, raw: null, vt: -1, flash: 0 };
+    const BASE_THR = 0.27, MAX_THR = 0.36, ABOVE = 0.17;
+    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: BASE_THR, strong: 0.5, rdy: 0.45, closed: 0, sent: false, ph: '', rd: 0, raw: null, vt: -1, flash: 0, calm: [] };
 
     // Reads the camera (about 15 times a second) and turns it into controls: 'face' (held while your face is
     // seen), 'ready' (held once your eyes are properly open) and 'blink' (pressed once when you blink).
     function local(v, s) {
       if (!s) return;
       if (s.ph !== eye.ph || s.rd !== eye.rd) { // a new round or a new phase
+        if (s.ph === 'calib' && s.rd !== eye.rd) { eye.calm = []; eye.thr = BASE_THR; } // (a new round: measure your open eyes afresh)
         if (s.ph === 'calib') { eye.openSince = 0; v.hold('ready', false); }
+        if (s.ph === 'stare' && eye.calm.length >= 5) { // the line for this round, from your open eyes (see eye.thr)
+          const sorted = eye.calm.slice().sort((a, b) => a - b);
+          eye.thr = Math.max(BASE_THR, Math.min(MAX_THR, sorted[sorted.length >> 1] + ABOVE));
+        }
         eye.closed = 0;
         eye.sent = false;
         eye.ph = s.ph;
@@ -86,7 +95,9 @@ CA.games.add('stare', {
               const bs = res.faceBlendshapes && res.faceBlendshapes[0];
               if (bs) {
                 const get = n => { const c = bs.categories.find(x => x.categoryName === n); return c ? c.score : 0; };
-                blink = (get('eyeBlinkLeft') + get('eyeBlinkRight')) / 2;
+                const l = get('eyeBlinkLeft'), r = get('eyeBlinkRight');
+                // (mostly the more open eye: a blink shuts both, but a wink, or the tracking slipping on one eye, doesn't count)
+                blink = 0.75 * Math.min(l, r) + 0.25 * Math.max(l, r);
               }
             } catch (e) { blink = null; }
           }
@@ -100,7 +111,11 @@ CA.games.add('stare', {
       if (!fresh) return;
       if (s.ph === 'calib') { // ready once your eyes have been properly open for a moment (squinting doesn't count)
         if (blink > eye.rdy) eye.openSince = 0;
-        else if (!eye.openSince) eye.openSince = now;
+        else {
+          if (!eye.openSince) eye.openSince = now;
+          eye.calm.push(blink);
+          if (eye.calm.length > 90) eye.calm.shift();
+        }
         if (eye.openSince && now - eye.openSince >= 600) v.hold('ready', true);
         else v.hold('ready', false);
       } else if (s.ph === 'stare') {

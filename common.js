@@ -643,16 +643,20 @@ function save() {
   profile.savedAt = Date.now();
   writeCache();
   emitChange();
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(pushProfile, 800);
+  // (One save to the server at most every 2 seconds, with the newest profile. Lots of changes close together, like
+  // fish coming in during a game, still get saved as they come, without going over the server's limit.)
+  if (!pushTimer) pushTimer = setTimeout(pushProfile, Math.max(800, 2000 - (Date.now() - lastPush)));
 }
 
+let lastPush = 0;
 function pushProfile(keepalive) {
   clearTimeout(pushTimer);
   pushTimer = null;
   if (!token || !profile) return;
+  lastPush = Date.now();
   CAServer.call('ca_save_profile', { p_token: token, p_profile: looks(profile) }, { keepalive }).catch(err => {
     if (err.code === 'not_logged_in') sessionLost();
+    else if (err.code === 'slow_down' || err.code === 'offline') { if (!pushTimer) pushTimer = setTimeout(pushProfile, 15000); } // (try again soon)
     else console.warn('Could not save your cat:', err.message);
   });
 }

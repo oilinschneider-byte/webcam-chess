@@ -333,6 +333,7 @@ function play(ctx) {
   let live = null;               // the command going on now: { r, cmd, from, done, submit, mine, theirs }
   let cur = null, curSince = 0, curAt = 0; // the pose you're doing (see track)
   let lastRun = 0, lastSent = 0;
+  const read = CA.games.pose.reader(); // (see games-pose.js: new camera pictures only, smoothed)
   let theirs = null;             // their latest body points: { p, tall, at }
   let shownStream, shownCam, theirMode = '';
   let doubles = 0;               // commands in a row that you both messed up
@@ -520,9 +521,7 @@ function play(ctx) {
 
   function look(now) {
     let p = window.__fakeBody || null; // (the tests put made-up body points here)
-    if (!p && detector && CA.voice.cameraOn() && video.readyState >= 2) {
-      try { const res = detector.detectForVideo(video, now); p = res.landmarks && res.landmarks[0]; } catch (e) { p = null; }
-    }
+    if (!p && detector && CA.voice.cameraOn()) p = read(video);
     const tall = video.videoWidth ? video.videoHeight / video.videoWidth : 0.75;
     const b = bodyOf(p, tall);
     track(poseOf(b), now);
@@ -615,7 +614,7 @@ function play(ctx) {
     if (!ctx.alive()) return;
     requestAnimationFrame(frame);
     syncMine();
-    if (now - lastRun >= 70) { lastRun = now; look(now); }
+    if (now - lastRun >= 45) { lastRun = now; look(now); } // (the reader only runs the detector on a new camera picture)
     drawThem(now);
   }
   requestAnimationFrame(frame);

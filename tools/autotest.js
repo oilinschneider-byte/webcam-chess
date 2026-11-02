@@ -110,6 +110,7 @@ async function main() {
   $('authMonth').value = '1';
   $('authYear').value = String(adult ? 1990 : new Date().getFullYear() - 15);
   $('authRules').checked = true;
+  await new Promise(r => setTimeout(r, 1700)); // (the sign-up form turns away anything filled in faster than a person could)
   $('authSubmit').click();
   await until(() => CA.user || ($('authMsg').classList.contains('error') && $('authMsg').textContent), 20000, 'sign up');
   if (!CA.user) throw new Error('sign up failed: ' + $('authMsg').textContent);

@@ -40,7 +40,8 @@ if (window.ResizeObserver) {
     stageEl.style.setProperty('--fit', fit.toFixed(3));
     fitCams();
   }).observe(stageEl);
-  setInterval(fitCams, 300); // (a new game's canvas can appear, or move, at any time)
+  // (a new game's canvas can appear, or move, at any time. Only while a game is on screen: measuring the page is work.)
+  setInterval(() => { if (!document.hidden && playRoot.offsetParent !== null) fitCams(); }, 300);
 }
 // The camera blocks cover an arcade game's camera walls exactly (its top corners: see cam-walls.js), so nothing in the
 // game can be hidden behind a camera. In the other games they just sit in the top corners (see style.css).
