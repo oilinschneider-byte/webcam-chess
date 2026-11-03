@@ -25,7 +25,7 @@ const BOT_LEVEL = { easy: 1, medium: 5, hard: 9 };
 // for real players.
 const STAND_IN_LEVEL = 8;
 const GLINGUS_CHANCE = 0.02;       // 1 stand-in in 50
-const GLINGUS = { name: 'Glingus', equip: { skin: 'skin-grape', bg: 'bg-neon', hat: 'hat-wizard', eyes: 'eyes-shades', neck: 'neck-chain' } };
+const GLINGUS = { name: 'omegakilla6769', equip: { skin: 'skin-grape', bg: 'bg-neon', hat: 'hat-wizard', eyes: 'eyes-shades', neck: 'neck-chain' } };
 const STAND_IN_ALONE_MS = 20000;   // how long you search first when nobody else is online
 const STAND_IN_OTHERS_MS = 60000;  // ...and when others are online, but haven't turned up to play yet
 const TAUNTS = {

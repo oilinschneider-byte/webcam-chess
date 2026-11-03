@@ -224,7 +224,7 @@ async function glingus() {
     $('nextBtn').click();
     await until(() => !$('searchView').classList.contains('hidden'), 5000, 'the search');
     await check('after the bot, it goes back to looking for real players', true);
-    await until(() => $('themName').textContent.includes('Glingus'), 20000, 'Glingus');
+    await until(() => $('themName').textContent.includes('omegakilla6769'), 20000, 'Glingus');
     await check('Glingus looks like a player', !$('themName').textContent.includes('🤖') && $('themStreak').textContent.includes('🔥') && $('scMode').textContent.includes('Classic Games'),
       [$('themName').textContent, $('themStreak').textContent, $('scMode').textContent]);
     await until(() => $('themVideo').srcObject && !$('themVideo').classList.contains('hidden'), 90000, "Glingus's camera to come on");
