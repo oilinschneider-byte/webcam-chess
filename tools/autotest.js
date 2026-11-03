@@ -47,7 +47,7 @@ const PASS = 'test-pass-' + run;
 const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest;
 window.__introMs = 1500;   // (shorter face-to-face screens)
 window.__reactMs = 15000;
-if (glingusTest) window.__glingusMs = 2000; else window.__noGlingus = true; // (the other rounds wait a long time for each other: no Glingus)
+if (glingusTest) { window.__glingusMs = 2000; window.__testHooks = true; } else window.__noGlingus = true; // (the other rounds wait a long time for each other: no Glingus)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
 if (wallTest || duelTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
 if (duelTest) {
@@ -212,12 +212,20 @@ async function glingus() {
     await until(() => $('themName').textContent.includes('Glingus'), 20000, 'Glingus');
     await check('nobody turned up: Glingus takes over, shown as a bot', $('themName').textContent.includes('🤖'), $('themName').textContent);
     await check('nothing counts against Glingus', $('scMode').textContent.includes('nothing is counted'), $('scMode').textContent);
+    await until(() => $('themVideo').srcObject && !$('themVideo').classList.contains('hidden'), 10000, "Glingus's webcam");
+    const clipAt = window.__glingusClip.currentTime;
+    await sleep(16000); // (longer than the clip, so it has looped)
+    const shownAt = $('themVideo').currentTime;
+    await sleep(1000);
+    await check("Glingus's webcam keeps playing after the clip loops", !window.__glingusClip.paused && $('themVideo').currentTime > shownAt && $('themVideo').videoWidth > 0,
+      { clipAt, clipNow: window.__glingusClip.currentTime, shownAt, shownNow: $('themVideo').currentTime, w: $('themVideo').videoWidth, sound: window.__glingusClip.webkitAudioDecodedByteCount, muted: window.__glingusClip.muted });
     await until(() => !$('vs').classList.contains('hidden') && !$('vsReact').classList.contains('hidden'), 150000, 'the game against Glingus to end');
     await check('the game ends and says it did not count', $('rxReward').textContent.includes('nothing is counted'), $('rxReward').textContent);
     await check('my streak is still 0', CA.profile.streak === 0);
     $('nextBtn').click();
     await until(() => !$('searchView').classList.contains('hidden'), 5000, 'the search');
     await check('after Glingus, it goes back to looking for real players', !$('searchView').classList.contains('hidden'));
+    await check('the clip stops once you leave Glingus', window.__glingusClip.paused);
     $('cancelSearchBtn').click();
   }
   location.hash = '#/menu';

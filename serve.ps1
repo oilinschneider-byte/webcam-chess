@@ -30,6 +30,7 @@ $types = @{
   '.json' = 'application/json; charset=utf-8'
   '.svg'  = 'image/svg+xml'
   '.png'  = 'image/png'
+  '.mp4'  = 'video/mp4'
   '.jpg'  = 'image/jpeg'
   '.ico'  = 'image/x-icon'
   '.woff2' = 'font/woff2'

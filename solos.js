@@ -1218,6 +1218,7 @@ function syncFaceVideos() {
 
 // The other player's camera, while they show it and you haven't hidden it (otherwise null).
 function theirStream() {
+  if (opp && opp.glingus) return !opp.gone && !hideThem ? glingusStream() : null;
   const src = $('themVideo').srcObject;
   return !!opp && !opp.bot && !opp.gone && opp.face && remoteHasVideo && !hideThem && src ? src : null;
 }
@@ -1585,7 +1586,9 @@ function updateTiles() {
   }
   setMsg('meStreak', mode === 'practice' ? '🎯' : '🔥 ' + CA.profile.streak);
   setMsg('meMic', CA.voice.micOn() ? '' : ' 🔇');
-  $('muteThemBtn').classList.toggle('hidden', !human || !share);
+  const glingus = !!opp && !!opp.glingus;
+  if (glingus && clip) clip.muted = muteThem || lastGame === 'simon'; // (Simon Says: you have to hear Simon)
+  $('muteThemBtn').classList.toggle('hidden', !glingus && (!human || !share));
   setMsg('muteThemBtn', muteThem ? '🔊 Unmute them' : '🔈 Mute them');
   if ($('unmuteBtn').classList.contains('hidden')) $('themVideo').muted = muteThem; // (stays muted until "Tap to hear them")
   setMsg('skipBtn', mode === 'practice' && !(opp && opp.glingus) ? '✕ Quit' : '⏭ Skip');
@@ -1609,7 +1612,12 @@ function updateTiles() {
     face.disabled = !share;
     face.textContent = !CA.canVideoChat() ? '🐱 Cats only (under 18)' : !share ? '🐱 Cats-only match' : showFace ? '🐱 Hide my face' : '📷 Show my face';
   }
-  const showThem = human && share && !opp.gone && opp.face && remoteHasVideo && !hideThem;
+  const glingusCam = opp && opp.glingus ? theirStream() : null;
+  if (glingusCam && $('themVideo').srcObject !== glingusCam) {
+    $('themVideo').srcObject = glingusCam;
+    $('themVideo').play().catch(() => {});
+  }
+  const showThem = !!glingusCam || (human && share && !opp.gone && opp.face && remoteHasVideo && !hideThem);
   $('themVideo').classList.toggle('hidden', !showThem);
   $('hideThemBtn').classList.toggle('hidden', !human || !share || !opp.face);
   setMsg('hideThemBtn', hideThem ? '👀 Show their camera' : '🙈 Hide their camera');
@@ -2112,6 +2120,7 @@ function hangUp() {
     else CA.server.call('ca_mm_leave', { p_token: CA.token }).catch(() => {});
   }
   searching = false;
+  if (clip) clip.pause();
   if (pairing) clearTimeout(pairing.timer);
   pairing = null;
   clearInterval(pingTimer);
@@ -2283,8 +2292,34 @@ function startGlingus() {
   practiceMix = true;
   practiceGame = null;
   isHost = true;
+  muteThem = false;
+  hideThem = false;
   opp = { name: GLINGUS.name, bot: true, glingus: true, level: GLINGUS.level, equip: GLINGUS.equip, streak: 0, mic: true, device: '', gone: false };
+  glingusStream();
+  clip.muted = false;
+  clip.play().catch(() => { clip.muted = true; clip.play().catch(() => {}); }); // (a browser may not allow the sound)
   beginMatch(pickGame({ camera: CA.voice.cameraOn() }), randSeed());
+}
+
+// Glingus's webcam: glingus.mp4 on a loop. The picture goes wherever a player's camera would (as a stream, so the games
+// don't need to know), and the sound comes from the clip itself, so it only plays once. Where a browser can't make a
+// stream from a video (like Safari), you see his cat instead.
+let clip = null, clipStream = null;
+function glingusStream() {
+  if (!clip) {
+    clip = document.createElement('video');
+    clip.src = 'glingus.mp4';
+    clip.loop = true;
+    clip.playsInline = true;
+    clip.addEventListener('loadeddata', () => {
+      const capture = clip.captureStream || clip.mozCaptureStream;
+      if (!capture) return;
+      clipStream = new MediaStream(capture.call(clip).getVideoTracks());
+      if (opp && opp.glingus) updateTiles();
+    });
+    if (window.__testHooks) window.__glingusClip = clip;
+  }
+  return clipStream;
 }
 
 function botTag() { return opp && opp.glingus ? '🤖 Bot' : '🤖 ' + practiceLevel(); }
