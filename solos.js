@@ -1909,8 +1909,11 @@ function pairingFailed(pr, why) {
   if (!pr || pairing !== pr || pr.live) return; // (once the match has started, a closed connection is handled by onConnClosed)
   clearTimeout(pr.timer);
   pairing = null;
+  const pc = pr.conn && pr.conn.peerConnection;
+  const detail = (why || 'no reason') + ' | ' + pr.role + ' ice=' + (pc ? pc.iceConnectionState : 'none') + ' gather=' + (pc ? pc.iceGatheringState : 'none') +
+    ' signal=' + (pc ? pc.signalingState : 'none') + ' relay=' + (relay ? 'yes' : 'no') + ' peer=' + (!peer ? 'gone' : peer.disconnected ? 'lost' : 'ok') + ' v=' + PROTOCOL;
   if (pr.conn && pr.conn !== conn) { try { pr.conn.close(); } catch (e) { /* ignore */ } }
-  CA.server.call('ca_mm_fail', { p_token: CA.token, p_match: pr.id }).catch(() => {});
+  CA.server.call('ca_mm_fail', { p_token: CA.token, p_match: pr.id, p_why: detail }).catch(() => {}); // (see the view connection_failures)
   console.warn('Pairing failed:', pr.opp.name, why);
   if (searching) setMsg('searchTitle', "Couldn't connect to " + (pr.opp.name || 'that player') + (why ? ' (' + why + ')' : '') + '. Looking again…');
 }
@@ -1949,8 +1952,8 @@ function knock(pr) {
   function giveUp(why) {
     if (done) return;
     finish();
+    pairingFailed(pr, why); // (first: it notes how far the connection got)
     if (c) { try { c.close(); } catch (e) { /* ignore */ } }
-    pairingFailed(pr, why);
   }
   p.on('error', onErr);
   function dial() {

@@ -122,6 +122,8 @@ create table if not exists camarcade.matches (
 );
 create index if not exists matches_host on camarcade.matches (host, created_at);
 create index if not exists matches_guest on camarcade.matches (guest, created_at);
+alter table camarcade.matches add column if not exists fail_why text;  -- what went wrong, in the words of the browser that gave up
+alter table camarcade.matches add column if not exists fail_by bigint;
 
 create table if not exists camarcade.games (
   match_id bigint not null references camarcade.matches on delete cascade,
@@ -449,11 +451,16 @@ begin
   -- Did someone pick us since we last asked?
   select * into mine from camarcade.queue where player_id = p_me for update;
   if found and mine.match_id is not null then
-    select * into m from camarcade.matches where id = mine.match_id and status = 'open';
+    -- (Only a match made for this very search. Someone may have picked an earlier one of ours that was closed without
+    -- saying goodbye: that match points at a browser connection that's gone, and they could never reach us on it.)
+    select * into m from camarcade.matches where id = mine.match_id and status = 'open'
+      and host_peer = p_peer and created_at > now() - interval '40 seconds';
     delete from camarcade.queue where player_id = p_me;
     if m.id is not null then
       return jsonb_build_object('match', camarcade.match_json(m.id, p_me));
     end if;
+    update camarcade.matches set status = 'failed', fail_why = 'left over from an earlier search', fail_by = p_me
+    where id = mine.match_id and status = 'open' and not exists (select 1 from camarcade.games g where g.match_id = mine.match_id);
   end if;
 
   insert into camarcade.queue as q (player_id, peer_id, net, adult, avoid_id)
@@ -474,7 +481,7 @@ begin
     and not exists (select 1 from camarcade.blocks b
                     where (b.blocker = p_me and b.blocked = q.player_id) or (b.blocker = q.player_id and b.blocked = p_me))
     and not exists (select 1 from camarcade.matches f
-                    where f.status = 'failed' and f.created_at > now() - interval '2 minutes'
+                    where f.status = 'failed' and f.created_at > now() - interval '30 seconds'
                       and ((f.host = p_me and f.guest = q.player_id) or (f.host = q.player_id and f.guest = p_me)))
     and ((q.player_id is distinct from mine.avoid_id and q.avoid_id is distinct from p_me)
          or least(mine.joined_at, q.joined_at) < now() - interval '20 seconds')
@@ -506,11 +513,13 @@ begin
   end if;
 end $$;
 
--- Their browsers couldn't connect: call the match off (and don't pair those two again for a couple of minutes).
-create or replace function camarcade.fail(p_me bigint, p_match bigint) returns void
+-- Their browsers couldn't connect: call the match off (and don't pair those two again for half a minute), and write
+-- down what went wrong (see the view connection_failures).
+drop function if exists camarcade.fail(bigint, bigint);
+create or replace function camarcade.fail(p_me bigint, p_match bigint, p_why text default null) returns void
 language plpgsql set search_path = '' as $$
 begin
-  update camarcade.matches set status = 'failed'
+  update camarcade.matches set status = 'failed', fail_why = left(p_why, 200), fail_by = p_me
   where id = p_match and (host = p_me or guest = p_me) and status = 'open'
     and not exists (select 1 from camarcade.games g where g.match_id = p_match);
   update camarcade.queue set match_id = null where match_id = p_match;
@@ -898,10 +907,11 @@ begin
   perform camarcade.leave(camarcade.auth(p_token));
 end $$;
 
-create or replace function public.ca_mm_fail(p_token text, p_match bigint) returns void
+drop function if exists public.ca_mm_fail(text, bigint);
+create or replace function public.ca_mm_fail(p_token text, p_match bigint, p_why text default null) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  perform camarcade.fail(camarcade.auth(p_token), p_match);
+  perform camarcade.fail(camarcade.auth(p_token), p_match, p_why);
 end $$;
 
 create or replace function public.ca_report(p_token text, p_match bigint, p_game_no int, p_game text, p_outcome text) returns jsonb
@@ -1000,7 +1010,7 @@ begin
   foreach f in array array[
     'ca_sign_up(text, text, int, int, jsonb)', 'ca_log_in(text, text)', 'ca_log_out(text)', 'ca_me(text)',
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
-    'ca_mm_leave(text)', 'ca_mm_fail(text, bigint)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
+    'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
     'ca_turn(text)'
   ] loop
@@ -1126,6 +1136,14 @@ begin
     v_log := v_log || camarcade.t(j ? 'match' and j->'match'->>'role' = 'host' and j->'match'->>'opp_peer' = 'peer-q-2-xyz',
       'the waiting player picks up their match and the other player''s connection id');
     v_log := v_log || camarcade.t(not exists (select 1 from camarcade.queue where player_id = ids[1]), 'a matched player leaves the queue');
+    delete from camarcade.queue;
+    perform camarcade.poll(ids[3], 'peer-old-search', null, 'netQ3');
+    j := camarcade.poll(ids[4], 'peer-q-4-xyz', null, 'netQ4');
+    m := (j->'match'->>'id')::bigint;
+    j := camarcade.poll(ids[3], 'peer-new-search', null, 'netQ3');
+    v_log := v_log || camarcade.t(j ? 'waiting' and (select status from camarcade.matches where id = m) = 'failed',
+      'a match made for an earlier search is thrown away, not handed to the new one');
+    delete from camarcade.queue;
 
     -- ---------- matchmaking rules ----------
     x := camarcade.t_player('x', true, 'netZ');
@@ -1349,6 +1367,17 @@ select v.day, count(*) as visitors, count(distinct v.net) as internet_connection
 from camarcade.visits v
 group by v.day
 order by v.day desc;
+
+-- Matches whose browsers couldn't connect, newest first, and why (select * from camarcade.connection_failures;).
+create or replace view camarcade.connection_failures as
+select m.created_at, h.name as host, g.name as guest, f.name as reported_by, m.fail_why, m.same_net, m.cats_only
+from camarcade.matches m
+join camarcade.players h on h.id = m.host
+join camarcade.players g on g.id = m.guest
+left join camarcade.players f on f.id = m.fail_by
+where m.status = 'failed'
+order by m.created_at desc
+limit 100;
 
 -- The weekly prize (open these in the Supabase SQL Editor, like: select * from camarcade.prize_last_week;)
 -- (The prize is only on once camarcade.settings.prize_from is set: when 5000 different internet connections had visited.)
