@@ -19,11 +19,23 @@ const POLL_MS = 1500;             // how often a searching player asks the serve
 const PAIR_LIMIT = 3;             // games a day between the same two players that count (the server decides; this is for messages)
 const BOT_NAMES = ['Whiskers', 'Mittens', 'Biscuit', 'Pumpkin', 'Noodle', 'Pickles', 'Muffin', 'Nugget', 'Tofu', 'Waffles'];
 const BOT_LEVEL = { easy: 1, medium: 5, hard: 9 };
-// Glingus: the bot you play in Classic Games when nobody can be found. Pretty good at every game (hard is 9). His games
-// never count, and afterwards you go back to looking for real players.
-const GLINGUS = { name: 'Glingus', level: 8, equip: { skin: 'skin-grape', bg: 'bg-neon', hat: 'hat-wizard', eyes: 'eyes-shades', neck: 'neck-chain' } };
-const GLINGUS_ALONE_MS = 20000;  // how long you search before Glingus when nobody else is online
-const GLINGUS_OTHERS_MS = 60000; // ...and when others are online, but haven't turned up to play yet
+// When nobody can be found in Classic Games you play a stand-in: a bot that says it's a bot and makes fun of you, or, very
+// rarely, Glingus, a surprise who looks like a player and turns his camera on for one clip in the middle of a game.
+// Stand-ins are pretty good at every game (hard is 9). Their games never count, and afterwards you go back to looking
+// for real players.
+const STAND_IN_LEVEL = 8;
+const GLINGUS_CHANCE = 0.02;       // 1 stand-in in 50
+const GLINGUS = { name: 'Glingus', equip: { skin: 'skin-grape', bg: 'bg-neon', hat: 'hat-wizard', eyes: 'eyes-shades', neck: 'neck-chain' } };
+const STAND_IN_ALONE_MS = 20000;   // how long you search first when nobody else is online
+const STAND_IN_OTHERS_MS = 60000;  // ...and when others are online, but haven't turned up to play yet
+const TAUNTS = {
+  start: ["Nobody else wanted to play you, huh?", "You again? This'll be quick.", "I've played toasters tougher than you."],
+  mid: ['Ha ha! Is that your best?', 'Are you even looking at the screen?', "I'm not even trying right now.", 'Aww, that was almost good.', 'Hehehe, try using your hands.', 'My cat plays better, and she is asleep.'],
+  lose: ['HA HA HA! Too easy!', 'Beaten by a bot! Tell your friends!', 'That was embarrassing. For you.', 'Want me to go easier? Ha ha!'],
+  win: ['Lucky! Total luck!', 'I let you win. Obviously.', "Enjoy it. It won't happen again."],
+  draw: ["A tie with a bot? Ha! That's not great."],
+};
+const LAUGH = [[520, 0, 0.1], [430, 0.14, 0.1], [520, 0.28, 0.1], [430, 0.42, 0.1], [340, 0.56, 0.2]];
 const DEFAULT_MATH = {
   duration: 120,
   ops: [
@@ -1099,7 +1111,7 @@ function makeCtx(gameId, seed, extra) {
     stage: $('stage'),
     rng: mulberry32(seed),
     isHost,
-    bot: opp && opp.bot ? { level: opp.level } : null,
+    bot: opp && opp.bot ? { level: opp.level, hidden: !!opp.glingus } : null,
     oppName: opp ? opp.name : '',
     oppEquip: opp ? opp.equip : null, // (for games that draw the other player's cat)
     theirCam: () => theirStream(),    // (for games that show the other player's camera themselves)
@@ -1159,8 +1171,8 @@ function beginMatch(gameId, seed, extra) {
   CA.showScreen('scr-play');
   $('matchView').classList.toggle('solo-run', solo);
   renderPlayers();
-  setMsg('scMode', mode !== 'practice' ? '⚡ Classic Games'
-    : opp && opp.glingus ? '🤖 Glingus: nothing is counted'
+  setMsg('scMode', !looksPractice() ? '⚡ Classic Games'
+    : opp && opp.standIn ? '🤖 Bot game: nothing is counted'
     : solo ? '🎯 Practice'
     : (practiceMix ? '🎲 Classic vs bots' : '🎯 Practice') + ' · ' + practiceLevel());
   setMsg('scGame', g.icon + ' ' + g.name);
@@ -1171,6 +1183,7 @@ function beginMatch(gameId, seed, extra) {
     match.started = true;
     g.start(ctx);
     ctx.flush();
+    standInPlays();
   };
   if (g.prepare) g.prepare(ctx); // (e.g. load the word list while you look at each other)
   if (solo) countdown(ctx, go); else faceToFace(ctx, g, go);
@@ -1198,7 +1211,7 @@ function showFaces() {
   $('vsThemCat').innerHTML = opp ? CA.catSVG(opp.equip, { label: opp.name, talker: 'opp' }) : '';
   setMsg('vsMeName', p.name);
   setMsg('vsThemName', opp ? opp.name : '');
-  setMsg('vsMeTag', mode === 'practice' ? '🎯 Practice' : '🔥 ' + p.streak);
+  setMsg('vsMeTag', looksPractice() ? '🎯 Practice' : '🔥 ' + p.streak);
   setMsg('vsThemTag', !opp ? '' : opp.bot ? botTag() : '🔥 ' + opp.streak);
   syncFaceVideos();
 }
@@ -1218,7 +1231,7 @@ function syncFaceVideos() {
 
 // The other player's camera, while they show it and you haven't hidden it (otherwise null).
 function theirStream() {
-  if (opp && opp.glingus) return !opp.gone && !hideThem ? glingusStream() : null;
+  if (opp && opp.glingus) return !opp.gone && !hideThem ? clipStream : null;
   const src = $('themVideo').srcObject;
   return !!opp && !opp.bot && !opp.gone && opp.face && remoteHasVideo && !hideThem && src ? src : null;
 }
@@ -1269,7 +1282,9 @@ function startReaction(outcome, res, opts) {
     reward = '🔥 ' + res.before.streak + ' → ' + res.after.streak + (res.fish ? ' · +' + res.fish + ' 🐟' : '') + ' · +' + res.xp + ' XP' +
       (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
   } else if (opp.glingus) {
-    reward = '🤖 Glingus is a bot: nothing is counted';
+    reward = '🤝 Friendly game: nothing is counted';
+  } else if (opp.standIn) {
+    reward = '🤖 Bot game: nothing is counted';
   } else if (mode === 'practice') {
     reward = '🎯 Practice: nothing is counted';
   } else {
@@ -1282,10 +1297,10 @@ function startReaction(outcome, res, opts) {
   rb.disabled = gone || noRematch || blocked;
   rb.classList.remove('chosen');
   rb.textContent = '🔁 Rematch';
-  setMsg('nextBtn', online ? '⏭ Next player' : opp.glingus ? '⏭ Find a player' : '⏭ New bot');
+  setMsg('nextBtn', online || opp.glingus ? '⏭ Next player' : opp.standIn ? '⏭ Find a player' : '⏭ New bot');
   $('rxReportBtn').classList.toggle('hidden', !online || blocked);
   setMsg('rxNote', gone ? opp.name + ' has left.' : blocked ? "You blocked " + opp.name + ", so you'll get someone new."
-    : noRematch ? '3 ties in a row: on to ' + (online ? 'someone new' : 'a new bot') + '!' : '');
+    : noRematch ? '3 ties in a row: on to ' + (online || opp.standIn ? 'someone new' : 'a new bot') + '!' : '');
   $('vs').classList.remove('hidden');
   startTimer('rxTimer', ms); // (after showing it: a hidden bar doesn't animate)
   react.iv = setInterval(reactTick, 150);
@@ -1357,6 +1372,8 @@ function endMatch(outcome, reason, opts) {
   showResult(outcome, reason, res, opts);
   sound(outcome === 'win' ? 'win' : outcome === 'lose' ? 'lose' : 'draw');
   if (opp.bot && outcome === 'lose') botTalk(1400);
+  clearTimeout(mockTimer);
+  if (opp.standIn) mock(outcome);
   if (mode === 'solos' || practiceMix) startReaction(outcome, res, opts); // react face to face, then Rematch or Next
 }
 
@@ -1393,7 +1410,9 @@ function showResult(outcome, reason, res, opts) {
     : (outcome === 'win' ? 'You beat ' : outcome === 'lose' ? 'You lost to ' : 'You tied with ') + opp.name + ' at ' + g.name + '.';
   let body;
   if (opp.glingus) {
-    body = '<div class="streak-change">🤖 Glingus is a bot: your streak and fish stay the same.</div>';
+    body = '<div class="streak-change">🤝 Friendly game: your streak and fish stay the same.</div>';
+  } else if (opp.standIn) {
+    body = '<div class="streak-change">🤖 Bot game: your streak and fish stay the same.</div>';
   } else if (mode === 'practice') {
     body = '<div class="streak-change">🎯 Practice game: your streak and fish stay the same.</div>';
   } else if (!res) {
@@ -1423,7 +1442,7 @@ function showResult(outcome, reason, res, opts) {
   }
   const buttons =
     mode !== 'practice' ? '<button class="btn solos-btn big" data-act="next">⚡ Next player now</button>'
-    : opp.glingus ? '<button class="btn solos-btn big" data-act="next">⚡ Find a player</button>'
+    : opp.standIn ? '<button class="btn solos-btn big" data-act="next">⚡ ' + (opp.glingus ? 'Next player now' : 'Find a player') + '</button>'
     : practiceMix ? '<button class="btn solos-btn big" data-act="bot">🎲 Next game now</button>'
     : '<button class="btn go big" data-act="again">↻ Play again</button>';
   $('stage').innerHTML =
@@ -1473,7 +1492,7 @@ function cancelNext() {
 function goNext(act) {
   cancelNext();
   stopReaction();
-  if (act === 'bot' && !(opp && opp.glingus)) nextBot(); // (after Glingus: back to looking for real players)
+  if (act === 'bot' && !(opp && opp.standIn)) nextBot(); // (after a stand-in: back to looking for real players)
   else nextOpponent();
 }
 
@@ -1483,7 +1502,7 @@ function playAgain() {
 }
 
 function skipPressed() {
-  if (opp && opp.glingus) { nextOpponent(); return; } // (nothing is counted, so nothing to lose)
+  if (opp && opp.standIn) { nextOpponent(); return; } // (nothing is counted, so nothing to lose)
   if (mode === 'practice') { CA.go('menu'); return; }
   if (match && match.started && !match.over) {
     CA.confirmBox('Skip this match?', 'Leaving in the middle of a game counts as a loss and resets your streak.', 'Skip', () => {
@@ -1579,19 +1598,19 @@ function updateTiles() {
   const human = !!opp && !opp.bot;
   const share = canShare();
   if (opp) {
-    setMsg('themName', opp.name + (opp.bot ? ' 🤖' : ''));
+    setMsg('themName', opp.name + (opp.bot && !opp.glingus ? ' 🤖' : ''));
     setMsg('themMic', human && share && !opp.gone && !opp.mic ? ' 🔇' : '');
     setMsg('themStreak', opp.bot ? botTag() : '🔥 ' + opp.streak);
     $('oppDot').className = 'dot ' + (opp.bot ? 'on' : opp.gone ? 'off' : 'on');
   }
-  setMsg('meStreak', mode === 'practice' ? '🎯' : '🔥 ' + CA.profile.streak);
+  setMsg('meStreak', looksPractice() ? '🎯' : '🔥 ' + CA.profile.streak);
   setMsg('meMic', CA.voice.micOn() ? '' : ' 🔇');
   const glingus = !!opp && !!opp.glingus;
   if (glingus && clip) clip.muted = muteThem || lastGame === 'simon'; // (Simon Says: you have to hear Simon)
   $('muteThemBtn').classList.toggle('hidden', !glingus && (!human || !share));
   setMsg('muteThemBtn', muteThem ? '🔊 Unmute them' : '🔈 Mute them');
   if ($('unmuteBtn').classList.contains('hidden')) $('themVideo').muted = muteThem; // (stays muted until "Tap to hear them")
-  setMsg('skipBtn', mode === 'practice' && !(opp && opp.glingus) ? '✕ Quit' : '⏭ Skip');
+  setMsg('skipBtn', mode === 'practice' && !(opp && opp.standIn) ? '✕ Quit' : '⏭ Skip');
   $('reportBtn').classList.toggle('hidden', !human || !!opp.blocked);
   const mic = $('micBtn');
   mic.textContent = CA.voice.micOn() ? '🎤 Mic on' : CA.voice.hasMic() ? '🔇 Mic off' : '🎤 Turn on mic';
@@ -1668,7 +1687,7 @@ function showSearch() {
   setMsg('searchTitle', fresh ? 'Looking for a new player…' : 'Looking for a player…');
   setMsg('searchSub', 'Searching…');
   setMsg('searchTip', fresh
-    ? 'Nobody new is searching right now. If nobody else joins soon, you will play ' + recentName + ' again, or Glingus, a bot.'
+    ? 'Nobody new is searching right now. If nobody else joins soon, you will play ' + recentName + ' again, or a bot.'
     : SEARCH_TIP);
   $('searchTip').classList.add('hidden');
   $('retryBtn').classList.add('hidden');
@@ -1682,11 +1701,11 @@ function updateSearch() {
   const s = Math.floor((Date.now() - searchStarted) / 1000);
   setMsg('searchSub', 'Searching for ' + s + 's');
   if (s >= 10) $('searchTip').classList.remove('hidden');
-  // Nobody turned up: play Glingus. Sooner if nobody else is online at all; if others are, give them longer to join.
+  // Nobody turned up: play a stand-in. Sooner if nobody else is online at all; if others are, give them longer to join.
   // (onlineNow counts you too. Not while connecting to someone, or while you're away from the tab.)
-  if (!searching || pairing || conn || onlineNow === null || window.__autoplay || window.__noGlingus || document.visibilityState !== 'visible') return;
-  const wait = window.__glingusMs || (onlineNow > 1 ? GLINGUS_OTHERS_MS : GLINGUS_ALONE_MS);
-  if (Date.now() - searchStarted >= wait) startGlingus();
+  if (!searching || pairing || conn || onlineNow === null || window.__autoplay || window.__noStandIn || document.visibilityState !== 'visible') return;
+  const wait = window.__standInMs || (onlineNow > 1 ? STAND_IN_OTHERS_MS : STAND_IN_ALONE_MS);
+  if (Date.now() - searchStarted >= wait) startStandIn();
 }
 
 function hideSearch() {
@@ -2120,6 +2139,9 @@ function hangUp() {
     else CA.server.call('ca_mm_leave', { p_token: CA.token }).catch(() => {});
   }
   searching = false;
+  clearTimeout(mockTimer);
+  clearTimeout(clipTimer);
+  clipStream = null;
   if (clip) clip.pause();
   if (pairing) clearTimeout(pairing.timer);
   pairing = null;
@@ -2285,7 +2307,7 @@ function nextBot() {
 }
 
 // Nobody could be found (see updateSearch). A mix of games, like Classic mode vs bots; nothing is counted.
-function startGlingus() {
+function startStandIn() {
   hangUp();
   hideSearch();
   mode = 'practice';
@@ -2294,35 +2316,86 @@ function startGlingus() {
   isHost = true;
   muteThem = false;
   hideThem = false;
-  opp = { name: GLINGUS.name, bot: true, glingus: true, level: GLINGUS.level, equip: GLINGUS.equip, streak: 0, mic: true, device: '', gone: false };
-  glingusStream();
-  clip.muted = false;
-  clip.play().catch(() => { clip.muted = true; clip.play().catch(() => {}); }); // (a browser may not allow the sound)
+  const chance = window.__glingusChance != null ? window.__glingusChance : GLINGUS_CHANCE;
+  const glingus = Math.random() < chance;
+  opp = { name: glingus ? GLINGUS.name : BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)], bot: true, standIn: true, glingus, level: STAND_IN_LEVEL,
+    equip: glingus ? GLINGUS.equip : randomOutfit(), streak: glingus ? 1 + Math.floor(Math.random() * 6) : 0, mic: true, device: '', gone: false };
+  if (glingus) loadClip();
+  else mock('start', "Nobody's around, so you're playing a bot. ");
   beginMatch(pickGame({ camera: CA.voice.cameraOn() }), randSeed());
 }
 
-// Glingus's webcam: glingus.mp4 on a loop. The picture goes wherever a player's camera would (as a stream, so the games
-// don't need to know), and the sound comes from the clip itself, so it only plays once. Where a browser can't make a
-// stream from a video (like Safari), you see his cat instead.
-let clip = null, clipStream = null;
-function glingusStream() {
-  if (!clip) {
-    clip = document.createElement('video');
-    clip.src = 'glingus.mp4';
-    clip.loop = true;
-    clip.playsInline = true;
-    clip.addEventListener('loadeddata', () => {
-      const capture = clip.captureStream || clip.mozCaptureStream;
-      if (!capture) return;
-      clipStream = new MediaStream(capture.call(clip).getVideoTracks());
-      if (opp && opp.glingus) updateTiles();
-    });
-    if (window.__testHooks) window.__glingusClip = clip;
+// A game against a stand-in has started: the bot keeps making fun of you, and Glingus's camera comes on a while in.
+let mockTimer = null, clipTimer = null;
+function standInPlays() {
+  if (!opp || !opp.standIn) return;
+  clearTimeout(mockTimer);
+  clearTimeout(clipTimer);
+  if (opp.glingus) {
+    if (!opp.clipDone) clipTimer = setTimeout(startClip, window.__clipInMs || 5000 + Math.random() * 10000);
+    return;
   }
-  return clipStream;
+  const next = () => {
+    mockTimer = setTimeout(() => {
+      if (!opp || !opp.standIn || !match || match.over) return;
+      mock('mid');
+      next();
+    }, window.__mockMs || 12000 + Math.random() * 8000);
+  };
+  next();
 }
 
-function botTag() { return opp && opp.glingus ? '🤖 Bot' : '🤖 ' + practiceLevel(); }
+// The bot laughs at you and says something rude (but nothing a kid can't read). (kind: a list in TAUNTS, or 'lose', 'win' or 'draw'.)
+function mock(kind, before) {
+  if (!opp || !opp.standIn || opp.glingus) return;
+  const list = TAUNTS[kind] || TAUNTS.mid;
+  const text = list[Math.floor(Math.random() * list.length)];
+  CA.toast((before || '') + '🤖 ' + opp.name + ': ' + text);
+  botTalk(1400);
+  if (kind !== 'win') sound(LAUGH);
+  if (lastGame === 'simon' || !window.speechSynthesis || !CA.soundOn) return; // (Simon Says: you have to hear Simon)
+  const say = new SpeechSynthesisUtterance(text);
+  say.pitch = 1.3;
+  say.rate = 1.1;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(say);
+}
+
+// Glingus's camera: glingus.mp4, once, from start to finish, wherever a player's camera would show, and then it's off.
+// The picture goes as a stream, so the games don't need to know; the sound comes from the clip itself. Where a browser
+// can't make a stream from a video (like Safari), it stays off.
+let clip = null, clipStream = null;
+function loadClip() {
+  if (clip) return;
+  clip = document.createElement('video');
+  clip.src = 'glingus.mp4';
+  clip.preload = 'auto';
+  clip.playsInline = true;
+  clip.addEventListener('ended', () => {
+    clipStream = null;
+    $('themVideo').srcObject = null;
+    if (opp && opp.glingus) updateTiles();
+  });
+  if (window.__testHooks) window.__glingusClip = clip;
+}
+
+function startClip() {
+  if (!opp || !opp.glingus || opp.gone || opp.clipDone || !match || match.over) return;
+  if (clip.readyState < 2) { clipTimer = setTimeout(startClip, 1000); return; } // (still downloading)
+  const capture = clip.captureStream || clip.mozCaptureStream;
+  if (!capture) return;
+  opp.clipDone = true; // (and not again, even in a rematch)
+  clip.currentTime = 0;
+  clip.muted = muteThem || lastGame === 'simon';
+  clip.play().catch(() => { clip.muted = true; clip.play().catch(() => {}); }); // (a browser may not allow the sound)
+  clipStream = new MediaStream(capture.call(clip).getVideoTracks());
+  updateTiles();
+}
+
+// Glingus looks like a player, so nothing around him says Practice.
+function looksPractice() { return mode === 'practice' && !(opp && opp.glingus); }
+
+function botTag() { return opp && opp.glingus ? '🔥 ' + opp.streak : opp && opp.standIn ? '🤖 Bot' : '🤖 ' + practiceLevel(); }
 
 function startSolo() {
   hangUp();
@@ -2441,7 +2514,7 @@ function mediaChanged() {
 }
 window.addEventListener('ca:media', mediaChanged);
 window.addEventListener('ca:change', () => {
-  if ((CA.route === 'solos' || CA.route === 'practice') && CA.profile) setMsg('meStreak', mode === 'practice' ? '🎯' : '🔥 ' + CA.profile.streak);
+  if ((CA.route === 'solos' || CA.route === 'practice') && CA.profile) setMsg('meStreak', looksPractice() ? '🎯' : '🔥 ' + CA.profile.streak);
 });
 window.addEventListener('pagehide', () => {
   forfeitIfPlaying(true); // closing the page in the middle of a game counts as a loss, same as pressing Skip

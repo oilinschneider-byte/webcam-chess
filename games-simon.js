@@ -317,7 +317,7 @@ function play(ctx) {
     '<div class="sm-name">Simon</div></div><div class="timer"><i id="smTimer"></i></div><div class="sm-speed" id="smSpeed"></div></div>' +
     '<div class="sm-pane them" id="smThem"><div class="sm-cat hidden" id="smThemCat"></div>' +
     '<video id="smThemVideo" class="hidden" autoplay playsinline muted></video><canvas id="smThemDots" width="' + CW + '" height="' + CH + '"></canvas>' +
-    '<div class="sm-tag">' + esc(ctx.oppName) + (ctx.bot ? ' 🤖' : '') + '<span id="smThemNote"></span></div><div class="sm-stamp" id="smThemStamp"></div>' +
+    '<div class="sm-tag">' + esc(ctx.oppName) + (ctx.bot && !ctx.bot.hidden ? ' 🤖' : '') + '<span id="smThemNote"></span></div><div class="sm-stamp" id="smThemStamp"></div>' +
     '<button class="btn small primary unmute hidden" id="smUnmute">🔊 Tap to hear them</button></div>' +
     '</div><p class="g-msg" id="smMsg" aria-live="polite"></p>';
   view.classList.add('cams-in-stage'); // (the big cameras in the game take the place of the small ones above it)
