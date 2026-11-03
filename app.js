@@ -278,7 +278,7 @@ async function showOnline() {
 }
 
 // The weekly $100 prize: "coming soon" (with how many different internet connections have ever visited) until that
-// reaches the goal (500), then on for good.
+// reaches the goal (5000), then on for good.
 function showPrize(p) {
   if (!p) return;
   if (p.on) {

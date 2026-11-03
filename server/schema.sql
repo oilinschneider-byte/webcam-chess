@@ -291,7 +291,7 @@ language sql stable set search_path = '' as $$
 $$;
 
 -- The weekly prize needs this many different internet connections to have visited, in total, to switch on.
-create or replace function camarcade.prize_need() returns int language sql immutable as 'select 500';
+create or replace function camarcade.prize_need() returns int language sql immutable as 'select 5000';
 
 -- Keeps the record of the most players online at once.
 create or replace function camarcade.note_online() returns void
@@ -1351,7 +1351,7 @@ group by v.day
 order by v.day desc;
 
 -- The weekly prize (open these in the Supabase SQL Editor, like: select * from camarcade.prize_last_week;)
--- (The prize is only on once camarcade.settings.prize_from is set: when 500 different internet connections had visited.)
+-- (The prize is only on once camarcade.settings.prize_from is set: when 5000 different internet connections had visited.)
 -- prize_this_week: the race so far. prize_last_week: last week's final order: the winner is the top player who
 -- checks out. Before paying, look at different_opponents (lots of wins against the same one or two players is
 -- suspicious) and times_reported.
