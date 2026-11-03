@@ -92,7 +92,7 @@ function renderPrize() {
   if (!p.on) {
     html = '<b>💵 Win $100 every week: coming soon!</b><p>The weekly prize starts once ' + p.need +
       ' different people have visited CamArcade. So far: <b>' + p.total + ' / ' + p.need +
-      ' online now). Invite your friends! Meanwhile, here\'s this week\'s race for practice.</p>';
+      '</b>. Invite your friends! Meanwhile, here\'s this week\'s race for practice.</p>';
   } else {
     const left = Math.max(0, new Date(lbData.week_ends) - Date.now()), d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5);
     html = '<b>💵 $100 to this week\'s longest win streak!</b><p>' + (d ? d + ' day' + (d === 1 ? '' : 's') + ' and ' : '') + h +
