@@ -19,6 +19,11 @@ const POLL_MS = 1500;             // how often a searching player asks the serve
 const PAIR_LIMIT = 3;             // games a day between the same two players that count (the server decides; this is for messages)
 const BOT_NAMES = ['Whiskers', 'Mittens', 'Biscuit', 'Pumpkin', 'Noodle', 'Pickles', 'Muffin', 'Nugget', 'Tofu', 'Waffles'];
 const BOT_LEVEL = { easy: 1, medium: 5, hard: 9 };
+// Glingus: the bot you play in Classic Games when nobody can be found. Pretty good at every game (hard is 9). His games
+// never count, and afterwards you go back to looking for real players.
+const GLINGUS = { name: 'Glingus', level: 8, equip: { skin: 'skin-grape', bg: 'bg-neon', hat: 'hat-wizard', eyes: 'eyes-shades', neck: 'neck-chain' } };
+const GLINGUS_ALONE_MS = 20000;  // how long you search before Glingus when nobody else is online
+const GLINGUS_OTHERS_MS = 60000; // ...and when others are online, but haven't turned up to play yet
 const DEFAULT_MATH = {
   duration: 120,
   ops: [
@@ -73,6 +78,7 @@ let mathSettings = DEFAULT_MATH;
 
 let peer = null;
 let searching = false;
+let onlineNow = null;    // how many players are online, you included (from the server, while searching)
 let pollInFlight = null;
 let searchStarted = 0;
 let searchTick = null;
@@ -1154,6 +1160,7 @@ function beginMatch(gameId, seed, extra) {
   $('matchView').classList.toggle('solo-run', solo);
   renderPlayers();
   setMsg('scMode', mode !== 'practice' ? '⚡ Classic Games'
+    : opp && opp.glingus ? '🤖 Glingus: nothing is counted'
     : solo ? '🎯 Practice'
     : (practiceMix ? '🎲 Classic vs bots' : '🎯 Practice') + ' · ' + practiceLevel());
   setMsg('scGame', g.icon + ' ' + g.name);
@@ -1192,7 +1199,7 @@ function showFaces() {
   setMsg('vsMeName', p.name);
   setMsg('vsThemName', opp ? opp.name : '');
   setMsg('vsMeTag', mode === 'practice' ? '🎯 Practice' : '🔥 ' + p.streak);
-  setMsg('vsThemTag', !opp ? '' : opp.bot ? '🤖 ' + practiceLevel() : '🔥 ' + opp.streak);
+  setMsg('vsThemTag', !opp ? '' : opp.bot ? botTag() : '🔥 ' + opp.streak);
   syncFaceVideos();
 }
 
@@ -1260,6 +1267,8 @@ function startReaction(outcome, res, opts) {
   if (res) {
     reward = '🔥 ' + res.before.streak + ' → ' + res.after.streak + (res.fish ? ' · +' + res.fish + ' 🐟' : '') + ' · +' + res.xp + ' XP' +
       (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
+  } else if (opp.glingus) {
+    reward = '🤖 Glingus is a bot: nothing is counted';
   } else if (mode === 'practice') {
     reward = '🎯 Practice: nothing is counted';
   } else {
@@ -1272,7 +1281,7 @@ function startReaction(outcome, res, opts) {
   rb.disabled = gone || noRematch || blocked;
   rb.classList.remove('chosen');
   rb.textContent = '🔁 Rematch';
-  setMsg('nextBtn', online ? '⏭ Next player' : '⏭ New bot');
+  setMsg('nextBtn', online ? '⏭ Next player' : opp.glingus ? '⏭ Find a player' : '⏭ New bot');
   $('rxReportBtn').classList.toggle('hidden', !online || blocked);
   setMsg('rxNote', gone ? opp.name + ' has left.' : blocked ? "You blocked " + opp.name + ", so you'll get someone new."
     : noRematch ? '3 ties in a row: on to ' + (online ? 'someone new' : 'a new bot') + '!' : '');
@@ -1382,7 +1391,9 @@ function showResult(outcome, reason, res, opts) {
     : opts && opts.text ? opts.text
     : (outcome === 'win' ? 'You beat ' : outcome === 'lose' ? 'You lost to ' : 'You tied with ') + opp.name + ' at ' + g.name + '.';
   let body;
-  if (mode === 'practice') {
+  if (opp.glingus) {
+    body = '<div class="streak-change">🤖 Glingus is a bot: your streak and fish stay the same.</div>';
+  } else if (mode === 'practice') {
     body = '<div class="streak-change">🎯 Practice game: your streak and fish stay the same.</div>';
   } else if (!res) {
     body = '<div class="streak-change">🤝 ' + esc(friendlyText()) + '</div>';
@@ -1411,6 +1422,7 @@ function showResult(outcome, reason, res, opts) {
   }
   const buttons =
     mode !== 'practice' ? '<button class="btn solos-btn big" data-act="next">⚡ Next player now</button>'
+    : opp.glingus ? '<button class="btn solos-btn big" data-act="next">⚡ Find a player</button>'
     : practiceMix ? '<button class="btn solos-btn big" data-act="bot">🎲 Next game now</button>'
     : '<button class="btn go big" data-act="again">↻ Play again</button>';
   $('stage').innerHTML =
@@ -1460,7 +1472,7 @@ function cancelNext() {
 function goNext(act) {
   cancelNext();
   stopReaction();
-  if (act === 'bot') nextBot();
+  if (act === 'bot' && !(opp && opp.glingus)) nextBot(); // (after Glingus: back to looking for real players)
   else nextOpponent();
 }
 
@@ -1470,6 +1482,7 @@ function playAgain() {
 }
 
 function skipPressed() {
+  if (opp && opp.glingus) { nextOpponent(); return; } // (nothing is counted, so nothing to lose)
   if (mode === 'practice') { CA.go('menu'); return; }
   if (match && match.started && !match.over) {
     CA.confirmBox('Skip this match?', 'Leaving in the middle of a game counts as a loss and resets your streak.', 'Skip', () => {
@@ -1567,7 +1580,7 @@ function updateTiles() {
   if (opp) {
     setMsg('themName', opp.name + (opp.bot ? ' 🤖' : ''));
     setMsg('themMic', human && share && !opp.gone && !opp.mic ? ' 🔇' : '');
-    setMsg('themStreak', opp.bot ? '🤖 ' + practiceLevel() : '🔥 ' + opp.streak);
+    setMsg('themStreak', opp.bot ? botTag() : '🔥 ' + opp.streak);
     $('oppDot').className = 'dot ' + (opp.bot ? 'on' : opp.gone ? 'off' : 'on');
   }
   setMsg('meStreak', mode === 'practice' ? '🎯' : '🔥 ' + CA.profile.streak);
@@ -1575,7 +1588,7 @@ function updateTiles() {
   $('muteThemBtn').classList.toggle('hidden', !human || !share);
   setMsg('muteThemBtn', muteThem ? '🔊 Unmute them' : '🔈 Mute them');
   if ($('unmuteBtn').classList.contains('hidden')) $('themVideo').muted = muteThem; // (stays muted until "Tap to hear them")
-  setMsg('skipBtn', mode === 'practice' ? '✕ Quit' : '⏭ Skip');
+  setMsg('skipBtn', mode === 'practice' && !(opp && opp.glingus) ? '✕ Quit' : '⏭ Skip');
   $('reportBtn').classList.toggle('hidden', !human || !!opp.blocked);
   const mic = $('micBtn');
   mic.textContent = CA.voice.micOn() ? '🎤 Mic on' : CA.voice.hasMic() ? '🔇 Mic off' : '🎤 Turn on mic';
@@ -1647,7 +1660,7 @@ function showSearch() {
   setMsg('searchTitle', fresh ? 'Looking for a new player…' : 'Looking for a player…');
   setMsg('searchSub', 'Searching…');
   setMsg('searchTip', fresh
-    ? 'Nobody new is searching right now. If nobody else joins soon, you will play ' + recentName + ' again.'
+    ? 'Nobody new is searching right now. If nobody else joins soon, you will play ' + recentName + ' again, or Glingus, a bot.'
     : SEARCH_TIP);
   $('searchTip').classList.add('hidden');
   $('retryBtn').classList.add('hidden');
@@ -1661,6 +1674,11 @@ function updateSearch() {
   const s = Math.floor((Date.now() - searchStarted) / 1000);
   setMsg('searchSub', 'Searching for ' + s + 's');
   if (s >= 10) $('searchTip').classList.remove('hidden');
+  // Nobody turned up: play Glingus. Sooner if nobody else is online at all; if others are, give them longer to join.
+  // (onlineNow counts you too. Not while connecting to someone, or while you're away from the tab.)
+  if (!searching || pairing || conn || onlineNow === null || window.__autoplay || window.__noGlingus || document.visibilityState !== 'visible') return;
+  const wait = window.__glingusMs || (onlineNow > 1 ? GLINGUS_OTHERS_MS : GLINGUS_ALONE_MS);
+  if (Date.now() - searchStarted >= wait) startGlingus();
 }
 
 function hideSearch() {
@@ -1731,6 +1749,7 @@ function startSearch() {
   opp = null;
   mode = 'solos';
   practiceMix = false;
+  onlineNow = null;
   searching = true;
   CA.voice.setInGame(true); // start the camera now so it's ready when someone is found
   CA.showScreen('scr-play');
@@ -1844,7 +1863,8 @@ function gotPoll(r, gen, p) {
   if (!r || !searching || gen !== searchGen || conn || pairing || peer !== p) return;
   if (r.banned) { showBanned(r.until); return; }
   if (r.match) { startPairing(r.match); return; }
-  if (r.online) setMsg('searchOnline', '🟢 ' + r.online + ' player' + (r.online === 1 ? '' : 's') + ' online now');
+  if (Number.isFinite(r.online)) onlineNow = r.online;
+  if (r.online) setMsg('searchOnline','🟢 ' + r.online + ' player' + (r.online === 1 ? '' : 's') + ' online now');
 }
 
 function startPairing(m) {
@@ -2254,6 +2274,20 @@ function nextBot() {
   };
   beginMatch(practiceMix ? pickGame({ camera: CA.voice.cameraOn() }) : practiceGame, randSeed());
 }
+
+// Nobody could be found (see updateSearch). A mix of games, like Classic mode vs bots; nothing is counted.
+function startGlingus() {
+  hangUp();
+  hideSearch();
+  mode = 'practice';
+  practiceMix = true;
+  practiceGame = null;
+  isHost = true;
+  opp = { name: GLINGUS.name, bot: true, glingus: true, level: GLINGUS.level, equip: GLINGUS.equip, streak: 0, mic: true, device: '', gone: false };
+  beginMatch(pickGame({ camera: CA.voice.cameraOn() }), randSeed());
+}
+
+function botTag() { return opp && opp.glingus ? '🤖 Bot' : '🤖 ' + practiceLevel(); }
 
 function startSolo() {
   hangUp();

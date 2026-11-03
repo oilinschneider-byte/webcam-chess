@@ -89,6 +89,7 @@ Run-Round 'teen' 'Round 1: an adult and a 15-year-old (cats only)' 'A (adult)' '
 Run-Round 'cam' 'Round 2: two adults with cameras (each starts out as a cat)' 'A (adult)' 'B (adult)'
 Run-Round 'walls' 'Round 3: Wall Duel (A checks the rules and the bot first, then both play it online)' 'A' 'B' ($TimeoutSec + 200)
 Run-Round 'duels' 'Round 4: the 14 arcade duels (A plays each one against the bot, then both play Sumo Cats online)' 'A' 'B' ($TimeoutSec + 900)
+Run-Round 'glingus' 'Round 5: nobody turns up, so A plays Glingus' 'A' 'B'
 
 try { Stop-Process -Id $server.Id -Force -ErrorAction Stop } catch { }
 Start-Sleep -Milliseconds 800

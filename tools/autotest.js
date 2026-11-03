@@ -38,14 +38,16 @@ if (role !== 'a' && role !== 'b') return;
 const camTest = q.get('mode') === 'cam';
 const wallTest = q.get('mode') === 'walls';
 const duelTest = q.get('mode') === 'duels';
+const glingusTest = q.get('mode') === 'glingus';
 const DUELS = (q.get('games') || 'trails,box,sumo,pond,hockey,paint,cannons,golf,mouse,kart,swords,stare,boxing,dodge,parkour,poop').split(',');
 const DUEL_ONLINE = q.get('online') || 'sumo';
 const run = (q.get('run') || 'x').replace(/[^a-z0-9]/gi, '').slice(0, 8);
 const NAME = 'zt' + run + role;
 const PASS = 'test-pass-' + run;
-const adult = role === 'a' || camTest || wallTest || duelTest;
+const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest;
 window.__introMs = 1500;   // (shorter face-to-face screens)
 window.__reactMs = 15000;
+if (glingusTest) window.__glingusMs = 2000; else window.__noGlingus = true; // (the other rounds wait a long time for each other: no Glingus)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
 if (wallTest || duelTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
 if (duelTest) {
@@ -129,6 +131,7 @@ async function main() {
   await until(() => CA.route === 'menu', 5000, 'the menu');
   if (wallTest) { await wallDuel(); return; }
   if (duelTest) { await duels(); return; }
+  if (glingusTest) { await glingus(); return; }
   location.hash = '#/solos';
   await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
   clickModal('find a match');
@@ -190,6 +193,33 @@ async function main() {
     await check('the Report button sends a report', rep && rep.ok === true, rep);
   }
 
+  location.hash = '#/menu';
+  await until(() => CA.route === 'menu', 5000, 'the menu');
+  await CA.deleteAccount(PASS);
+  await check('the test account was deleted', !CA.user);
+  await log('done', true);
+}
+
+/* ---------- Glingus ---------- */
+
+// a searches and nobody turns up, so a plays Glingus (b stays on the menu, and never searches).
+async function glingus() {
+  if (role === 'a') {
+    location.hash = '#/solos';
+    await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
+    clickModal('find a match');
+    await log('looking for a match', true);
+    await until(() => $('themName').textContent.includes('Glingus'), 20000, 'Glingus');
+    await check('nobody turned up: Glingus takes over, shown as a bot', $('themName').textContent.includes('🤖'), $('themName').textContent);
+    await check('nothing counts against Glingus', $('scMode').textContent.includes('nothing is counted'), $('scMode').textContent);
+    await until(() => !$('vs').classList.contains('hidden') && !$('vsReact').classList.contains('hidden'), 150000, 'the game against Glingus to end');
+    await check('the game ends and says it did not count', $('rxReward').textContent.includes('nothing is counted'), $('rxReward').textContent);
+    await check('my streak is still 0', CA.profile.streak === 0);
+    $('nextBtn').click();
+    await until(() => !$('searchView').classList.contains('hidden'), 5000, 'the search');
+    await check('after Glingus, it goes back to looking for real players', !$('searchView').classList.contains('hidden'));
+    $('cancelSearchBtn').click();
+  }
   location.hash = '#/menu';
   await until(() => CA.route === 'menu', 5000, 'the menu');
   await CA.deleteAccount(PASS);
