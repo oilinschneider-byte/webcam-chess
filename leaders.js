@@ -90,8 +90,8 @@ function renderPrize() {
   if (lbTab !== 'week' || !p) { box.classList.add('hidden'); return; }
   let html;
   if (!p.on) {
-    html = '<b>💵 Win $100 every week: coming soon!</b><p>The weekly prize starts the first time ' + p.need +
-      ' players are online at the same time. Most at once so far: <b>' + p.peak + ' / ' + p.need + '</b> (' + p.online +
+    html = '<b>💵 Win $100 every week: coming soon!</b><p>The weekly prize starts once ' + p.need +
+      ' different people have visited CamArcade. So far: <b>' + p.total + ' / ' + p.need +
       ' online now). Invite your friends! Meanwhile, here\'s this week\'s race for practice.</p>';
   } else {
     const left = Math.max(0, new Date(lbData.week_ends) - Date.now()), d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5);

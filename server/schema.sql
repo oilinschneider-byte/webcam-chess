@@ -171,10 +171,22 @@ create table if not exists camarcade.visits (
   primary key (day, visitor)
 );
 
+-- Every internet connection (scrambled, never the real IP address) that has ever visited, for the weekly prize's goal.
+create table if not exists camarcade.nets (
+  net text primary key,
+  first_at timestamptz not null default now()
+);
+-- (Everyone seen before this table existed counts too.)
+insert into camarcade.nets (net)
+select net from camarcade.visits
+union select created_net from camarcade.players where created_net is not null
+union select last_net from camarcade.players where last_net is not null
+on conflict (net) do nothing;
+
 do $$
 declare t text;
 begin
-  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits'] loop
+  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits', 'nets'] loop
     execute format('alter table camarcade.%I enable row level security', t);
   end loop;
 end $$;
@@ -278,25 +290,32 @@ language sql stable set search_path = '' as $$
   select count(distinct last_net)::int from camarcade.players where last_seen > now() - interval '2 minutes' and last_net is not null
 $$;
 
--- The weekly prize needs this many players online at the same time (different internet connections) to switch on.
-create or replace function camarcade.prize_need() returns int language sql immutable as 'select 30';
+-- The weekly prize needs this many different internet connections to have visited, in total, to switch on.
+create or replace function camarcade.prize_need() returns int language sql immutable as 'select 500';
 
--- Keeps the record of the most players online at once, and switches the weekly prize on the first time it gets there.
+-- Keeps the record of the most players online at once.
 create or replace function camarcade.note_online() returns void
 language plpgsql set search_path = '' as $$
 declare n int := camarcade.online_nets();
 begin
-  update camarcade.settings
-  set peak_online = n, peak_at = now(),
-      prize_from = coalesce(prize_from, case when n >= camarcade.prize_need() then now() end)
-  where id = 1 and n > peak_online;
+  update camarcade.settings set peak_online = n, peak_at = now() where id = 1 and n > peak_online;
+end $$;
+
+-- Counts an internet connection the first time it visits, and switches the weekly prize on (for good) at the goal.
+create or replace function camarcade.note_visit(p_net text) returns void
+language plpgsql set search_path = '' as $$
+begin
+  insert into camarcade.nets (net) values (p_net) on conflict (net) do nothing;
+  if found and (select count(*) from camarcade.nets) >= camarcade.prize_need() then
+    update camarcade.settings set prize_from = now() where id = 1 and prize_from is null;
+  end if;
 end $$;
 
 -- The weekly prize, for the website: is it on yet, and how close is it?
 create or replace function camarcade.prize_json() returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object('on', s.prize_from is not null, 'from', s.prize_from, 'need', camarcade.prize_need(),
-                            'peak', s.peak_online, 'peak_at', s.peak_at, 'online', camarcade.online_nets())
+                            'total', (select count(*) from camarcade.nets), 'peak', s.peak_online, 'peak_at', s.peak_at, 'online', camarcade.online_nets())
   from camarcade.settings s
 $$;
 
@@ -920,6 +939,7 @@ create or replace function public.ca_visit(p_visitor text) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
   if p_visitor is null or p_visitor !~ '^[a-z0-9]{6,32}$' then return; end if;
+  perform camarcade.note_visit(camarcade.net());
   -- (a bot making up visitor ids can't pump up the visitor count: at most 300 a day per internet connection)
   if (select count(*) from camarcade.visits where day = current_date and net = camarcade.net()) >= 300 then return; end if;
   insert into camarcade.visits (day, visitor, net) values (current_date, p_visitor, camarcade.net()) on conflict do nothing;
@@ -1270,6 +1290,19 @@ begin
     j := camarcade.stats();
     v_log := v_log || camarcade.t((j->>'visitors_today')::int >= 2 and (j->>'players')::int >= 50, 'visitors and players are counted');
 
+    -- ---------- the weekly prize's goal ----------
+    update camarcade.settings set prize_from = null;
+    delete from camarcade.nets;
+    perform camarcade.note_visit('netSame');
+    perform camarcade.note_visit('netSame');
+    v_log := v_log || camarcade.t((camarcade.prize_json()->>'total')::int = 1, 'one internet connection visiting twice counts once');
+    insert into camarcade.nets (net) select 'netGoal' || gs from generate_series(1, camarcade.prize_need() - 2) gs;
+    perform camarcade.note_visit('netSame');
+    v_log := v_log || camarcade.t(not (camarcade.prize_json()->>'on')::boolean, 'the prize stays off just before the goal');
+    perform camarcade.note_visit('netLast');
+    v_log := v_log || camarcade.t((camarcade.prize_json()->>'on')::boolean and (camarcade.prize_json()->>'total')::int = camarcade.prize_need(),
+      'the visitor who reaches the goal switches the prize on');
+
     raise exception using errcode = 'CAOK0', message = 'done';
   exception
     when sqlstate 'CAOK0' then
@@ -1318,7 +1351,7 @@ group by v.day
 order by v.day desc;
 
 -- The weekly prize (open these in the Supabase SQL Editor, like: select * from camarcade.prize_last_week;)
--- (The prize is only on once camarcade.settings.prize_from is set: the first time 30 players were online at once.)
+-- (The prize is only on once camarcade.settings.prize_from is set: when 500 different internet connections had visited.)
 -- prize_this_week: the race so far. prize_last_week: last week's final order: the winner is the top player who
 -- checks out. Before paying, look at different_opponents (lots of wins against the same one or two players is
 -- suspicious) and times_reported.

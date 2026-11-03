@@ -277,8 +277,8 @@ async function showOnline() {
   }
 }
 
-// The weekly $100 prize: "coming soon" (with the record of players online at once) until 30 players are online at
-// the same time, then on for good.
+// The weekly $100 prize: "coming soon" (with how many different internet connections have ever visited) until that
+// reaches the goal (500), then on for good.
 function showPrize(p) {
   if (!p) return;
   if (p.on) {
@@ -286,8 +286,7 @@ function showPrize(p) {
     $('prizeSub').textContent = 'The longest win streak in Classic Games this week wins (18+). A new race starts every Monday.';
   } else {
     $('prizeTitle').textContent = 'Win $100 every week: coming soon!';
-    $('prizeSub').textContent = ('It starts once ' + p.need + ' players are online at the same time. Most at once so far: ' + p.peak + ' / ' + p.need +
-      ' (' + p.online + ' now). Invite your friends!');
+    $('prizeSub').textContent = 'It starts once ' + p.need + ' different people have visited CamArcade. So far: ' + p.total + ' / ' + p.need + '. Invite your friends!';
   }
   $('prizeBanner').classList.toggle('on', !!p.on);
   $('prizeBanner').classList.remove('hidden');
