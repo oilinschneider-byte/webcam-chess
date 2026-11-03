@@ -1819,10 +1819,19 @@ async function pollLoop(gen) {
 }
 
 // One question to the server at a time (the loop and an early knock can both ask).
+let lastReconnect = 0;
 function pollOnce(gen) {
   if (!pollInFlight) {
     const p = peer;
-    if (!p) return Promise.resolve(null);
+    // (While our browser has lost the video connection server it can't be reached, so it doesn't ask for a match: the
+    // server soon drops it from the queue, instead of pairing someone with it who would then wait for nothing.)
+    if (!p || p.destroyed || p.disconnected) {
+      if (p && !p.destroyed && p.disconnected && Date.now() - lastReconnect > 5000) { // (and keeps trying to get it back)
+        lastReconnect = Date.now();
+        try { p.reconnect(); } catch (e) { /* ignore */ }
+      }
+      return Promise.resolve(null);
+    }
     const avoid = Date.now() < avoidUntil ? avoidId : null;
     pollInFlight = CA.server.call('ca_mm_poll', { p_token: CA.token, p_peer: p.id, p_avoid: avoid })
       .then(r => { gotPoll(r, gen, p); return r; })
@@ -1875,9 +1884,19 @@ function knock(pr) {
   let c = null;
   const onErr = err => { if (err.type === 'peer-unavailable' && String(err.message || '').includes(pr.oppPeer)) giveUp('their browser had disconnected'); };
   const timer = setTimeout(() => giveUp(stuckOn(c)), 20000);
+  // (If they haven't answered at all after a few seconds, the knock may have got lost on the way: knock once more.)
+  const again = setTimeout(() => {
+    if (done || !c || c.open) return;
+    const pc = c.peerConnection;
+    if (pc && pc.iceConnectionState !== 'new') return; // (they answered: it's just slow, keep waiting)
+    const old = c;
+    dial();
+    try { old.close(); } catch (e) { /* ignore */ }
+  }, 7000);
   function finish() {
     done = true;
     clearTimeout(timer);
+    clearTimeout(again);
     p.off('error', onErr);
   }
   function giveUp(why) {
@@ -1887,23 +1906,27 @@ function knock(pr) {
     pairingFailed(pr, why);
   }
   p.on('error', onErr);
-  try { c = p.connect(pr.oppPeer, CONN_OPTS); } catch (e) { giveUp(); return; }
-  if (!c) { giveUp(); return; }
-  pr.conn = c;
-  c.on('open', () => { if (!done) c.send({ t: 'hi', v: PROTOCOL, match: pr.id, card: myCard() }); });
-  c.on('data', msg => {
-    if (conn === c) { onNet(msg); return; }
-    if (done || !msg) return;
-    if (msg.t === 'busy') { giveUp(msg.v && msg.v !== PROTOCOL ? 'one of you has an older version: refresh with Ctrl+Shift+R' : 'they were busy'); return; }
-    if (msg.t === 'welcome' && msg.match === pr.id && GAMES[msg.game]) {
-      if (pairing !== pr || !searching || conn || peer !== p) { giveUp(); return; }
-      finish();
-      c.send({ t: 'go' });
-      commit(c, false, readCard(msg.card), msg.game, msg.seed >>> 0);
-    }
-  });
-  c.on('close', () => { if (conn === c) onConnClosed(); else giveUp('the connection closed'); });
-  c.on('error', e => giveUp('connection error: ' + ((e && e.type) || e)));
+  function dial() {
+    let d;
+    try { d = p.connect(pr.oppPeer, CONN_OPTS); } catch (e) { giveUp(); return; }
+    if (!d) { giveUp(); return; }
+    c = pr.conn = d;
+    d.on('open', () => { if (!done && c === d) d.send({ t: 'hi', v: PROTOCOL, match: pr.id, card: myCard() }); });
+    d.on('data', msg => {
+      if (conn === d) { onNet(msg); return; }
+      if (done || !msg || c !== d) return;
+      if (msg.t === 'busy') { giveUp(msg.v && msg.v !== PROTOCOL ? 'one of you has an older version: refresh with Ctrl+Shift+R' : 'they were busy'); return; }
+      if (msg.t === 'welcome' && msg.match === pr.id && GAMES[msg.game]) {
+        if (pairing !== pr || !searching || conn || peer !== p) { giveUp(); return; }
+        finish();
+        d.send({ t: 'go' });
+        commit(d, false, readCard(msg.card), msg.game, msg.seed >>> 0);
+      }
+    });
+    d.on('close', () => { if (conn === d) onConnClosed(); else if (c === d) giveUp('the connection closed'); });
+    d.on('error', e => { if (c === d) giveUp('connection error: ' + ((e && e.type) || e)); });
+  }
+  dial();
 }
 
 // The host lets in only the player the server paired it with.
