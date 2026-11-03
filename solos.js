@@ -9,7 +9,7 @@ const playRoot = document.getElementById('scr-play');
 const practiceRoot = document.getElementById('scr-practice');
 const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('#' + id);
 
-const PROTOCOL = 37;              // bump when the games or the match flow change, so old and new versions don't meet
+const PROTOCOL = 38;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
 const BASE_ICE = (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) || [];
@@ -1965,6 +1965,7 @@ function knock(pr) {
     d.on('data', msg => {
       if (conn === d) { onNet(msg); return; }
       if (done || !msg || c !== d) return;
+      if (msg.t === 'welcome' && msg.match === pr.id && !GAMES[msg.game]) { giveUp('one of you has an older version: refresh with Ctrl+Shift+R'); return; } // (they picked a game we don't have)
       if (msg.t === 'busy') { giveUp(msg.v && msg.v !== PROTOCOL ? 'one of you has an older version: refresh with Ctrl+Shift+R' : 'they were busy'); return; }
       if (msg.t === 'welcome' && msg.match === pr.id && GAMES[msg.game]) {
         if (pairing !== pr || !searching || conn || peer !== p) { giveUp(); return; }
