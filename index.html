@@ -1,11 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-<!-- Google tag (gtag.js) -->
+<!-- Google tag (gtag.js), with Consent Mode. If you've chosen, your choice is used. If not: off in Europe, the UK and Switzerland
+     until you accept, and on elsewhere until you decline. When it's off, Google gets no ad cookies. (See "ads consent" in app.js.) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18554902125"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
+  (function () {
+    var state = function (v) { return { ad_storage: v, ad_user_data: v, ad_personalization: v, analytics_storage: v }; };
+    var choice = null;
+    try { choice = localStorage.getItem('camarcade-ads-consent'); } catch (e) { /* no choice saved */ }
+    if (choice === 'yes' || choice === 'no') gtag('consent', 'default', state(choice === 'yes' ? 'granted' : 'denied'));
+    else {
+      gtag('consent', 'default', Object.assign(state('denied'), { region: ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IS','IE','IT','LV','LI','LT','LU','MT','NL','NO','PL','PT','RO','SK','SI','ES','SE','GB','CH'] }));
+      gtag('consent', 'default', state('granted'));
+    }
+    gtag('set', 'ads_data_redaction', true);
+  })();
   gtag('js', new Date());
 
   gtag('config', 'AW-18554902125');
@@ -20,8 +32,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=92">
-<link rel="stylesheet" href="pieces.css?v=92">
+<link rel="stylesheet" href="style.css?v=93">
+<link rel="stylesheet" href="pieces.css?v=93">
 </head>
 <body>
 
@@ -95,7 +107,7 @@
       <p class="hint small center" id="authHint"></p>
     </div>
   </div>
-  <p class="auth-links"><a href="#/leaders">🏆 Leaderboard</a> · <a href="#/stats">📊 How many people play</a></p>
+  <p class="auth-links"><a href="#/leaders">🏆 Leaderboard</a> · <a href="#/stats">📊 How many people play</a> · <a href="#/privacy">🔒 Privacy</a></p>
 </main>
 
 <!-- ================= CAMERA + MICROPHONE ================= -->
@@ -227,7 +239,7 @@
     <a class="link-card" href="#/cat"><span>🐱</span><b>My Cat &amp; Shop</b><small>Spend your fish on hats, glasses and more</small></a>
     <a class="link-card" href="#/pass"><span>🎟️</span><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
   </div>
-  <p class="menu-foot"><a href="#/stats">📊 How many people play CamArcade</a></p>
+  <p class="menu-foot"><a href="#/stats">📊 How many people play CamArcade</a> · <a href="#/privacy">🔒 Privacy</a></p>
 </main>
 
 <!-- ================= CLASSIC GAMES (Solos + practice matches) ================= -->
@@ -552,6 +564,82 @@
 </main>
 
 <!-- ================= HOW MANY PEOPLE PLAY ================= -->
+<main class="screen hidden" id="scr-privacy">
+  <div class="board-page privacy-page">
+    <div class="board-head">
+      <h1>🔒 Privacy Policy</h1>
+      <p class="muted">Last updated: November 2026</p>
+    </div>
+    <div class="card">
+      <p>CamArcade is a website of webcam and browser games, run from the United States. This page says what we collect, why, and the choices you have. Questions, or a request about your data? Email <b>[[CONTACT_EMAIL]]</b>.</p>
+
+      <h2>Who can play</h2>
+      <p>You have to be 13 or older. If you think a child under 13 has an account, email us and we'll delete it. Players under 18, and all guests, play as their cat: other players never see or hear them.</p>
+
+      <h2>What we collect</h2>
+      <ul>
+        <li><b>Your account:</b> your username, your password (stored only in scrambled form, so we can't read it), and the month and year you were born, which sets your age group.</li>
+        <li><b>Your cat and progress:</b> your items, fish, XP, wins, losses and streaks.</li>
+        <li><b>Your games:</b> who you were matched with, which games you played and the results. Your username, streak and cat can appear on leaderboards.</li>
+        <li><b>Your internet connection:</b> we scramble your IP address into an ID and store that ID, not the address. We use it to stop cheating and spam, keep people on one connection from counting wins against each other, and count how many people visit.</li>
+        <li><b>A random browser ID</b> kept in your browser, to count visits.</li>
+        <li><b>Reports and blocks:</b> if you report or block someone, or someone reports or blocks you, including any note written in a report.</li>
+        <li><b>Connection problems:</b> technical details when two browsers can't connect, to help us fix it.</li>
+        <li><b>Your ad choice,</b> kept in your browser, plus a running total of how many people accepted or declined, with nothing about who.</li>
+      </ul>
+      <p>Guests get a made-up name and no account. We don't ask a guest's age. Their games stay on our server, hidden, until they've been gone for 8 days, then they're deleted, unless they press Leave, which deletes them right away.</p>
+
+      <h2>Your camera and microphone</h2>
+      <p>They're only used if you allow them, and you can turn them off at any time. We don't record or store your video or sound.</p>
+      <ul>
+        <li><b>Tracking your face and body</b> (like in Simon Says and the Staring Contest) happens on your own device. The picture isn't sent to us.</li>
+        <li><b>In Simon Says online,</b> the points of your body that the tracker finds go to the other player, so lines can show on their screen.</li>
+        <li><b>Video and voice:</b> if you and the other player are both adults, your voice can go to them, and your video goes to them if you press Show my face. It goes between your browsers, not to our server, though a relay service may pass it along.</li>
+        <li><b>Other players</b> could record their own screen, so only show what you're comfortable with.</li>
+      </ul>
+
+      <h2>Ads and Google</h2>
+      <p>We use a Google tag to measure our Google Ads. It can use cookies and send Google information such as the page you visited and how you got here. You can accept or decline in the banner, and change your mind here: <button class="linkish" id="privacyChoice">change my ad choice</button>.</p>
+      <ul>
+        <li><b>In Europe, the UK and Switzerland,</b> it stays off until you accept.</li>
+        <li><b>Everywhere else,</b> it's on until you decline.</li>
+        <li><b>Accounts under 18 and guests:</b> we turn it off once you've logged in or started as a guest. It can already have run on the page you first arrived on, before we knew.</li>
+        <li><b>When it's off,</b> Google gets no ad cookies, but the tag can still send a basic signal without cookies, which Google can use to estimate results.</li>
+      </ul>
+      <p>We don't sell your information for money. Using Google's ad tools may count as "sharing" under some state laws; declining turns that off.</p>
+
+      <h2>Who else handles your data</h2>
+      <ul>
+        <li><b>Supabase:</b> our server and database.</li>
+        <li><b>GitHub Pages:</b> hosts the website.</li>
+        <li><b>PeerJS and Cloudflare:</b> connect two players' browsers. Your browsers can see each other's IP address when connecting directly, and the other player's device or a relay may see it too.</li>
+        <li><b>Google:</b> ads, website fonts, and the files for the camera tracker, also fetched through jsDelivr.</li>
+      </ul>
+      <p>These companies see your IP address when your browser contacts them, and handle it under their own policies. We may also share information if the law requires it, or to deal with safety problems or cheating.</p>
+
+      <h2>How long we keep it</h2>
+      <p>We keep your account until you delete it. Logins expire after 30 days of not being used. Our count of internet connections and our visit records are kept to count visitors over time. Reports may be kept after an account is deleted, for safety.</p>
+
+      <h2>Your choices</h2>
+      <ul>
+        <li><b>Delete your account:</b> open the menu with your name at the top, then press <b>Delete my account</b>.</li>
+        <li><b>Ask us</b> to see, correct or delete your data by emailing us. Depending on where you live, you may have other rights too, and we won't treat you differently for using them.</li>
+        <li><b>Clear your browser's data</b> to remove what's kept in your browser.</li>
+      </ul>
+
+      <h2>Security and changes</h2>
+      <p>We work to protect your data, but no website is perfectly safe. If we change this policy, we'll update it here and change the date at the top.</p>
+    </div>
+    <p class="center"><a href="#/menu">← Back to CamArcade</a></p>
+  </div>
+</main>
+
+<!-- The ads consent banner (see "ads consent" in app.js) -->
+<div class="consent hidden" id="consentBar" role="dialog" aria-label="Ad cookies">
+  <p>We use a Google tag and cookies to measure our ads. <a href="#/privacy">Privacy Policy</a></p>
+  <div class="row"><button class="btn small go" id="consentYes">Accept</button><button class="btn small ghost" id="consentNo">Decline</button></div>
+</div>
+
 <main class="screen hidden" id="scr-stats">
   <div class="board-page">
     <div class="board-head">
@@ -614,47 +702,47 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=92"></script>
-<script src="server.js?v=92"></script>
-<script src="common.js?v=92"></script>
-<script src="solos.js?v=92"></script>
-<script src="games-quick.js?v=92"></script>
-<script src="games-words.js?v=92"></script>
-<script src="games-board.js?v=92"></script>
-<script src="games-world.js?v=92"></script>
+<script src="config.js?v=93"></script>
+<script src="server.js?v=93"></script>
+<script src="common.js?v=93"></script>
+<script src="solos.js?v=93"></script>
+<script src="games-quick.js?v=93"></script>
+<script src="games-words.js?v=93"></script>
+<script src="games-board.js?v=93"></script>
+<script src="games-world.js?v=93"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=92"></script>
-<script src="games-quiz.js?v=92"></script>
-<script src="games-mind.js?v=92"></script>
-<script src="games-pose.js?v=92"></script>
-<script src="cam-walls.js?v=92"></script>
-<script src="games-floppy.js?v=92"></script>
-<script src="games-barrel.js?v=92"></script>
-<script src="games-walls.js?v=92"></script>
-<script src="games-duel.js?v=92"></script>
-<script src="games-trails.js?v=92"></script>
-<script src="games-box.js?v=92"></script>
-<script src="games-sumo.js?v=92"></script>
-<script src="games-pond.js?v=92"></script>
-<script src="games-hockey.js?v=92"></script>
-<script src="games-paint.js?v=92"></script>
-<script src="games-cannons.js?v=92"></script>
-<script src="games-golf.js?v=92"></script>
-<script src="games-mouse.js?v=92"></script>
-<script src="games-kart.js?v=92"></script>
-<script src="games-swords.js?v=92"></script>
-<script src="games-stare.js?v=92"></script>
-<script src="games-boxing.js?v=92"></script>
-<script src="games-dodge.js?v=92"></script>
-<script src="games-parkour.js?v=92"></script>
-<script src="games-poop.js?v=92"></script>
-<script src="games-hoops.js?v=92"></script>
-<script src="games-simon.js?v=92"></script>
-<script src="games-climb.js?v=92"></script>
-<script src="chess.js?v=92"></script>
-<script src="pass.js?v=92"></script>
-<script src="character.js?v=92"></script>
-<script src="leaders.js?v=92"></script>
-<script src="app.js?v=92"></script>
+<script src="games-action.js?v=93"></script>
+<script src="games-quiz.js?v=93"></script>
+<script src="games-mind.js?v=93"></script>
+<script src="games-pose.js?v=93"></script>
+<script src="cam-walls.js?v=93"></script>
+<script src="games-floppy.js?v=93"></script>
+<script src="games-barrel.js?v=93"></script>
+<script src="games-walls.js?v=93"></script>
+<script src="games-duel.js?v=93"></script>
+<script src="games-trails.js?v=93"></script>
+<script src="games-box.js?v=93"></script>
+<script src="games-sumo.js?v=93"></script>
+<script src="games-pond.js?v=93"></script>
+<script src="games-hockey.js?v=93"></script>
+<script src="games-paint.js?v=93"></script>
+<script src="games-cannons.js?v=93"></script>
+<script src="games-golf.js?v=93"></script>
+<script src="games-mouse.js?v=93"></script>
+<script src="games-kart.js?v=93"></script>
+<script src="games-swords.js?v=93"></script>
+<script src="games-stare.js?v=93"></script>
+<script src="games-boxing.js?v=93"></script>
+<script src="games-dodge.js?v=93"></script>
+<script src="games-parkour.js?v=93"></script>
+<script src="games-poop.js?v=93"></script>
+<script src="games-hoops.js?v=93"></script>
+<script src="games-simon.js?v=93"></script>
+<script src="games-climb.js?v=93"></script>
+<script src="chess.js?v=93"></script>
+<script src="pass.js?v=93"></script>
+<script src="character.js?v=93"></script>
+<script src="leaders.js?v=93"></script>
+<script src="app.js?v=93"></script>
 </body>
 </html>

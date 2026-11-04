@@ -262,7 +262,19 @@ async function glingus() {
   await until(() => CA.route === 'menu', 5000, 'the menu');
   await CA.deleteAccount(PASS);
   await check('the test account was deleted', !CA.user);
+  if (role === 'b') { // the ads choice and the Privacy Policy, with an adult account
+    const consents = () => window.dataLayer.filter(d => d[0] === 'consent').map(d => [d[1], d[2].ad_storage]);
+    await check('the Google tag starts with a consent setting', consents().some(c => c[0] === 'default'), consents());
+  }
   if (role === 'b') { // play as a guest, from the first screen
+    location.hash = '#/privacy';
+    await sleep(500);
+    await check('the Privacy Policy opens without logging in', CA.route === 'privacy' && $('privacyChoice').offsetParent !== null, CA.route);
+    await check('the ads banner shows', !$('consentBar').classList.contains('hidden'));
+    $('consentNo').click();
+    await sleep(300);
+    const last = window.dataLayer.filter(d => d[0] === 'consent').pop();
+    await check('declining turns the Google tag off and hides the banner', last[1] === 'update' && last[2].ad_storage === 'denied' && $('consentBar').classList.contains('hidden') && localStorage.getItem('camarcade-ads-consent') === 'no', [last[1], last[2]]);
     await until(() => CA.route === 'auth' || !CA.user, 5000, 'being logged out');
     location.hash = '#/auth';
     await until(() => CA.route === 'auth', 5000, 'the first screen');

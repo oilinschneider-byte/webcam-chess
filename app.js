@@ -107,6 +107,41 @@ async function submitAuth(e) {
   }
 }
 
+/* ================= ADS CONSENT ================= */
+// The first choice is made in the page's <head>, before anything runs (see index.html). This handles the banner, your
+// answer, and turning Google's tag off for anyone we know is under 18 (guests count as under 18).
+const ADS_KEY = 'camarcade-ads-consent';
+const adsChoice = () => { try { return localStorage.getItem(ADS_KEY); } catch (e) { return null; } };
+const adsState = v => ({ ad_storage: v, ad_user_data: v, ad_personalization: v, analytics_storage: v });
+
+function applyAdsConsent() {
+  const p = CA.profile, under18 = !!p && !p.adult;
+  $('consentBar').classList.toggle('hidden', !!adsChoice() || under18);
+  if (under18 && window.gtag) gtag('consent', 'update', adsState('denied'));
+}
+
+function chooseAds(yes) {
+  try { localStorage.setItem(ADS_KEY, yes ? 'yes' : 'no'); } catch (e) { /* only for this visit, then */ }
+  if (window.gtag) gtag('consent', 'update', adsState(yes ? 'granted' : 'denied'));
+  CA.server.call('ca_consent', { p_yes: yes }).catch(() => {}); // (just a running total: nothing about who)
+  applyAdsConsent();
+}
+
+$('consentYes').addEventListener('click', () => chooseAds(true));
+$('consentNo').addEventListener('click', () => chooseAds(false));
+$('privacyChoice').addEventListener('click', () => {
+  try { localStorage.removeItem(ADS_KEY); } catch (e) { /* ignore */ }
+  applyAdsConsent();
+  CA.toast('Pick Accept or Decline at the bottom of the screen.');
+});
+window.addEventListener('ca:change', applyAdsConsent);
+window.addEventListener('ca:route', applyAdsConsent);
+
+CA.register('privacy', {
+  public: true,
+  enter() { CA.showScreen('scr-privacy'); },
+});
+
 $('guestBtn').addEventListener('click', async () => {
   const msg = $('authMsg');
   if (ageBlocked()) { msg.className = 'msg error'; msg.textContent = 'Sorry, you have to be 13 or older to play CamArcade.'; return; }

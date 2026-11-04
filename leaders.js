@@ -139,6 +139,8 @@ async function loadStats() {
       ['📅', 'Visitors, last 7 days', s.visitors_week],
       ['🌍', 'Visitors, all time', s.visitors_total],
       ['🏠', 'Internet connections, all time', s.networks_total],
+      ['✅', 'Accepted ad cookies', s.consent_yes || 0],
+      ['🚫', 'Declined ad cookies', s.consent_no || 0],
       ['🐱', 'Accounts', s.players],
       ['🎮', 'Games played today', s.games_today],
       ['🏁', 'Games played, all time', s.games_total],

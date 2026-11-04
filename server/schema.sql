@@ -26,6 +26,9 @@ insert into camarcade.settings (id) values (1) on conflict (id) do nothing;
 alter table camarcade.settings add column if not exists peak_online int not null default 0;
 alter table camarcade.settings add column if not exists peak_at timestamptz;
 alter table camarcade.settings add column if not exists prize_from timestamptz;
+-- How many people accepted or declined ad cookies: only these totals, nothing about who.
+alter table camarcade.settings add column if not exists consent_yes int not null default 0;
+alter table camarcade.settings add column if not exists consent_no int not null default 0;
 
 create table if not exists camarcade.players (
   id bigint generated always as identity primary key,
@@ -900,6 +903,8 @@ language sql stable set search_path = '' as $$
     'visitors_week', (select count(distinct visitor) from camarcade.visits where day > current_date - 7),
     'visitors_total', (select count(distinct visitor) from camarcade.visits),
     'networks_total', (select count(distinct net) from camarcade.visits),
+    'consent_yes', (select consent_yes from camarcade.settings),
+    'consent_no', (select consent_no from camarcade.settings),
     'games_today', (select count(*) from camarcade.games where resolved_at >= current_date and result <> 'void'),
     'games_total', (select count(*) from camarcade.games where resolved_at is not null and result <> 'void'),
     'since', (select min(day) from camarcade.visits),
@@ -1033,6 +1038,15 @@ begin
   insert into camarcade.visits (day, visitor, net) values (current_date, p_visitor, camarcade.net()) on conflict do nothing;
 end $$;
 
+create or replace function public.ca_consent(p_yes boolean) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p_yes is null or not camarcade.throttle('consent:' || camarcade.net(), 5, interval '1 day') then return; end if;
+  update camarcade.settings
+  set consent_yes = consent_yes + case when p_yes then 1 else 0 end, consent_no = consent_no + case when p_yes then 0 else 1 end
+  where id = 1;
+end $$;
+
 -- A relay login for a logged-in player, so two browsers can still connect when a network (like school Wi-Fi) blocks
 -- direct connections. It comes from Cloudflare's TURN service and expires after 12 hours. The Cloudflare API token
 -- that makes these is kept in Supabase's Vault (never in this file or on the website); to put it there, run once:
@@ -1090,7 +1104,7 @@ begin
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
-    'ca_turn(text)', 'ca_guest()', 'ca_today()'
+    'ca_turn(text)', 'ca_guest()', 'ca_today()', 'ca_consent(boolean)'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);
