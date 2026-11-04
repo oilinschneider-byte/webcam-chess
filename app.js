@@ -79,7 +79,7 @@ async function submitAuth(e) {
       setAuthMode('signup');
       return;
     }
-    if (!$('authRules').checked) { msg.textContent = 'Tick the box to promise to be kind to other players.'; $('authRules').focus(); return; }
+    if (!$('authRules').checked) { msg.textContent = 'Tick the box to agree to the Terms and promise to be kind to other players.'; $('authRules').focus(); return; }
   }
   $('authSubmit').disabled = true;
   msg.className = 'msg';
@@ -140,6 +140,11 @@ window.addEventListener('ca:route', applyAdsConsent);
 CA.register('privacy', {
   public: true,
   enter() { CA.showScreen('scr-privacy'); },
+});
+
+CA.register('terms', {
+  public: true,
+  enter() { CA.showScreen('scr-terms'); },
 });
 
 $('guestBtn').addEventListener('click', async () => {
@@ -323,8 +328,6 @@ async function showOnline() {
   }
 }
 
-// The weekly $100 prize: "coming soon" (with how many different internet connections have ever visited) until that
-// reaches the goal (5000), then on for good.
 // Who has won the most today, next to Classic Games (or the best streaks ever, until 3 players have won today).
 function showToday(t) {
   if (!t || CA.route !== 'menu') return;
@@ -342,14 +345,15 @@ $('guestSignup').addEventListener('click', () => {
   CA.go('auth', { mode: 'signup' });
 });
 
+// The tournament: how many different internet connections have ever visited, until that reaches the goal (5000).
 function showPrize(p) {
   if (!p) return;
   if (p.on) {
-    $('prizeTitle').textContent = 'Win $100 this week!';
-    $('prizeSub').textContent = 'The longest win streak in Classic Games this week wins (18+). A new race starts every Monday.';
+    $('prizeTitle').textContent = 'We hit ' + p.need + ' users! A tournament is coming';
+    $('prizeSub').textContent = 'The details and rules will be posted before it starts.';
   } else {
-    $('prizeTitle').textContent = 'Win $100 every week: coming soon!';
-    $('prizeSub').textContent = 'It starts once ' + p.need + ' different people have visited CamArcade. So far: ' + p.total + ' / ' + p.need + '. Invite your friends!';
+    $('prizeTitle').textContent = 'The tournament only begins at ' + p.need + ' users!';
+    $('prizeSub').textContent = 'So far: ' + p.total + ' / ' + p.need + ' users (each internet connection counts once). Invite your friends!';
   }
   $('prizeBanner').classList.toggle('on', !!p.on);
   $('prizeBanner').classList.remove('hidden');

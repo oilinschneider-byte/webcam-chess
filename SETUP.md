@@ -102,7 +102,9 @@ Lift a ban: `update camarcade.players set banned_until = null, ban_reason = null
 
 When 3 different players report the same person within a day, they're automatically suspended for 24 hours (`ban_reason` is `reports`).
 
-**Before you pay out a prize**, look at the top players:
+**Serious reports:** check `select * from camarcade.open_reports;` often, not only when someone complains. If a report may involve a child being sexually exploited, don't download or pass around anything yourself. Report it at [report.cybertip.org](https://report.cybertip.org) (NCMEC's CyberTipline), then ban the account and ask a lawyer what you have to report and keep. If someone may be in danger right now, call the police.
+
+**Before you pay out any prize**, look at the top players:
 
 ```sql
 select * from camarcade.top_players;

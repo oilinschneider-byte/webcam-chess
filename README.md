@@ -173,6 +173,7 @@ Classic Games matches you with strangers. Every new player sees your cat until y
 - `games-hoops.js`: Cat Hoops
 - `games-simon.js`: Simon Says (it shares Pose Match's pose detector)
 - `games-climb.js`: Claw Climb (the junk mountain course, the one-armed climbing, the fish, and the bot that finds its way up)
+- Terms: the `scr-terms` screen in `index.html` (keep it true when the site changes).
 - Privacy: the policy is the `scr-privacy` screen in `index.html` (keep it true when the site changes), and the ads consent is at the top of `index.html` and in `app.js`.
 - `chess.js`: Chess vs Computer (from Practice; the old online and pass & play modes are no longer reachable)
 - `pass.js`, `character.js`: the Streak Pass and My Cat screens

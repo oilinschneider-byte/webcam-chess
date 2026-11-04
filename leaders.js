@@ -1,4 +1,4 @@
-/* The leaderboard (longest win streaks, from the server: this week's race for the weekly prize, best ever, and right now)
+/* The leaderboard (longest win streaks, from the server: this week's race, best ever, and right now)
    and the "how many people play" page.
    Both work without logging in, so you can share the links. */
 (() => {
@@ -68,7 +68,7 @@ function renderBoard() {
   if (me && CA.profile) {
     let text;
     if (lbTab === 'week') {
-      text = !me.adult ? 'The weekly prize is for players 18 and older, but your streak still counts on the other tabs.'
+      text = !me.adult ? "This week's list is for players 18 and older, but your streak still counts on the other tabs."
         : me.week_rank ? 'You: <b>#' + me.week_rank + '</b> this week with 🔥 ' + me.week_best + ' in a row.'
         : 'Win a Classic Game to get into this week\'s race!';
     } else {
@@ -84,24 +84,22 @@ function renderBoard() {
   }
 }
 
-// The weekly $100 prize, above the list on the "This week" tab: coming soon (and how close), or how long is left.
+// The tournament, above the list on the "This week" tab: how close it is, or how long is left in the week.
 function renderPrize() {
   const box = $('lbPrize'), p = lbData && lbData.prize;
   if (lbTab !== 'week' || !p) { box.classList.add('hidden'); return; }
   let html;
   if (!p.on) {
-    html = '<b>💵 Win $100 every week: coming soon!</b><p>The weekly prize starts once ' + p.need +
-      ' different people have visited CamArcade. So far: <b>' + p.total + ' / ' + p.need +
-      '</b>. Invite your friends! Meanwhile, here\'s this week\'s race for practice.</p>';
+    html = '<b>🏆 The tournament only begins at ' + p.need + ' users!</b><p>So far: <b>' + p.total + ' / ' + p.need +
+      '</b> users (each internet connection counts once). Invite your friends! This week\'s list is just for fun.</p>';
   } else {
     const left = Math.max(0, new Date(lbData.week_ends) - Date.now()), d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5);
-    html = '<b>💵 $100 to this week\'s longest win streak!</b><p>' + (d ? d + ' day' + (d === 1 ? '' : 's') + ' and ' : '') + h +
-      ' hour' + (h === 1 ? '' : 's') + ' left. 18+ only; see the rules below.</p>';
+    html = '<b>🏆 We hit ' + p.need + ' users! A tournament is coming</b><p>The rules will be posted before it starts. This week\'s list: ' + (d ? d + ' day' + (d === 1 ? '' : 's') + ' and ' : '') + h +
+      ' hour' + (h === 1 ? '' : 's') + ' left.</p>';
   }
   const last = lbData.last_week || [];
   if (p.on && last.length) {
-    html += '<p class="prize-last">Last week: ' + last.map(r => (r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉') + ' <b>' + esc(r.name) + '</b> (🔥 ' + r.streak + ')').join(' · ') +
-      '. The winner is checked before the prize is paid.</p>';
+    html += '<p class="prize-last">Last week: ' + last.map(r => (r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉') + ' <b>' + esc(r.name) + '</b> (🔥 ' + r.streak + ')').join(' · ') + '.</p>';
   }
   box.innerHTML = html;
   box.classList.remove('hidden');

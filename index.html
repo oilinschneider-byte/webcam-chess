@@ -32,8 +32,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=93">
-<link rel="stylesheet" href="pieces.css?v=93">
+<link rel="stylesheet" href="style.css?v=94">
+<link rel="stylesheet" href="pieces.css?v=94">
 </head>
 <body>
 
@@ -70,7 +70,7 @@
     </div>
     <div class="card auth-card">
       <button class="btn go big wide" id="guestBtn" type="button">▶ Play as guest</button>
-      <p class="hint small center">No sign-up: you get a funny name. No shop or Streak Pass, and nothing is saved once you close this tab. By playing you confirm you're 13 or older and you'll be kind to other players.</p>
+      <p class="hint small center">No sign-up: you get a funny name. No shop or Streak Pass, and nothing is saved once you close this tab. By playing you confirm you're 13 or older, and you agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a>.</p>
       <p class="auth-or"><span>or keep your progress</span></p>
       <div class="tabs auth-tabs">
         <button class="tab" type="button" data-auth="signup">Sign up</button>
@@ -99,7 +99,7 @@
           </div>
           <small class="field-note">You have to be 13 or older. Under 18, other players only ever see and hear your cat.</small>
         </div>
-        <label class="check" id="authRulesRow"><input type="checkbox" id="authRules"> <span>I'll be kind to other players, and I won't show or say anything rude.</span></label>
+        <label class="check" id="authRulesRow"><input type="checkbox" id="authRules"> <span>I'll be kind to other players, I won't show or say anything rude, and I agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a>.</span></label>
         <label class="check" id="rememberRow"><input type="checkbox" id="authRemember"> Keep me logged in on this computer</label>
         <p class="msg" id="authMsg" role="alert"></p>
         <button class="btn go big wide" id="authSubmit" type="submit">Create account</button>
@@ -107,7 +107,7 @@
       <p class="hint small center" id="authHint"></p>
     </div>
   </div>
-  <p class="auth-links"><a href="#/leaders">🏆 Leaderboard</a> · <a href="#/stats">📊 How many people play</a> · <a href="#/privacy">🔒 Privacy</a></p>
+  <p class="auth-links"><a href="#/leaders">🏆 Leaderboard</a> · <a href="#/stats">📊 How many people play</a> · <a href="#/privacy">🔒 Privacy</a> · <a href="#/terms">📜 Terms</a></p>
 </main>
 
 <!-- ================= CAMERA + MICROPHONE ================= -->
@@ -148,9 +148,9 @@
   </section>
 
   <a class="prize-banner hidden" id="prizeBanner" href="#/leaders">
-    <span class="pb-icon">💵</span>
+    <span class="pb-icon">🏆</span>
     <span class="pb-text"><b id="prizeTitle"></b><small id="prizeSub"></small></span>
-    <span class="pb-go">See the race →</span>
+    <span class="pb-go">See the leaderboard →</span>
   </a>
 
   <p class="guest-note">👤 You're playing as a guest. Nothing is saved when you close this tab. <button class="linkish" id="guestSignup">Sign up to keep your cat, fish and XP</button></p>
@@ -239,7 +239,7 @@
     <a class="link-card" href="#/cat"><span>🐱</span><b>My Cat &amp; Shop</b><small>Spend your fish on hats, glasses and more</small></a>
     <a class="link-card" href="#/pass"><span>🎟️</span><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
   </div>
-  <p class="menu-foot"><a href="#/stats">📊 How many people play CamArcade</a> · <a href="#/privacy">🔒 Privacy</a></p>
+  <p class="menu-foot"><a href="#/stats">📊 How many people play CamArcade</a> · <a href="#/privacy">🔒 Privacy</a> · <a href="#/terms">📜 Terms</a></p>
 </main>
 
 <!-- ================= CLASSIC GAMES (Solos + practice matches) ================= -->
@@ -524,7 +524,7 @@
     </div>
     <div class="row board-tabs">
       <div class="seg" id="lbTabs" role="group" aria-label="Which streaks">
-        <button data-lb="week" class="active">💵 This week</button>
+        <button data-lb="week" class="active">📅 This week</button>
         <button data-lb="best">🏆 Best ever</button>
         <button data-lb="hot">🔥 Right now</button>
       </div>
@@ -548,22 +548,77 @@
       </ul>
     </details>
     <details class="card board-rules" id="lbPrizeRules">
-      <summary>💵 Weekly prize: official rules</summary>
+      <summary>🏆 The tournament</summary>
       <ul>
-        <li><b>The prize:</b> $100 every week to the player with the longest win streak in Classic Games that week.</li>
-        <li><b>When it starts:</b> the weekly prize switches on once 5,000 different internet connections have visited CamArcade in total (a house full of people or accounts counts once). Until then it's "coming soon".</li>
-        <li><b>The week:</b> Monday 12:00 am to Sunday 11:59 pm, US Central time. Only wins played during the week count, so everyone starts from 0 every Monday.</li>
-        <li><b>Who can win:</b> anyone 18 or older (by the birthday on your account) with one CamArcade account. It's free: no purchase, no entry fee.</li>
-        <li><b>What counts:</b> the same as the leaderboard (see "What counts?" above). A tie goes to whoever reached that streak first.</li>
-        <li><b>Checking the winner:</b> every winning streak is checked before paying. Cheating of any kind, like several accounts, arranged wins with friends or using bugs, means no prize (and a ban), and the prize goes to the next player who checks out.</li>
-        <li><b>Getting paid:</b> the winner is shown at the top of last week's list. To claim it, contact CamArcade within 14 days with your username. The prize is paid within 14 days by a method we agree on (like PayPal, Venmo or a gift card). You're responsible for any taxes.</li>
-        <li><b>Changes:</b> CamArcade can change or end the weekly prize at any time; a week that has already started is still paid out. Not available where it isn't allowed by law.</li>
-      </ul>
-    </details>
+        <li><b>When:</b> the CamArcade tournament only begins once we reach 5,000 users. We count users by internet connection, so a house full of people or accounts counts once.</li>
+        <li><b>The details:</b> who can enter, how it works and what can be won will be posted here in the tournament's rules before it starts.</li>
+        <li><b>The old weekly cash prize:</b> this tournament replaces it. No money prize is being offered right now, and this week's list doesn't win anything.</li>
+      </ul></details>
   </div>
 </main>
 
 <!-- ================= HOW MANY PEOPLE PLAY ================= -->
+<main class="screen hidden" id="scr-terms">
+  <div class="board-page privacy-page">
+    <div class="board-head">
+      <h1>📜 Terms of Service</h1>
+      <p class="muted">Last updated: November 2026</p>
+    </div>
+    <div class="card">
+      <p>These are the rules for using CamArcade, a website of webcam and browser games run from New Jersey, in the United States. By playing, as a guest or with an account, you agree to them. If you don't agree, please don't use the site. Questions? Email <b>thecamarcade67@gmail.com</b>.</p>
+
+      <h2>Who can play</h2>
+      <ul>
+        <li>You have to be 13 or older, and give your real birth month and year.</li>
+        <li>If you're under 18, you need a parent or guardian's permission. Players under 18, and all guests, play as their cat: other players never see or hear them.</li>
+        <li>You can't play if we've banned you, or if the law where you live doesn't allow it.</li>
+      </ul>
+
+      <h2>Your account</h2>
+      <p>Keep your password private. You're responsible for what happens on your account. Guests get a made-up name for one visit, and their progress isn't saved.</p>
+
+      <h2>Rules for playing</h2>
+      <p>Be kind. You agree not to:</p>
+      <ul>
+        <li>Show or say anything sexual, or show nudity. Anything sexual involving a minor is never allowed, and we may report it to the authorities.</li>
+        <li>Bully, threaten, harass or scam anyone, or use hate speech.</li>
+        <li>Share someone's private information, or record or share another player without their permission.</li>
+        <li>Ask someone under 18 to show themselves or move to another app, or lie about your age to get around the age rules.</li>
+        <li>Cheat, use bots or several accounts to get wins, arrange wins with friends, or use bugs to get ahead.</li>
+        <li>Attack, overload, hack or copy the site, or get around a ban or any of our limits.</li>
+      </ul>
+
+      <h2>Live video and other players</h2>
+      <p>Other players are strangers, and we don't watch or record your games, so we can't promise how they'll behave. You choose what you show and say, and you're responsible for it. Use the report and block buttons if someone breaks these rules. If someone is in danger, contact your local emergency services first. You can also email us about anything serious.</p>
+
+      <h2>Computer players</h2>
+      <p>Some opponents are computer players, especially when nobody else is online. Most are labeled, but some may look like real players, and may show a video clip. Games against them don't count toward leaderboards.</p>
+
+      <h2>Fish, items and streaks</h2>
+      <p>Fish, XP, cat items, streaks and Streak Pass rewards are just for fun. They have no money value, can't be sold or exchanged for money, and aren't your property. We may change, reset or remove them, for example to fix a bug or deal with cheating.</p>
+
+      <h2>Tournaments</h2>
+      <p>The CamArcade tournament only begins once we reach 5,000 users (counted by internet connection). Any tournament or contest will have its own rules, posted before it starts, and those rules decide who can enter and what can be won. Nothing is promised until they're posted. Leaderboards on their own don't win anything.</p>
+
+      <h2>Whose stuff is whose</h2>
+      <p>The site, games and artwork belong to CamArcade or the people who licensed them to us. You can use them to play, not to copy or sell. Your username and cat can be shown to other players and on leaderboards, and you allow us to do that for as long as your account exists. If you think something here uses your copyright or your image without permission, email us with the details and we'll look into it.</p>
+
+      <h2>Bans and leaving</h2>
+      <p>We can suspend or remove any account or guest, with or without warning, if we believe they broke these rules or put others at risk. Reports from several players can suspend someone automatically. You can delete your account at any time from the menu with your name at the top.</p>
+
+      <h2>No guarantees</h2>
+      <p>CamArcade is free and comes "as is". Games can have bugs, connections can fail, camera tracking can be wrong, and we can change or shut down any part of the site at any time. As far as the law allows, we don't promise that it will always work, and we aren't responsible for indirect losses or for what other players do. Our total responsibility to you for anything to do with the site is limited to US$50.</p>
+
+      <h2>If there's a problem</h2>
+      <p>Please email us first, so we can try to fix it. If you break these rules and that gets us into a legal claim, you're responsible for what it costs, as far as the law allows. These terms follow the laws of the State of New Jersey and the United States. If part of them can't be enforced, the rest still apply.</p>
+
+      <h2>Changes</h2>
+      <p>If we change these terms, we'll update them here and change the date at the top. If you keep playing after that, you accept the new terms. See also our <a href="#/privacy">Privacy Policy</a>.</p>
+    </div>
+    <p class="center"><a href="#/menu">← Back to CamArcade</a></p>
+  </div>
+</main>
+
 <main class="screen hidden" id="scr-privacy">
   <div class="board-page privacy-page">
     <div class="board-head">
@@ -571,7 +626,7 @@
       <p class="muted">Last updated: November 2026</p>
     </div>
     <div class="card">
-      <p>CamArcade is a website of webcam and browser games, run from the United States. This page says what we collect, why, and the choices you have. Questions, or a request about your data? Email <b>thecamarcade67@gmail.com</b>.</p>
+      <p>CamArcade is a website of webcam and browser games, run from New Jersey, in the United States. This page says what we collect, why, and the choices you have. Questions, or a request about your data? Email <b>thecamarcade67@gmail.com</b>.</p>
 
       <h2>Who can play</h2>
       <p>You have to be 13 or older. If you think a child under 13 has an account, email us and we'll delete it. Players under 18, and all guests, play as their cat: other players never see or hear them.</p>
@@ -702,47 +757,47 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=93"></script>
-<script src="server.js?v=93"></script>
-<script src="common.js?v=93"></script>
-<script src="solos.js?v=93"></script>
-<script src="games-quick.js?v=93"></script>
-<script src="games-words.js?v=93"></script>
-<script src="games-board.js?v=93"></script>
-<script src="games-world.js?v=93"></script>
+<script src="config.js?v=94"></script>
+<script src="server.js?v=94"></script>
+<script src="common.js?v=94"></script>
+<script src="solos.js?v=94"></script>
+<script src="games-quick.js?v=94"></script>
+<script src="games-words.js?v=94"></script>
+<script src="games-board.js?v=94"></script>
+<script src="games-world.js?v=94"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=93"></script>
-<script src="games-quiz.js?v=93"></script>
-<script src="games-mind.js?v=93"></script>
-<script src="games-pose.js?v=93"></script>
-<script src="cam-walls.js?v=93"></script>
-<script src="games-floppy.js?v=93"></script>
-<script src="games-barrel.js?v=93"></script>
-<script src="games-walls.js?v=93"></script>
-<script src="games-duel.js?v=93"></script>
-<script src="games-trails.js?v=93"></script>
-<script src="games-box.js?v=93"></script>
-<script src="games-sumo.js?v=93"></script>
-<script src="games-pond.js?v=93"></script>
-<script src="games-hockey.js?v=93"></script>
-<script src="games-paint.js?v=93"></script>
-<script src="games-cannons.js?v=93"></script>
-<script src="games-golf.js?v=93"></script>
-<script src="games-mouse.js?v=93"></script>
-<script src="games-kart.js?v=93"></script>
-<script src="games-swords.js?v=93"></script>
-<script src="games-stare.js?v=93"></script>
-<script src="games-boxing.js?v=93"></script>
-<script src="games-dodge.js?v=93"></script>
-<script src="games-parkour.js?v=93"></script>
-<script src="games-poop.js?v=93"></script>
-<script src="games-hoops.js?v=93"></script>
-<script src="games-simon.js?v=93"></script>
-<script src="games-climb.js?v=93"></script>
-<script src="chess.js?v=93"></script>
-<script src="pass.js?v=93"></script>
-<script src="character.js?v=93"></script>
-<script src="leaders.js?v=93"></script>
-<script src="app.js?v=93"></script>
+<script src="games-action.js?v=94"></script>
+<script src="games-quiz.js?v=94"></script>
+<script src="games-mind.js?v=94"></script>
+<script src="games-pose.js?v=94"></script>
+<script src="cam-walls.js?v=94"></script>
+<script src="games-floppy.js?v=94"></script>
+<script src="games-barrel.js?v=94"></script>
+<script src="games-walls.js?v=94"></script>
+<script src="games-duel.js?v=94"></script>
+<script src="games-trails.js?v=94"></script>
+<script src="games-box.js?v=94"></script>
+<script src="games-sumo.js?v=94"></script>
+<script src="games-pond.js?v=94"></script>
+<script src="games-hockey.js?v=94"></script>
+<script src="games-paint.js?v=94"></script>
+<script src="games-cannons.js?v=94"></script>
+<script src="games-golf.js?v=94"></script>
+<script src="games-mouse.js?v=94"></script>
+<script src="games-kart.js?v=94"></script>
+<script src="games-swords.js?v=94"></script>
+<script src="games-stare.js?v=94"></script>
+<script src="games-boxing.js?v=94"></script>
+<script src="games-dodge.js?v=94"></script>
+<script src="games-parkour.js?v=94"></script>
+<script src="games-poop.js?v=94"></script>
+<script src="games-hoops.js?v=94"></script>
+<script src="games-simon.js?v=94"></script>
+<script src="games-climb.js?v=94"></script>
+<script src="chess.js?v=94"></script>
+<script src="pass.js?v=94"></script>
+<script src="character.js?v=94"></script>
+<script src="leaders.js?v=94"></script>
+<script src="app.js?v=94"></script>
 </body>
 </html>

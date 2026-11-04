@@ -270,6 +270,12 @@ async function glingus() {
     location.hash = '#/privacy';
     await sleep(500);
     await check('the Privacy Policy opens without logging in', CA.route === 'privacy' && $('privacyChoice').offsetParent !== null, CA.route);
+    location.hash = '#/terms';
+    await sleep(500);
+    await check('the Terms of Service open without logging in', CA.route === 'terms' && $('scr-terms').offsetParent !== null, CA.route);
+    await check('the site no longer offers money', !document.documentElement.innerHTML.includes('$100'));
+    location.hash = '#/privacy';
+    await sleep(500);
     await check('the ads banner shows', !$('consentBar').classList.contains('hidden'));
     $('consentNo').click();
     await sleep(300);
