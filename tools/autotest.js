@@ -273,7 +273,7 @@ async function glingus() {
     location.hash = '#/terms';
     await sleep(500);
     await check('the Terms of Service open without logging in', CA.route === 'terms' && $('scr-terms').offsetParent !== null, CA.route);
-    await check('the site no longer offers money', !document.documentElement.innerHTML.includes('$100'));
+    await check('the $100 tournament only begins at 5,000 users', $('lbPrizeRules').textContent.includes('$100') && $('lbPrizeRules').textContent.includes('5,000 users') && !document.documentElement.innerHTML.includes('$100 every week'));
     location.hash = '#/privacy';
     await sleep(500);
     await check('the ads banner shows', !$('consentBar').classList.contains('hidden'));

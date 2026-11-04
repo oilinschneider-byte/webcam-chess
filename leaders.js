@@ -90,11 +90,11 @@ function renderPrize() {
   if (lbTab !== 'week' || !p) { box.classList.add('hidden'); return; }
   let html;
   if (!p.on) {
-    html = '<b>🏆 The tournament only begins at ' + p.need + ' users!</b><p>So far: <b>' + p.total + ' / ' + p.need +
+    html = '<b>💵 The $100 tournament only begins at ' + p.need + ' users!</b><p>So far: <b>' + p.total + ' / ' + p.need +
       '</b> users (each internet connection counts once). Invite your friends! This week\'s list is just for fun.</p>';
   } else {
     const left = Math.max(0, new Date(lbData.week_ends) - Date.now()), d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5);
-    html = '<b>🏆 We hit ' + p.need + ' users! A tournament is coming</b><p>The rules will be posted before it starts. This week\'s list: ' + (d ? d + ' day' + (d === 1 ? '' : 's') + ' and ' : '') + h +
+    html = '<b>💵 We hit ' + p.need + ' users! The $100 tournament is coming</b><p>The rules will be posted before it starts. This week\'s list: ' + (d ? d + ' day' + (d === 1 ? '' : 's') + ' and ' : '') + h +
       ' hour' + (h === 1 ? '' : 's') + ' left.</p>';
   }
   const last = lbData.last_week || [];

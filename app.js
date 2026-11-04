@@ -349,10 +349,10 @@ $('guestSignup').addEventListener('click', () => {
 function showPrize(p) {
   if (!p) return;
   if (p.on) {
-    $('prizeTitle').textContent = 'We hit ' + p.need + ' users! A tournament is coming';
+    $('prizeTitle').textContent = 'We hit ' + p.need + ' users! The $100 tournament is coming';
     $('prizeSub').textContent = 'The details and rules will be posted before it starts.';
   } else {
-    $('prizeTitle').textContent = 'The tournament only begins at ' + p.need + ' users!';
+    $('prizeTitle').textContent = 'The $100 tournament only begins at ' + p.need + ' users!';
     $('prizeSub').textContent = 'So far: ' + p.total + ' / ' + p.need + ' users (each internet connection counts once). Invite your friends!';
   }
   $('prizeBanner').classList.toggle('on', !!p.on);
