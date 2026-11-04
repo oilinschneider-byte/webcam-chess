@@ -32,8 +32,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=96">
-<link rel="stylesheet" href="pieces.css?v=96">
+<link rel="stylesheet" href="style.css?v=97">
+<link rel="stylesheet" href="pieces.css?v=97">
 </head>
 <body>
 
@@ -204,12 +204,12 @@
       <a class="pc-game" href="#/practice?game=trails"><span>🏍️</span><b>Light Trails</b></a>
       <a class="pc-game" href="#/practice?game=box"><span>📦</span><b>Box King</b></a>
       <a class="pc-game" href="#/practice?game=sumo"><span>🤼</span><b>Sumo Cats</b></a>
-      <a class="pc-game" href="#/practice?game=pond"><span>🎣</span><b>Pond Duel</b></a>
+      <a class="pc-game" href="#/practice?game=pond"><span>🎣</span><b>Pond War</b></a>
       <a class="pc-game" href="#/practice?game=hockey"><span>🏒</span><b>Cat Air Hockey</b></a>
-      <a class="pc-game" href="#/practice?game=paint"><span>🎨</span><b>Paint Wars</b></a>
+      <a class="pc-game" href="#/practice?game=paint"><span>🎨</span><b>Turf War</b></a>
       <a class="pc-game" href="#/practice?game=cannons"><span>💥</span><b>Cat Cannons</b></a>
       <a class="pc-game" href="#/practice?game=golf"><span>⛳</span><b>Mini Golf Duel</b></a>
-      <a class="pc-game" href="#/practice?game=mouse"><span>🐭</span><b>Cat and Mouse</b></a>
+      <a class="pc-game" href="#/practice?game=mouse"><span>🐭</span><b>Cheese Heist</b></a>
       <a class="pc-game" href="#/practice?game=kart"><span>🏎️</span><b>Kart Dash</b></a>
       <a class="pc-game" href="#/practice?game=swords"><span>🤺</span><b>Floppy Sword Cats</b></a>
       <a class="pc-game" href="#/practice?game=stare"><span>😐</span><b>Staring Contest</b><small>needs your camera</small></a>
@@ -221,7 +221,7 @@
     <div class="pc-games">
       <a class="pc-game" href="#/practice?game=memory"><span>🧠</span><b>Memory Match</b></a>
       <a class="pc-game" href="#/practice?game=sequence"><span>🔁</span><b>Remember the Sequence</b></a>
-      <a class="pc-game" href="#/practice?game=speedchess"><span>♟️</span><b>Speed Chess</b></a>
+      <a class="pc-game" href="#/practice?game=speedchess"><span>♟️</span><b>Panic Chess</b></a>
       <a class="pc-game" href="#/chess?bot=1"><span>♞</span><b>Chess vs Computer</b></a>
     </div>
     <h3 class="pc-group">🌍 Quiz</h3>
@@ -320,6 +320,7 @@
         <p class="rx-reward" id="rxReward"></p>
         <div class="rx-btns"><button class="btn big primary" id="rematchBtn">🔁 Rematch</button><button class="btn big solos-btn" id="nextBtn">⏭ Next</button></div>
         <div class="rx-small"><button class="btn ghost small" id="rxMenuBtn">🏠 Menu</button><button class="btn ghost small" id="rxReportBtn">🚩 Report</button></div>
+        <p class="rx-vs" id="rxVs"></p>
         <p class="rx-note" id="rxNote"></p>
         <div class="timer"><i id="rxTimer"></i></div>
       </div>
@@ -636,8 +637,8 @@
       <h2>What we collect</h2>
       <ul>
         <li><b>Your account:</b> your username, your password (stored only in scrambled form, so we can't read it), and the month and year you were born, which sets your age group.</li>
-        <li><b>Your cat and progress:</b> your items, fish, XP, wins, losses and streaks.</li>
-        <li><b>Your games:</b> who you were matched with, which games you played and the results. Your username, streak and cat can appear on leaderboards.</li>
+        <li><b>Your cat and progress:</b> your items, fish, XP, wins, losses, streaks and personal records.</li>
+        <li><b>Your games:</b> who you were matched with, which games you played and the results. Your username, streak and cat can appear on leaderboards, and you and another player can see your score against each other.</li>
         <li><b>Your internet connection:</b> we scramble your IP address into an ID and store that ID, not the address. We use it to stop cheating and spam, keep people on one connection from counting wins against each other, and count how many people visit.</li>
         <li><b>A random browser ID</b> kept in your browser, to count visits.</li>
         <li><b>Reports and blocks:</b> if you report or block someone, or someone reports or blocks you, including any note written in a report.</li>
@@ -759,48 +760,48 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=96"></script>
-<script src="server.js?v=96"></script>
-<script src="common.js?v=96"></script>
-<script src="solos.js?v=96"></script>
-<script src="games-quick.js?v=96"></script>
-<script src="games-words.js?v=96"></script>
-<script src="games-board.js?v=96"></script>
-<script src="games-world.js?v=96"></script>
+<script src="config.js?v=97"></script>
+<script src="server.js?v=97"></script>
+<script src="common.js?v=97"></script>
+<script src="solos.js?v=97"></script>
+<script src="games-quick.js?v=97"></script>
+<script src="games-words.js?v=97"></script>
+<script src="games-board.js?v=97"></script>
+<script src="games-world.js?v=97"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=96"></script>
-<script src="games-quiz.js?v=96"></script>
-<script src="games-mind.js?v=96"></script>
-<script src="games-tracker.js?v=96"></script>
-<script src="games-pose.js?v=96"></script>
-<script src="cam-walls.js?v=96"></script>
-<script src="games-floppy.js?v=96"></script>
-<script src="games-barrel.js?v=96"></script>
-<script src="games-walls.js?v=96"></script>
-<script src="games-duel.js?v=96"></script>
-<script src="games-trails.js?v=96"></script>
-<script src="games-box.js?v=96"></script>
-<script src="games-sumo.js?v=96"></script>
-<script src="games-pond.js?v=96"></script>
-<script src="games-hockey.js?v=96"></script>
-<script src="games-paint.js?v=96"></script>
-<script src="games-cannons.js?v=96"></script>
-<script src="games-golf.js?v=96"></script>
-<script src="games-mouse.js?v=96"></script>
-<script src="games-kart.js?v=96"></script>
-<script src="games-swords.js?v=96"></script>
-<script src="games-stare.js?v=96"></script>
-<script src="games-boxing.js?v=96"></script>
-<script src="games-dodge.js?v=96"></script>
-<script src="games-parkour.js?v=96"></script>
-<script src="games-poop.js?v=96"></script>
-<script src="games-hoops.js?v=96"></script>
-<script src="games-simon.js?v=96"></script>
-<script src="games-climb.js?v=96"></script>
-<script src="chess.js?v=96"></script>
-<script src="pass.js?v=96"></script>
-<script src="character.js?v=96"></script>
-<script src="leaders.js?v=96"></script>
-<script src="app.js?v=96"></script>
+<script src="games-action.js?v=97"></script>
+<script src="games-quiz.js?v=97"></script>
+<script src="games-mind.js?v=97"></script>
+<script src="games-tracker.js?v=97"></script>
+<script src="games-pose.js?v=97"></script>
+<script src="cam-walls.js?v=97"></script>
+<script src="games-floppy.js?v=97"></script>
+<script src="games-barrel.js?v=97"></script>
+<script src="games-walls.js?v=97"></script>
+<script src="games-duel.js?v=97"></script>
+<script src="games-trails.js?v=97"></script>
+<script src="games-box.js?v=97"></script>
+<script src="games-sumo.js?v=97"></script>
+<script src="games-pond.js?v=97"></script>
+<script src="games-hockey.js?v=97"></script>
+<script src="games-paint.js?v=97"></script>
+<script src="games-cannons.js?v=97"></script>
+<script src="games-golf.js?v=97"></script>
+<script src="games-mouse.js?v=97"></script>
+<script src="games-kart.js?v=97"></script>
+<script src="games-swords.js?v=97"></script>
+<script src="games-stare.js?v=97"></script>
+<script src="games-boxing.js?v=97"></script>
+<script src="games-dodge.js?v=97"></script>
+<script src="games-parkour.js?v=97"></script>
+<script src="games-poop.js?v=97"></script>
+<script src="games-hoops.js?v=97"></script>
+<script src="games-simon.js?v=97"></script>
+<script src="games-climb.js?v=97"></script>
+<script src="chess.js?v=97"></script>
+<script src="pass.js?v=97"></script>
+<script src="character.js?v=97"></script>
+<script src="leaders.js?v=97"></script>
+<script src="app.js?v=97"></script>
 </body>
 </html>

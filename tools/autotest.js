@@ -28,6 +28,9 @@
            wall, and both check they agree the host won
      both  delete their test accounts
 
+   Round …&mode=rules (one browser): the rules of Turf War, Cheese Heist, Pond War and Panic Chess, one by one, and a whole
+   game of each against the bot.
+
    Each step is sent to the test server, which writes it to a file the test script reads. */
 (() => {
 'use strict';
@@ -40,20 +43,21 @@ const wallTest = q.get('mode') === 'walls';
 const duelTest = q.get('mode') === 'duels';
 const glingusTest = q.get('mode') === 'glingus';
 const perfTest = q.get('mode') === 'perf';
+const rulesTest = q.get('mode') === 'rules'; // (the rules of Turf War, Cheese Heist, Pond War and Panic Chess, one by one)
 const netTest = q.get('mode') === 'net'; // (one online game, chosen with &online=, on a good and then on a bad connection)
 const withCam = camTest || !!q.get('cam');
 if (q.get('nofast') === role) window.__noFast = true;
-const DUELS = (q.get('games') || 'trails,box,sumo,pond,hockey,paint,cannons,golf,mouse,kart,swords,stare,boxing,dodge,parkour,poop').split(',');
+const DUELS = (q.get('games') || 'trails,box,sumo,pond,hockey,paint,cannons,golf,mouse,kart,swords,stare,boxing,dodge,parkour,poop,speedchess').split(',');
 const DUEL_ONLINE = q.get('online') || 'sumo';
 const run = (q.get('run') || 'x').replace(/[^a-z0-9]/gi, '').slice(0, 8);
 const NAME = 'zt' + run + role;
 const PASS = 'test-pass-' + run;
-const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest;
+const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest || rulesTest;
 window.__introMs = 1500;   // (shorter face-to-face screens)
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
-if (wallTest || duelTest || perfTest || netTest || camTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
+if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
 if (netTest) window.__forceGame = DUEL_ONLINE;
 if (duelTest) {
   window.__forceGame = DUEL_ONLINE;
@@ -167,6 +171,7 @@ async function main() {
   if (wallTest) { await wallDuel(); return; }
   if (perfTest) { await perf(); return; }
   if (netTest) { await netRound(); return; }
+  if (rulesTest) { await rules(); return; }
   if (duelTest) { await duels(); return; }
   if (glingusTest) { await glingus(); return; }
   location.hash = '#/solos';
@@ -666,6 +671,7 @@ async function perf() {
 
 // One online game, on a good connection and then on a bad one: everything has to keep arriving, without a single error.
 async function netRound() {
+  if (q.get('revenge')) { await revengeRound(); return; }
   location.hash = '#/solos';
   await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
   clickModal('find a match');
@@ -673,6 +679,16 @@ async function netRound() {
   await until(() => $('vs').classList.contains('hidden') && $('stage').children.length && !$('stage').querySelector('.stage-wait'), 40000, 'the game to start');
   if (role === 'a') await videoLimit();
   await sleep(6000);
+  if (DUEL_ONLINE === 'speedchess') { // both move a pawn: each checks the other's move shows up
+    const P = window.__panic, mine = P.pieces().filter(p => p.c === P.meC && p.t === 'p').sort((x, y) => x.id - y.id)[role === 'a' ? 2 : 5];
+    const toY = Math.round(mine.y) + (P.meC === 0 ? -1 : 1);
+    P.order(mine.id, Math.round(mine.x), toY);
+    await sleep(2000);
+    const after = P.pieces().find(p => p.id === mine.id);
+    await check('speedchess: my move happens', Math.round(after.y) === toY, { y: after.y, toY });
+    const movedTheirs = P.pieces().filter(p => p.c !== P.meC && p.t === 'p' && Math.round(p.y) !== (P.meC === 0 ? 1 : 6)).length;
+    await check("speedchess: I see the other player's move", movedTheirs === 1, movedTheirs);
+  }
   const noFast = !!q.get('nofast');
   const a = window.__net();
   if (noFast) await check(DUEL_ONLINE + ': with no fast lane, it uses the normal connection', !a.fast && a.got > 5, a);
@@ -680,8 +696,8 @@ async function netRound() {
   await sleep(3000);
   const b = window.__net();
   await check(DUEL_ONLINE + ': updates keep coming', b.got > a.got, b);
-  // (Only some players use this: not the host of an arcade duel, who runs the game, and not in Pond Duel or Shadow Boxing, where
-  // each app runs its own half. Paint Wars sends its big updates less often, so it stays about the same.)
+  // (Only some players use this: not the host of an arcade duel, who runs the game, and not in Shadow Boxing, where each app
+  // runs its own half. Turf War sends its big updates less often, so it stays about the same.)
   if (!noFast && b.used && DUEL_ONLINE !== 'paint') await check(DUEL_ONLINE + ': the other player is drawn less far in the past than before (100 ms), now ' + b.delay + ' ms', b.delay < 100, b);
   if (!noFast && !q.get('nochaos')) {
     window.__netChaos = { drop: 0.1, late: 70 };
@@ -695,6 +711,40 @@ async function netRound() {
   await check(DUEL_ONLINE + ': the game is still going', !$('stage').querySelector('.result'), $('scGame').textContent);
   if (role === 'b') await sleep(6000); // (a got here later: it stopped to check the camera limit, and b leaving ends a's game)
   if ($('skipBtn') && !$('skipBtn').closest('.hidden')) { $('skipBtn').click(); try { clickModal('Skip'); } catch (e) { /* no question this time */ } }
+  await sleep(1500);
+  location.hash = '#/menu';
+  await sleep(1000);
+  if (!$('caModal').classList.contains('hidden')) { $('caModalBtns').querySelector('button:last-child').click(); await sleep(800); }
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
+}
+
+// After a game: the loser's button says Revenge, both see the score between them, and pressing it plays on.
+async function revengeRound() {
+  location.hash = '#/solos';
+  await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
+  clickModal('find a match');
+  await until(() => seen.match, 90000, 'the server to pair the two browsers');
+  const d = await until(() => window.__duel && window.__duel.id === DUEL_ONLINE && window.__duel, 40000, 'the game');
+  await until(() => d.phase() === 'play', 10000, 'the countdown');
+  const host = d.api.host;
+  await sleep(1500);
+  if (host) d.end(0, 'TEST');
+  await until(() => !$('vsReact').classList.contains('hidden') && $('vsReact').offsetParent !== null, 12000, 'the screen after the game');
+  const btn = $('rematchBtn'), vs = $('rxVs').textContent;
+  await check(host ? 'after a win, the button says Rematch' : 'after a loss, the button says Revenge', host ? /Rematch/.test(btn.textContent) : /Revenge/.test(btn.textContent), btn.textContent);
+  await check('both see the score between them', host ? /You 1 – 0/.test(vs) : /You 0 – 1/.test(vs), vs);
+  window.__duel = null;
+  btn.click();
+  const d2 = await until(() => window.__duel && window.__duel !== d && window.__duel.id === DUEL_ONLINE && window.__duel, 15000, 'the next game');
+  await check('pressing it starts another game against the same player', !!d2);
+  await until(() => d2.phase() === 'play', 10000, 'the countdown');
+  await sleep(1000);
+  if (host) d2.end(1, 'TEST');
+  await until(() => !$('vsReact').classList.contains('hidden') && $('vsReact').offsetParent !== null, 12000, 'the screen after the game');
+  const vs2 = $('rxVs').textContent;
+  await check('the score keeps count', /You 1 – 1/.test(vs2), vs2);
   await sleep(1500);
   location.hash = '#/menu';
   await sleep(1000);
@@ -723,6 +773,341 @@ async function videoLimit() {
   one.close();
   two.close();
   cam.getTracks().forEach(t => t.stop());
+}
+
+/* ---------- the rules of the four big games ---------- */
+
+async function startPractice(id) {
+  location.hash = '#/menu';
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  window.__duel = null;
+  location.hash = '#/practice?game=' + id;
+  const d = await until(() => window.__duel && window.__duel.id === id && window.__duel, 15000, id + ' to start');
+  await until(() => d.phase() === 'play', 8000, id + ': the countdown');
+  return d;
+}
+// (a picture of the game, for checking how it looks: the test server writes it to the log)
+function shot(name) {
+  const c = $('dlCanvas');
+  return c ? log('shot ' + name, true, c.toDataURL('image/png')) : null;
+}
+const wait = sleep;
+
+async function rules() {
+  if (!q.get('skip') || !q.get('skip').includes('paint')) await turfRules();
+  if (!q.get('skip') || !q.get('skip').includes('mouse')) await heistRules();
+  if (!q.get('skip') || !q.get('skip').includes('pond')) await pondRules();
+  if (!q.get('skip') || !q.get('skip').includes('chess')) await chessRules();
+  location.hash = '#/menu';
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
+}
+
+async function turfRules() {
+  const d = await startPractice('paint');
+  const S = d.state(), me = S.cats[0], them = S.cats[1];
+  const gone = () => { them.dead = 500; them.spray = false; them.x = 900; them.y = 500; };
+  gone();
+  S.t = 2;
+  const speedOn = async color => {
+    for (let k = 0; k < S.grid.length; k++) if (S.grid[k] !== 3) S.grid[k] = color;
+    me.x = 200; me.y = 300; me.vx = 0; me.vy = 0;
+    d.press('r');
+    await wait(150);
+    const x0 = me.x, t0 = performance.now();
+    await wait(400);
+    const sp = (me.x - x0) / ((performance.now() - t0) / 1000);
+    d.release('r');
+    return sp;
+  };
+  const own = await speedOn(1), theirs = await speedOn(2);
+  await check('Turf War: you run much faster on your own paint than on theirs', own > theirs * 1.5, { own: Math.round(own), theirs: Math.round(theirs) });
+  // claiming land: a closed square of your paint
+  for (let k = 0; k < S.grid.length; k++) if (S.grid[k] !== 3) S.grid[k] = 0;
+  S.count = [0, 0];
+  const CS = 15, GC = 64;
+  for (let gy = 16; gy <= 26; gy++) for (let gx = 20; gx <= 30; gx++) {
+    if (gy === 16 || gy === 26 || gx === 20 || gx === 30) { S.grid[gy * GC + gx] = 1; S.count[0]++; }
+  }
+  them.dead = 0; them.x = 900; them.y = 500; them.safe = 0;
+  await until(() => S.grid[21 * GC + 25] === 1, 3000, 'the land inside a loop to be claimed').catch(() => {});
+  await check('Turf War: paint a closed loop and the land inside is yours', S.grid[21 * GC + 25] === 1, { count: S.count });
+  await shot('turf-claim');
+  // bursting the other cat
+  S.bs = { think: 1e9, gx: 900, gy: 500, spray: false, hunt: false };
+  them.hp = 8; them.safe = 0; them.dead = 0; them.x = 500; them.y = 300;
+  me.x = 400; me.y = 300; me.ink = 100; me.dead = 0;
+  d.aim.x = 500; d.aim.y = 300;
+  d.press('fire');
+  await until(() => them.dead > 0, 3000, 'the other cat to burst').catch(() => {});
+  d.release('fire');
+  await check('Turf War: spray the other cat and they burst, and it leaves your color', them.dead > 0 && S.grid[Math.floor(300 / CS) * GC + Math.floor(500 / CS)] === 1, { hp: them.hp, dead: them.dead });
+  await wait(2300);
+  await check('Turf War: they come back after a moment', them.dead <= 0 && them.hp === 100 && them.safe > 0, { dead: them.dead, safe: them.safe });
+  gone();
+  // the middle counts triple
+  const K = 21 * GC + 25;
+  S.t = 36;
+  await wait(100);
+  await check('Turf War: in the last 10 seconds the middle counts triple', S.sc[0] > S.count[0] || S.count[0] === 0, { sc: S.sc, count: S.count });
+  await shot('turf-gold');
+  // the comeback boost
+  for (let k = 0; k < S.grid.length; k++) if (S.grid[k] !== 3) S.grid[k] = 2;
+  S.count = [0, 2000];
+  await wait(100);
+  await check('Turf War: whoever is far behind gets the comeback boost', me.boost === true && them.boost === false);
+  // a whole game against a real bot
+  d.end(0, 'TEST');
+  await until(() => $('stage').querySelector('.result'), 6000, 'the result').catch(() => {});
+  const d2 = await startPractice('paint');
+  window.__duelSpeed = 6;
+  const end = Date.now() + 20000;
+  let best = 0, splats = 0;
+  while (Date.now() < end && d2.phase() === 'play') { mash(d2); const st = d2.state(); best = Math.max(best, st.best[1]); splats = Math.max(splats, st.splats[1]); st.best[0] = Math.max(st.best[0], 50); await sleep(150); }
+  window.__duelSpeed = 1;
+  letGo(d2);
+  await log('Turf War, a whole game: the bot', true, { score: d2.state().sc, botClaim: best, botSplats: splats });
+  await until(() => $('stage').querySelector('.result'), 8000, 'the result').catch(() => {});
+  const wasGuest = CA.profile.guest;
+  if (wasGuest) {
+    await check('a guest has no personal records', !$('stage').querySelector('.result').textContent.includes('New record') && !CA.profile.records.paint);
+    CA.profile.guest = false; // (only on this screen, to see what an account gets: the server still saves nothing for a guest)
+    const d3 = await startPractice('paint');
+    d3.state().best[0] = 50;
+    d3.state().t = 44.8;
+    await until(() => $('stage').querySelector('.result'), 8000, 'the result').catch(() => {});
+  }
+  const shown = $('stage').querySelector('.result').textContent;
+  await check('a personal record is shown after the game', shown.includes('New record! Biggest land claim'), shown.slice(0, 200));
+  await check('...and kept', CA.profile.records.paint && CA.profile.records.paint.claim >= 50, CA.profile.records);
+  await check('...and only beaten by a bigger one', CA.setRecord('paint', 'claim', 5) === false && CA.setRecord('paint', 'claim', 1000) === true);
+  if (wasGuest) { CA.profile.guest = true; CA.profile.records = {}; }
+}
+
+async function heistRules() {
+  const d = await startPractice('mouse');
+  const S = d.state(), me = S.movers[0], cat = S.movers[1];
+  const park = () => { cat.hold = 1e6; cat.x = 700; cat.y = 80; };
+  S.bs = { think: 1e9, tx: 700, ty: 80, dash: false, jump: false, patrol: null, heard: null, heardAt: -1 };
+  park();
+  await check('Cheese Heist: you start as the mouse in round 1, with 3 cheeses', S.mouseI === 0 && S.cheese.length === 3 && S.round === 1);
+  const [ex, ey] = [20 + 22.5 * 40, 10 + 12.5 * 40];
+  me.x = ex; me.y = ey;
+  await wait(200);
+  await check("Cheese Heist: the exit stays shut until you've stolen a cheese", S.phase === 'chase', S.phase);
+  me.x = 30; me.y = 500;
+  await wait(100);
+  const ch = S.cheese[0];
+  me.x = ch.x; me.y = ch.y;
+  await until(() => S.got === 1, 2000, 'the cheese to be stolen').catch(() => {});
+  await check('Cheese Heist: stealing a cheese scores 1 and makes a noise the cat can hear', S.got === 1 && S.sc[0] === 1 && !ch.on && !!S.ping, { got: S.got, sc: S.sc });
+  await shot('heist-mouse');
+  // a tunnel
+  const [a, b] = S.tunnels[0];
+  const cx = c => 20 + (c[0] + 0.5) * 40, cy = c => 10 + (c[1] + 0.5) * 40;
+  me.tw = 0; me.x = cx(a); me.y = cy(a);
+  await wait(120);
+  await check('Cheese Heist: a tunnel takes the mouse across the maze', Math.hypot(me.x - cx(b), me.y - cy(b)) < 40 && me.tw > 0, { at: [me.x, me.y], to: [cx(b), cy(b)] });
+  // the exit
+  me.x = ex; me.y = ey;
+  await until(() => S.phase === 'pause', 2000, 'the mouse to escape').catch(() => {});
+  await check('Cheese Heist: escaping scores 2 more', S.phase === 'pause' && S.sc[0] === 3, { sc: S.sc, phase: S.phase });
+  await until(() => S.round === 2, 4000, 'round 2');
+  const me2 = S.movers[0], m2 = S.movers[1];
+  await check('Cheese Heist: then you swap', S.mouseI === 1 && me2.role === 'cat' && m2.role === 'mouse');
+  await shot('heist-cat');
+  // a tie goes to sudden death
+  S.sc = [1, 1];
+  m2.hold = 1e6;
+  m2.x = me2.x; m2.y = me2.y;
+  await until(() => S.phase === 'pause', 2000, 'the catch').catch(() => {});
+  await check('Cheese Heist: touching the mouse catches it', S.phase === 'pause');
+  await until(() => S.round === 3, 4000, 'sudden death').catch(() => {});
+  await check('Cheese Heist: a tie goes to sudden death, with one cheese', S.round === 3 && S.sudden && S.cheese.length === 1, { round: S.round });
+  await shot('heist-sudden');
+  const mi = S.mouseI, mm = S.movers[mi], cc = S.movers[1 - mi];
+  mm.x = cc.x; mm.y = cc.y;
+  await until(() => d.phase() === 'ko', 3000, 'the end').catch(() => {});
+  await check('Cheese Heist: caught in sudden death, the cat wins', d.winner() === 1 - mi, { winner: d.winner(), mouse: mi });
+  await until(() => $('stage').querySelector('.result'), 6000, 'the result').catch(() => {});
+  // a whole game against a real bot, to see what it does
+  const d2 = await startPractice('mouse');
+  window.__duelSpeed = 6;
+  const end = Date.now() + 25000;
+  let botSteals = 0;
+  while (Date.now() < end && d2.phase() === 'play') {
+    mash(d2);
+    const st = d2.state();
+    if (st.mouseI === 1) botSteals = Math.max(botSteals, st.got);
+    await sleep(150);
+  }
+  window.__duelSpeed = 1;
+  letGo(d2);
+  await log('Cheese Heist, a whole game: the bot', true, { score: d2.state().sc, botSteals, round: d2.state().round, winner: d2.winner() });
+  await until(() => $('stage').querySelector('.result'), 8000, 'the result').catch(() => {});
+}
+
+async function pondRules() {
+  const d = await startPractice('pond');
+  const S = d.state(), me = S.cats[0], them = S.cats[1];
+  const parkThem = () => { them.ph = 'bank'; them.k = 1e6; them.bk = 0; them.fish = null; };
+  parkThem();
+  const oneFish = (t, x, y) => { S.fish.length = 0; S.fish.push({ t, x, y, a: 0, st: 'swim', k: 0, on: [false, false], p: 0, hx: 0, hy: 0, run: false, runK: 1, fade: 0, by: -1 }); return S.fish[0]; };
+  const tap = async k => { d.press(k); await wait(70); d.release(k); };
+  const f = oneFish(0, 420, 330);
+  d.aim.x = 420; d.aim.y = 330; d.aim.seen = true;
+  await wait(60);
+  await tap('fire');
+  await until(() => me.ph === 'bite', 6000, 'a bite').catch(() => {});
+  await check('Pond War: cast near a fish and it comes and bites', me.ph === 'bite', me.ph);
+  await shot('pond-bite');
+  await tap('fire');
+  await check('Pond War: click when it bites to hook it', me.ph === 'reel' && f.st === 'hooked', me.ph);
+  f.runK = 1e6; f.run = false;
+  d.press('fire');
+  await until(() => me.ph === 'caught' || me.ph === 'snapped', 5000, 'the catch').catch(() => {});
+  d.release('fire');
+  await check('Pond War: hold to reel it in: it goes in your bucket, not your score', me.bk === 1 && me.sc === 0 && me.got === 1, { bk: me.bk, sc: me.sc, ph: me.ph });
+  await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
+  await tap('b');
+  await check('Pond War: banking takes a moment', me.ph === 'bank', me.ph);
+  await until(() => me.ph === 'idle', 3000, 'banking').catch(() => {});
+  await check('Pond War: banked fish count', me.sc === 1 && me.bk === 0, { sc: me.sc, bk: me.bk });
+  // too much tension
+  me.bk = 10;
+  const f2 = oneFish(1, 420, 330);
+  d.aim.x = 420; d.aim.y = 330;
+  await tap('fire');
+  await until(() => me.ph === 'bite', 6000, 'a bite').catch(() => {});
+  await tap('fire');
+  f2.runK = 1e6; f2.run = true;
+  d.press('fire');
+  await until(() => me.ph === 'snapped', 3000, 'the line to snap').catch(() => {});
+  d.release('fire');
+  await check('Pond War: pull while it runs and the line snaps, spilling half your bucket', me.ph === 'snapped' && me.bk === 5, { ph: me.ph, bk: me.bk });
+  await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
+  // a tug of war: cast onto the other cat's fish
+  const f3 = oneFish(2, 500, 330);
+  Object.assign(f3, { st: 'hooked', hx: 500, hy: 330, runK: 1e6, on: [false, true] });
+  Object.assign(them, { ph: 'reel', fish: f3, ten: 0, k: 0, slack: 0 });
+  S.bs = { 1: { wait: 1e6, react: -1, hold: false, tx: 480, ty: 330, think: 0, waited: 0 } };
+  d.aim.x = 500; d.aim.y = 330;
+  them.ten = 0.95; // (the bot lets go when its line is tight, so the fish stays where it is while the cast flies)
+  await tap('fire');
+  await until(() => me.ph === 'reel', 2000, 'the snag').catch(() => {});
+  await check('Pond War: cast onto their hooked fish and you both have it', f3.on[0] && f3.on[1] && me.fish === f3, { ph: me.ph, on: f3.on });
+  await shot('pond-tug');
+  d.press('fire');
+  const tugEnd = Date.now() + 8000;
+  while (Date.now() < tugEnd && me.ph === 'reel') { me.ten = 0; them.ten = 0.95; await sleep(30); }
+  d.release('fire');
+  await check('Pond War: winning the tug of war takes the fish from them', me.ph === 'caught' && them.fish === null && them.ph !== 'reel', { me: me.ph, them: them.ph, bk: me.bk });
+  parkThem();
+  await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
+  // a rock
+  const f4 = oneFish(0, 600, 330);
+  d.aim.x = 600; d.aim.y = 330;
+  await tap('e');
+  await until(() => f4.st === 'flee', 2000, 'the fish to flee').catch(() => {});
+  await check('Pond War: a rock scares the fish away, then you wait for the next rock', f4.st === 'flee' && me.rock > 0, { st: f4.st, rock: me.rock });
+  // the legend, and the bucket at the end
+  S.t = 45.5;
+  await wait(100);
+  await check('Pond War: the legendary fish appears for the last 15 seconds', S.fish.some(x => x.t === 6));
+  await shot('pond-legend');
+  me.ph = 'idle'; me.sc = 10; me.bk = 5; them.sc = 13; them.bk = 0;
+  S.t = 59.9;
+  await until(() => d.phase() === 'ko', 3000, 'the end').catch(() => {});
+  await check('Pond War: at the end, what is still in your bucket only counts half', d.winner() === 1, { winner: d.winner(), me: [me.sc, me.bk], them: [them.sc, them.bk] });
+  await until(() => $('stage').querySelector('.result'), 6000, 'the result').catch(() => {});
+  const d2 = await startPractice('pond');
+  window.__duelSpeed = 6;
+  const end = Date.now() + 20000;
+  while (Date.now() < end && d2.phase() === 'play') await sleep(150);
+  window.__duelSpeed = 1;
+  const st = d2.state();
+  await log('Pond War, a whole game: the bot', true, { sc: st.cats[1].sc, bk: st.cats[1].bk, got: st.cats[1].got, big: st.cats[1].big });
+  await check('Pond War: the bot catches fish', st.cats[1].got > 0 && st.cats[1].sc > 0, st.cats[1].got);
+  await until(() => $('stage').querySelector('.result'), 8000, 'the result').catch(() => {});
+}
+
+async function chessRules() {
+  const d = await startPractice('speedchess');
+  const S = d.state(), P = window.__panic;
+  S.bs = { think: 1e9 };
+  await wait(100);
+  const at = (x, y) => P.pieces().find(p => Math.round(p.x) === x && Math.round(p.y) === y);
+  const pawn = at(4, 6), rook = at(0, 7), knight = at(1, 7);
+  await check('Panic Chess: pieces start in place, with no turns', !!pawn && !!rook && !!knight && pawn.t === 'p' && rook.t === 'r' && knight.t === 'n');
+  await check('Panic Chess: a pawn goes forward 1 or 2', P.legal(pawn.id, 4, 5) && P.legal(pawn.id, 4, 4));
+  await check("Panic Chess: a pawn can't go sideways, or take nothing", !P.legal(pawn.id, 5, 6) && !P.legal(pawn.id, 5, 5));
+  await check("Panic Chess: a rook can't go through its own pawn", !P.legal(rook.id, 0, 4));
+  await check('Panic Chess: a knight can hop over', P.legal(knight.id, 2, 5));
+  await shot('chess-start');
+  P.order(pawn.id, 4, 4);
+  P.order(knight.id, 2, 5);
+  await wait(120);
+  const live = id => S.pcs.find(p => p.id === id);
+  await check('Panic Chess: both can move at the same time', !!live(pawn.id).mv && !!live(knight.id).mv);
+  await shot('chess-moving');
+  await until(() => !live(pawn.id).mv, 3000, 'the pawn to arrive').catch(() => {});
+  await check('Panic Chess: it arrives, then has to recharge', live(pawn.id).y === 4 && live(pawn.id).cd > 0, { y: live(pawn.id).y, cd: live(pawn.id).cd });
+  P.order(pawn.id, 4, 3);
+  await wait(100);
+  await check("Panic Chess: it can't move while it recharges", !live(pawn.id).mv && live(pawn.id).y === 4);
+  // dodging: a slow attack can miss
+  const queen = S.pcs.find(p => p.t === 'q' && p.c === 0), bk = S.pcs.find(p => p.t === 'k' && p.c === 1), wk = S.pcs.find(p => p.t === 'k' && p.c === 0);
+  const blackPawn = S.pcs.find(p => p.t === 'p' && p.c === 1);
+  S.pcs = [queen, bk, wk, blackPawn];
+  Object.assign(queen, { x: 3, y: 5, cd: 0, mv: null });
+  Object.assign(blackPawn, { x: 3, y: 1, cd: 0, mv: null });
+  Object.assign(bk, { x: 7, y: 0, cd: 0, mv: null });
+  Object.assign(wk, { x: 4, y: 7, cd: 0, mv: null });
+  await wait(100);
+  P.order(queen.id, 3, 1); // (going for the pawn, which steps aside)
+  await wait(150);
+  blackPawn.x = 2; blackPawn.y = 2; // (stepped aside)
+  await until(() => !queen.mv, 2000, 'the queen to arrive').catch(() => {});
+  await check('Panic Chess: a piece that gets out of the way survives', S.pcs.includes(blackPawn) && queen.y === 1, { y: queen.y });
+  // taking something
+  Object.assign(blackPawn, { x: 3, y: 4, cd: 0, mv: null });
+  Object.assign(queen, { x: 3, y: 1, cd: 0, mv: null });
+  await wait(100);
+  P.order(queen.id, 3, 4);
+  await until(() => !S.pcs.includes(blackPawn), 2000, 'the capture').catch(() => {});
+  await check('Panic Chess: moving onto a piece takes it', !S.pcs.includes(blackPawn) && S.took[0] >= 1, { took: S.took });
+  await until(() => !queen.mv, 2000, 'the queen to stop').catch(() => {});
+  // the board burns
+  Object.assign(wk, { x: 4, y: 5, cd: 0, mv: null });
+  Object.assign(bk, { x: 4, y: 1, cd: 0, mv: null });
+  const doomed = { id: 99, t: 'r', c: 0, x: 0, y: 7, mv: null, cd: 0 };
+  S.pcs.push(doomed);
+  S.warned = 0;
+  S.t = 25.2;
+  await wait(100);
+  await shot('chess-warning');
+  S.t = 29.95;
+  await until(() => S.b === 1, 2000, 'the burn').catch(() => {});
+  await check('Panic Chess: the edge of the board burns, and what was on it is gone', S.b === 1 && !S.pcs.includes(doomed), { b: S.b });
+  await shot('chess-burned');
+  // taking the king
+  Object.assign(queen, { x: 4, y: 3, cd: 0, mv: null });
+  await wait(100);
+  P.order(queen.id, 4, 1);
+  await until(() => d.phase() === 'ko', 3000, 'the end').catch(() => {});
+  await check('Panic Chess: take the king and you win', d.winner() === 0, d.winner());
+  await until(() => $('stage').querySelector('.result'), 6000, 'the result').catch(() => {});
+  // a whole game against a real bot
+  const d2 = await startPractice('speedchess');
+  window.__duelSpeed = 4;
+  const end = Date.now() + 28000;
+  while (Date.now() < end && d2.phase() === 'play') await sleep(150);
+  const st = d2.state();
+  window.__duelSpeed = 1;
+  await log('Panic Chess, a whole game against the bot', true, { botMoves: st.moves[1], took: st.took, t: st.t, winner: d2.winner(), burn: st.b });
+  await check('Panic Chess: the bot moves and takes pieces', st.moves[1] > 10 && d2.winner() === 1, { moves: st.moves[1], winner: d2.winner() });
+  await until(() => $('stage').querySelector('.result'), 8000, 'the result').catch(() => {});
 }
 
 async function duels() {
@@ -795,7 +1180,8 @@ async function duelOnline() {
   else await check('online (' + DUEL_ONLINE + ', guest): the host\'s game arrives', d.snaps() > 10, d.snaps());
   if (host && d.phase() === 'play') d.end(0, 'TEST');
   await until(() => d.phase() === 'ko', 8000, 'the end of the game');
-  await check('online (' + DUEL_ONLINE + '): both apps agree who won (the host ended it with a win for itself)', d.winner() === 0, { winner: d.winner(), host });
+  // (The game may have ended by itself by now, with either player winning. Each app's answer is in the "seen by" line below.)
+  await check('online (' + DUEL_ONLINE + '): the game ends with a winner', [-1, 0, 1].includes(d.winner()), { winner: d.winner(), host });
   await log('online winner seen by ' + (host ? 'host' : 'guest') + ': ' + d.winner(), true);
   await until(() => !$('vs').classList.contains('hidden') && !$('vsReact').classList.contains('hidden'), 10000, 'the after-game screen');
   await sleep(3000);

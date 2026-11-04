@@ -6,7 +6,7 @@
    - 'host' (most of them): the host's app runs the whole game from both players' controls, 60 times a second, and
      sends what happened to the guest's app 30 times a second. The guest's app sends its controls and draws what the
      host sends, smoothed out. So both always agree on collisions, goals and who won.
-   - 'own' (Pond Duel and Boxing): each app runs its own player's half, so it reacts instantly, and sends it to
+   - 'own' (Shadow Boxing): each app runs its own player's half, so it reacts instantly, and sends it to
      the other app. The host's app is the referee: it decides when the game is over and who won.
 
    A game is CA.duel.run(ctx, def), with def:
@@ -405,6 +405,7 @@ function run(ctx, def) {
     press, hold(k, on) { if (on) press(k); else release(k); },
     msg(text, bad) { msgText = text; msgBad = !!bad; },
     note(text) { ctx.note(text); },
+    record(key, label, value) { ctx.record(key, label, value); },
     sound,
     shake(n) { shake = Math.max(shake, n); },
     burst(x, y, color, n, speed) {

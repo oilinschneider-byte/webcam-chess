@@ -6,7 +6,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const DUELS = ['trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'swords', 'stare', 'boxing', 'dodge', 'parkour', 'poop'];
+const DUELS = ['trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'swords', 'stare', 'boxing', 'dodge', 'parkour', 'poop', 'speedchess'];
 const GAME_KEY = 'camarcade-testplayer-game';
 let on = false;
 let lastClick = 0;

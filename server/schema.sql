@@ -257,9 +257,10 @@ begin
          case when jsonb_typeof(value) = 'number' then to_jsonb(least(greatest(floor((value #>> '{}')::numeric), 0), 100000000)) else '0'::jsonb end
        else value end)
      from jsonb_each(p)
-     where key in ('fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'savedAt')
+     where key in ('fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'records', 'savedAt')
        and (key not in ('owned', 'claimed') or jsonb_typeof(value) = 'array')
-       and (key <> 'equip' or jsonb_typeof(value) = 'object')),
+       and (key <> 'equip' or jsonb_typeof(value) = 'object')
+       and (key <> 'records' or jsonb_typeof(value) = 'object')),
     '{}'::jsonb);
 end $$;
 
@@ -943,6 +944,18 @@ language sql security definer set search_path = '' as $$
   select camarcade.guest_up(camarcade.net())
 $$;
 
+-- You against another player: the games each of you has won, over all your matches.
+create or replace function public.ca_versus(p_token text, p_opp bigint) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare v_id bigint := camarcade.auth(p_token);
+begin
+  return (select jsonb_build_object(
+      'me', count(*) filter (where (g.result = 'host' and m.host = v_id) or (g.result = 'guest' and m.guest = v_id)),
+      'them', count(*) filter (where (g.result = 'host' and m.host = p_opp) or (g.result = 'guest' and m.guest = p_opp)))
+    from camarcade.games g join camarcade.matches m on m.id = g.match_id
+    where (m.host = v_id and m.guest = p_opp) or (m.host = p_opp and m.guest = v_id));
+end $$;
+
 create or replace function public.ca_today() returns jsonb
 language sql stable security definer set search_path = '' as $$
   select camarcade.today_board()
@@ -1104,7 +1117,7 @@ begin
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
-    'ca_turn(text)', 'ca_guest()', 'ca_today()', 'ca_consent(boolean)'
+    'ca_turn(text)', 'ca_guest()', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);
@@ -1433,6 +1446,10 @@ begin
     v_log := v_log || camarcade.t(j->>'kind' = 'today' and jsonb_array_length(j->'rows') = 3 and (j->'rows'->0->>'n')::int = 1,
       'with 3 winners today, the home screen shows today''s top players');
 
+    -- ---------- personal records and you against them ----------
+    v_log := v_log || camarcade.t(camarcade.clean_profile('{"records": {"paint": {"claim": 5}}}')->'records'->'paint'->>'claim' = '5'
+      and not camarcade.clean_profile('{"records": 5}') ? 'records', 'personal records get saved, if they look right');
+
     -- ---------- the weekly prize's goal ----------
     update camarcade.settings set prize_from = null;
     delete from camarcade.nets;
@@ -1503,6 +1520,20 @@ left join camarcade.players f on f.id = m.fail_by
 where m.status = 'failed'
 order by m.created_at desc
 limit 100;
+
+-- Which games make people want to play again: how often a game was followed by another one in the same match.
+-- (select * from camarcade.rematch_rates;)
+create or replace view camarcade.rematch_rates as
+select g.game, count(*) as games,
+  count(*) filter (where exists (select 1 from camarcade.games n where n.match_id = g.match_id and n.game_no = g.game_no + 1)) as played_again,
+  round(100.0 * count(*) filter (where exists (select 1 from camarcade.games n where n.match_id = g.match_id and n.game_no = g.game_no + 1)) / count(*)) as percent
+from camarcade.games g
+join camarcade.matches m on m.id = g.match_id
+join camarcade.players h on h.id = m.host
+join camarcade.players o on o.id = m.guest
+where not h.is_test and not o.is_test and h.name_key not like 'zt%' and o.name_key not like 'zt%'
+group by g.game
+order by percent desc, games desc;
 
 -- The weekly prize (open these in the Supabase SQL Editor, like: select * from camarcade.prize_last_week;)
 -- (The prize is only on once camarcade.settings.prize_from is set: when 5000 different internet connections had visited.)

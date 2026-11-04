@@ -548,7 +548,7 @@ function negamax(g, depth, alpha, beta, sign) {
 
 function computerMove() { return pickMove(game.fen(), botLevel); }
 
-// Also used by Speed Chess in Classic Games (through CA.chessAI).
+// (Used through CA.chessAI.)
 function pickMove(fen, level) {
   const g = new Chess(fen);
   const moves = g.moves({ verbose: true });

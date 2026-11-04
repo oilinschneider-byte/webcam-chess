@@ -10,7 +10,7 @@ const practiceRoot = document.getElementById('scr-practice');
 const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('#' + id);
 
 const VIDEO_BPS = 700000, VIDEO_FPS = 24; // (the most your camera sends the other player: see capVideo)
-const PROTOCOL = 39;              // bump when the games or the match flow change, so old and new versions don't meet
+const PROTOCOL = 40;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
 const BASE_ICE = (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) || [];
@@ -118,6 +118,8 @@ let remoteHasVideo = false;
 let lastCallSig = '';     // which of mic ('a') / camera ('v') the call to the opponent carries
 
 let match = null;        // { ctx, gameId, started, over }
+let newRecords = [];     // personal records broken in this game, to show after it
+const h2h = { me: 0, them: 0, known: false }; // you against this opponent: all your games before now (from the server), plus this session's
 let lastGame = null;
 let gameBag = [];        // the games still to come in this round of "every game once"
 // The games in the Classic Games mix (and "Classic mode vs bots"): the ones that take skill. Every other game can
@@ -1146,6 +1148,8 @@ function makeCtx(gameId, seed, extra) {
     stopEvery(id) { clearInterval(id); intervals.delete(id); },
     listen(target, type, fn, opts) { target.addEventListener(type, fn, opts); listeners.push([target, type, fn, opts]); },
     onEnd(fn) { enders.push(fn); }, // runs when the match ends, however it ends (like stopping a voice that's talking)
+    // A personal record: kept if it's your best at this game, and shown after the game.
+    record(key, label, value) { if (CA.setRecord(gameId, key, value)) newRecords.push(label + ': ' + Math.floor(value)); },
     score(a, b) { setMsg('scMe', a); setMsg('scThem', b); },
     note(text) { setMsg('scNote', text || ''); },
     oppCheer() { if (opp && opp.bot) botTalk(700); },
@@ -1166,6 +1170,7 @@ function makeCtx(gameId, seed, extra) {
 
 function beginMatch(gameId, seed, extra) {
   if (match) { match.over = true; match.ctx.cleanup(); }
+  newRecords = [];
   cancelNext();
   lastGame = gameId;
   const ctx = makeCtx(gameId, seed, extra);
@@ -1297,13 +1302,14 @@ function startReaction(outcome, res, opts) {
   } else {
     reward = '🤝 Friendly game: nothing is counted';
   }
-  $('rxReward').innerHTML = reward;
+  $('rxReward').innerHTML = reward + newRecords.map(r => '<span class="rx-record">🏅 New record! ' + esc(r) + '</span>').join('');
+  setMsg('rxVs', h2hText());
   const rb = $('rematchBtn');
   const gone = online && (!conn || !conn.open || !opp || opp.gone);
   const blocked = online && !!opp && !!opp.blocked;
   rb.disabled = gone || noRematch || blocked;
   rb.classList.remove('chosen');
-  rb.textContent = '🔁 Rematch';
+  rb.textContent = outcome === 'lose' ? '🔥 Revenge!' : '🔁 Rematch';
   setMsg('nextBtn', online || opp.glingus ? '⏭ Next player' : opp.standIn ? '⏭ Find a player' : '⏭ New bot');
   $('rxReportBtn').classList.toggle('hidden', !online || blocked);
   setMsg('rxNote', gone ? opp.name + ' has left.' : blocked ? "You blocked " + opp.name + ", so you'll get someone new."
@@ -1330,6 +1336,8 @@ function stopReaction(keepOverlay) {
   react = null;
   if (!keepOverlay) $('vs').classList.add('hidden');
 }
+
+const rxWon = () => $('vsReact').classList.contains('win');
 
 function maybeRematch() {
   if (!react || !react.mine || !react.theirs || !isHost || (opp && opp.blocked)) return;
@@ -1368,6 +1376,7 @@ function endMatch(outcome, reason, opts) {
   }
   const online = mode === 'solos' && !opp.bot;
   const res = match.counted ? CA.applyResult(outcome) : null; // (shown right away; the server settles the real streak)
+  if (outcome === 'win') h2h.me++; else if (outcome === 'lose') h2h.them++;
   if (online) {
     if (match.counted) {
       pairing.played++;
@@ -1455,10 +1464,34 @@ function showResult(outcome, reason, res, opts) {
     : '<button class="btn go big" data-act="again">↻ Play again</button>';
   $('stage').innerHTML =
     '<div class="result ' + outcome + '"><div class="result-badge">' + badge + '</div><h2>' + title + '</h2>' +
-    '<p class="muted">' + esc(text) + '</p>' + body +
+    '<p class="muted">' + esc(text) + '</p>' + body + recordsHtml() +
     '<div class="row center result-btns">' + buttons + '<button class="btn ghost" data-act="menu">Menu</button></div>' +
     '<p class="next-note" id="nextNote"></p></div>';
   wireResultButtons();
+}
+
+function recordsHtml() {
+  return newRecords.map(r => '<div class="streak-change up">🏅 New record! ' + esc(r) + '</div>').join('');
+}
+
+// You against this opponent, like "You 2 – 3 Them".
+function h2hText() {
+  if (!opp || (!h2h.me && !h2h.them)) return '';
+  return '⚔️ You ' + h2h.me + ' – ' + h2h.them + ' ' + opp.name;
+}
+
+// Starts counting for a new opponent; for a real player, your past games against them come from the server.
+function resetH2h(oppId) {
+  Object.assign(h2h, { me: 0, them: 0, known: false });
+  if (!oppId) return;
+  const asked = oppId;
+  CAServer.call('ca_versus', { p_token: CA.token, p_opp: oppId }).then(r => {
+    if (!r || !pairing || !pairing.opp || pairing.opp.id !== asked) return;
+    h2h.me += Math.max(0, r.me | 0);
+    h2h.them += Math.max(0, r.them | 0);
+    h2h.known = true;
+    if (react) setMsg('rxVs', h2hText());
+  }, () => {}); // (just this session's games, then)
 }
 
 function wireResultButtons() {
@@ -2039,6 +2072,7 @@ function commit(c, asHost, card, game, seed) {
   hideThem = false;
   lastSeen = Date.now();
   openFast(c);
+  resetH2h(pairing.opp.id);
   startHeartbeat();
   startTalking();
   callOpponent();
@@ -2165,7 +2199,7 @@ function onNet(msg) {
     case 'again': // they pressed Rematch
       if (react && opp && !opp.blocked) {
         react.theirs = true;
-        setMsg('rxNote', opp.name + ' wants a rematch! 🔁');
+        setMsg('rxNote', opp.name + (rxWon() ? ' wants revenge! 🔥' : ' wants a rematch! 🔁'));
         if (react.mine) setMsg('rematchBtn', '🔁 Starting…');
         sound('notify');
         maybeRematch();

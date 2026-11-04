@@ -572,7 +572,7 @@ const STATS = ['streak', 'best', 'wins', 'losses', 'draws', 'friendly'];
 function fresh(name) {
   return {
     v: 3, name, fish: 30, xp: 0, streak: 0, best: 0, wins: 0, losses: 0, draws: 0, friendly: 0,
-    owned: ['skin-orange', 'bg-space'], equip: { skin: 'skin-orange', bg: 'bg-space' }, claimed: [], mathBest: 0, savedAt: 0,
+    owned: ['skin-orange', 'bg-space'], equip: { skin: 'skin-orange', bg: 'bg-space' }, claimed: [], mathBest: 0, records: {}, savedAt: 0,
     id: 0, adult: false, bannedUntil: null, banReason: null,
   };
 }
@@ -590,12 +590,20 @@ function normalize(p, name) {
     }
   }
   if (Array.isArray(p.claimed)) out.claimed = p.claimed.filter(n => Number.isInteger(n) && n >= 1 && n <= PASS.length);
+  if (p.records && typeof p.records === 'object') { // ({ game id: { record name: the best so far } })
+    for (const game of Object.keys(p.records).slice(0, 80)) {
+      const r = p.records[game];
+      if (!r || typeof r !== 'object') continue;
+      out.records[game] = {};
+      for (const k of Object.keys(r).slice(0, 8)) { const n = Math.floor(Number(r[k])); if (n > 0 && n < 1e7) out.records[game][k] = n; }
+    }
+  }
   return out;
 }
 
 // The part of your profile your own browser saves to the server: only looks (cat, fish, items), never streaks.
 function looks(p) {
-  return { fish: p.fish, xp: p.xp, owned: p.owned, equip: p.equip, claimed: p.claimed, mathBest: p.mathBest, savedAt: p.savedAt || 0 };
+  return { fish: p.fish, xp: p.xp, owned: p.owned, equip: p.equip, claimed: p.claimed, mathBest: p.mathBest, records: p.records, savedAt: p.savedAt || 0 };
 }
 
 // me: your account as the server sends it ({ id, name, adult, streak, best, …, profile }).
@@ -625,7 +633,7 @@ function setStats(me) {
   applyStats(me);
   if (me.profile && Number(me.profile.savedAt) > profile.savedAt) { // (you changed your cat on another device since)
     const theirs = normalize(me.profile, profile.name);
-    for (const k of ['fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'savedAt']) profile[k] = theirs[k];
+    for (const k of ['fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'records', 'savedAt']) profile[k] = theirs[k];
   }
   writeCache();
   emitChange();
@@ -800,6 +808,17 @@ function equip(id) {
 function unequip(slot) {
   if (SLOTS.some(s => s.id === slot && s.required)) return false;
   delete profile.equip[slot];
+  save();
+  return true;
+}
+
+// A personal record in a game (guests have no records: nothing of theirs is saved). True if it's a new best.
+function setRecord(game, key, value) {
+  value = Math.floor(Number(value) || 0);
+  if (!profile || profile.guest || value <= 0) return false;
+  const r = profile.records[game] || (profile.records[game] = {});
+  if (value <= (r[key] || 0)) return false;
+  r[key] = value;
   save();
   return true;
 }
@@ -1189,7 +1208,7 @@ window.CA = {
   get soundOn() { return soundOn; },
   restoring,
   ITEMS, ITEM, SLOTS, PASS, TIER_XP,
-  catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest,
+  catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest, setRecord,
   signUp, playAsGuest, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
   server: CAServer, deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
   register, go, render, resume, showScreen, requestLeave,
