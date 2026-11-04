@@ -68,6 +68,9 @@ create index if not exists players_week on camarcade.players (week_start, week_b
 --   update camarcade.players set is_test = true, test_with = lower('YourUsername') where name_key = lower('TestAccountName');
 alter table camarcade.players add column if not exists is_test boolean not null default false;
 alter table camarcade.players add column if not exists test_with text;
+-- Guests: a made-up name and no password, for one visit. They count as under 18 (we never asked their age), so other
+-- players only ever see and hear their cat. They stay off the leaderboards, and are deleted after a while (see guest_up).
+alter table camarcade.players add column if not exists is_guest boolean not null default false;
 
 create table if not exists camarcade.sessions (
   token_hash text primary key,
@@ -233,7 +236,7 @@ begin
   return jsonb_build_object(
     'id', p.id, 'name', p.name, 'adult', p.born + interval '18 years' <= current_date,
     'streak', p.streak, 'best', p.best, 'wins', p.wins, 'losses', p.losses, 'draws', p.draws,
-    'friendly', p.friendly, 'disputes', p.disputes, 'profile', p.profile, 'test', p.is_test, 'test_with', p.test_with,
+    'friendly', p.friendly, 'disputes', p.disputes, 'profile', p.profile, 'test', p.is_test, 'test_with', p.test_with, 'guest', p.is_guest,
     'banned_until', case when p.banned_until > now() then p.banned_until end,
     'ban_reason', case when p.banned_until > now() then p.ban_reason end);
 end $$;
@@ -372,6 +375,38 @@ begin
   return jsonb_build_object('token', camarcade.new_session(v_id), 'me', camarcade.me_json(v_id));
 exception when unique_violation then
   raise exception 'name_taken';
+end $$;
+
+-- A funny name for a guest, like SoggyWaffle42 (always fits the 16 letters of a username).
+create or replace function camarcade.guest_name() returns text
+language sql volatile set search_path = '' as $$
+  select (array['Soggy','Wobbly','Sneaky','Grumpy','Chunky','Spicy','Crusty','Fluffy','Goofy','Salty','Snoozy','Zesty','Bouncy','Dizzy','Rusty','Squishy'])[1 + floor(random() * 16)::int]
+      || (array['Waffle','Noodle','Pickle','Potato','Muffin','Turnip','Nugget','Biscuit','Walrus','Goblin','Toaster','Pancake','Llama','Sock','Burrito','Hamster'])[1 + floor(random() * 16)::int]
+      || (10 + floor(random() * 90)::int)::text
+$$;
+
+-- A new guest. (Guests who have been gone for 8 days are deleted here: until then their games can still be checked for cheating.)
+create or replace function camarcade.guest_up(p_net text) returns jsonb
+language plpgsql set search_path = '' as $$
+declare
+  v_id bigint;
+  v_name text;
+begin
+  delete from camarcade.players where is_guest and last_seen < now() - interval '8 days';
+  -- (A guest who got reported off the game can't just come back as a new guest.)
+  if exists (select 1 from camarcade.players where is_guest and created_net = p_net and banned_until > now()) then raise exception 'guest_blocked'; end if;
+  if not camarcade.throttle('guest:' || p_net, 60, interval '1 hour') then raise exception 'too_many_guests'; end if;
+  for i in 1..8 loop
+    v_name := camarcade.guest_name();
+    insert into camarcade.players (name, name_key, pass_hash, born, created_net, last_net, profile, is_guest)
+    values (v_name, lower(v_name), extensions.crypt(encode(extensions.gen_random_bytes(32), 'hex'), extensions.gen_salt('bf', 4)),
+            current_date - interval '14 years', p_net, p_net, '{}'::jsonb, true)
+    on conflict (name_key) do nothing
+    returning id into v_id;
+    exit when v_id is not null;
+  end loop;
+  if v_id is null then raise exception 'server_busy'; end if;
+  return jsonb_build_object('token', camarcade.new_session(v_id), 'me', camarcade.me_json(v_id));
 end $$;
 
 -- (Returns {error} instead of raising one, so that the failed try is still written down.)
@@ -775,14 +810,14 @@ begin
     select row_number() over (order by pl.best desc, pl.best_at nulls last, pl.id) as rank,
            pl.id, pl.name, pl.best, pl.streak, pl.wins, pl.profile->'equip' as equip
     from camarcade.players pl
-    where pl.best > 0 and not coalesce(pl.banned_until > now(), false)
+    where pl.best > 0 and not pl.is_guest and not coalesce(pl.banned_until > now(), false)
     order by pl.best desc, pl.best_at nulls last, pl.id
     limit 50) x;
   select coalesce(jsonb_agg(to_jsonb(x) order by x.rank), '[]'::jsonb) into v_hot from (
     select row_number() over (order by pl.streak desc, pl.best desc, pl.id) as rank,
            pl.id, pl.name, pl.best, pl.streak, pl.wins, pl.profile->'equip' as equip
     from camarcade.players pl
-    where pl.streak > 0 and not coalesce(pl.banned_until > now(), false)
+    where pl.streak > 0 and not pl.is_guest and not coalesce(pl.banned_until > now(), false)
     order by pl.streak desc, pl.best desc, pl.id
     limit 50) x;
   -- this week's prize race: adults only (the prize is for 18+), and only wins played this week
@@ -817,15 +852,42 @@ begin
             and (o.week_best > p.week_best or (o.week_best = p.week_best and (o.week_best_at < p.week_best_at
               or (o.week_best_at = p.week_best_at and o.id < p.id))))) end,
       'best_rank', case when p.best > 0 then 1 + (select count(*) from camarcade.players o
-        where not coalesce(o.banned_until > now(), false)
+        where not o.is_guest and not coalesce(o.banned_until > now(), false)
           and (o.best > p.best or (o.best = p.best and (o.best_at < p.best_at or (o.best_at = p.best_at and o.id < p.id))))) end,
       'streak_rank', case when p.streak > 0 then 1 + (select count(*) from camarcade.players o
-        where not coalesce(o.banned_until > now(), false)
+        where not o.is_guest and not coalesce(o.banned_until > now(), false)
           and (o.streak > p.streak or (o.streak = p.streak and (o.best > p.best or (o.best = p.best and o.id < p.id))))) end);
   end if;
   return jsonb_build_object('best', v_best, 'hot', v_hot, 'week', v_week, 'last_week', v_last, 'me', v_me, 'prize', camarcade.prize_json(),
     'week_ends', ((camarcade.week_now() + 7)::timestamp at time zone 'America/Chicago'));
 end $$;
+
+-- For the home screen: who has won the most today (from midnight, US Central time). With fewer than 3 winners so far, the
+-- best streaks of all time instead, so it's never empty. Only games that counted; no guests and nobody suspended.
+create or replace function camarcade.today_board() returns jsonb
+language sql stable set search_path = '' as $$
+  with wins as (
+    select case when g.result = 'host' then m.host else m.guest end as id, count(*) as n, min(g.resolved_at) as first_at
+    from camarcade.games g join camarcade.matches m on m.id = g.match_id
+    where g.ranked and g.result in ('host', 'guest')
+      and g.resolved_at >= (date_trunc('day', now() at time zone 'America/Chicago') at time zone 'America/Chicago')
+    group by 1
+  ), today as (
+    select p.name, w.n, p.profile->'equip' as equip, w.first_at
+    from wins w join camarcade.players p on p.id = w.id
+    where not p.is_guest and not coalesce(p.banned_until > now(), false)
+    order by w.n desc, w.first_at limit 5
+  ), ever as (
+    select p.name, p.best as n, p.profile->'equip' as equip, p.best_at
+    from camarcade.players p
+    where p.best > 0 and not p.is_guest and not coalesce(p.banned_until > now(), false)
+    order by p.best desc, p.best_at nulls last, p.id limit 5
+  )
+  select case when (select count(*) from today) >= 3
+    then jsonb_build_object('kind', 'today', 'rows', (select jsonb_agg(jsonb_build_object('name', name, 'n', n, 'equip', equip) order by n desc, first_at) from today))
+    else jsonb_build_object('kind', 'best', 'rows', coalesce((select jsonb_agg(jsonb_build_object('name', name, 'n', n, 'equip', equip) order by n desc, best_at nulls last) from ever), '[]'::jsonb))
+  end
+$$;
 
 create or replace function camarcade.stats() returns jsonb
 language sql stable set search_path = '' as $$
@@ -833,7 +895,7 @@ language sql stable set search_path = '' as $$
     'online', (select count(*) from camarcade.players where last_seen > now() - interval '2 minutes'),
     'prize', camarcade.prize_json(),
     'searching', (select count(*) from camarcade.queue where match_id is null and seen_at > now() - interval '8 seconds'),
-    'players', (select count(*) from camarcade.players),
+    'players', (select count(*) from camarcade.players where not is_guest),
     'visitors_today', (select count(*) from camarcade.visits where day = current_date),
     'visitors_week', (select count(distinct visitor) from camarcade.visits where day > current_date - 7),
     'visitors_total', (select count(distinct visitor) from camarcade.visits),
@@ -861,9 +923,24 @@ language sql security definer set search_path = '' as $$
   select camarcade.log_in(p_name, p_pass)
 $$;
 
+-- (A guest logging out is gone for good.)
+drop function if exists public.ca_log_out(text);
 create or replace function public.ca_log_out(p_token text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_id bigint;
+begin
+  delete from camarcade.sessions where token_hash = camarcade.sha(coalesce(p_token, '')) returning player_id into v_id;
+  delete from camarcade.players where id = v_id and is_guest;
+end $$;
+
+create or replace function public.ca_guest() returns jsonb
 language sql security definer set search_path = '' as $$
-  delete from camarcade.sessions where token_hash = camarcade.sha(coalesce(p_token, ''))
+  select camarcade.guest_up(camarcade.net())
+$$;
+
+create or replace function public.ca_today() returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select camarcade.today_board()
 $$;
 
 -- Your account (also keeps you counted as online).
@@ -877,6 +954,7 @@ create or replace function public.ca_save_profile(p_token text, p_profile jsonb)
 language plpgsql security definer set search_path = '' as $$
 declare v_id bigint := camarcade.auth(p_token);
 begin
+  if (select is_guest from camarcade.players where id = v_id) then return; end if; -- (guests save nothing)
   perform camarcade.limit_rate('profile:' || v_id, 40, interval '1 minute');
   update camarcade.players set profile = camarcade.clean_profile(p_profile) where id = v_id;
 end $$;
@@ -1012,7 +1090,7 @@ begin
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
-    'ca_turn(text)'
+    'ca_turn(text)', 'ca_guest()', 'ca_today()'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);
@@ -1118,6 +1196,24 @@ begin
     for i in 1..45 loop perform camarcade.log_in('tnobody' || i, 'whatever'); end loop;
     j := camarcade.log_in((select name from camarcade.players where id = b), 'secret');
     v_log := v_log || camarcade.t(j->>'error' = 'too_many_tries', 'one connection guessing at lots of accounts gets stopped');
+    delete from camarcade.hits;
+
+    -- ---------- guests ----------
+    j := camarcade.guest_up('netGuest');
+    x := (j->'me'->>'id')::bigint;
+    v_log := v_log || camarcade.t((j->'me'->>'guest')::boolean and not (j->'me'->>'adult')::boolean and j->'me'->>'name' ~ '^[A-Za-z0-9_]{3,16}$' and j ? 'token',
+      'a guest gets a funny name that fits, and counts as under 18');
+    v_log := v_log || camarcade.t((camarcade.log_in(j->'me'->>'name', '')->>'error') = 'wrong_password', 'nobody can log in to a guest');
+    update camarcade.players set best = 500000, best_at = now(), streak = 500000 where id = x;
+    k := camarcade.leaderboard(null);
+    v_log := v_log || camarcade.t(not exists (select 1 from jsonb_array_elements(k->'best') r where (r->>'id')::bigint = x)
+      and not exists (select 1 from jsonb_array_elements(k->'hot') r where (r->>'id')::bigint = x), 'guests stay off the leaderboards');
+    update camarcade.players set banned_until = now() + interval '1 day' where id = x;
+    e := camarcade.t_err(format('select camarcade.guest_up(%L)', 'netGuest'));
+    v_log := v_log || camarcade.t(e = 'guest_blocked', 'a guest reported off the game can''t come back as a new guest');
+    update camarcade.players set last_seen = now() - interval '9 days', banned_until = null where id = x;
+    perform camarcade.guest_up('netGuest2');
+    v_log := v_log || camarcade.t(not exists (select 1 from camarcade.players where id = x), 'guests who have been gone for 8 days are deleted');
     delete from camarcade.hits;
 
     -- ---------- matchmaking: 40 players at once, no limit ----------
@@ -1307,6 +1403,21 @@ begin
     insert into camarcade.visits (visitor, net) values ('testvisitor1', 'netV'), ('testvisitor2', 'netV');
     j := camarcade.stats();
     v_log := v_log || camarcade.t((j->>'visitors_today')::int >= 2 and (j->>'players')::int >= 50, 'visitors and players are counted');
+
+    -- ---------- today's top players ----------
+    delete from camarcade.games;
+    j := camarcade.today_board();
+    v_log := v_log || camarcade.t(j->>'kind' = 'best', 'with nobody on the board today, the home screen shows the best streaks instead');
+    for i in 1..3 loop
+      x := camarcade.t_player('w' || i, true, 'netTW' || i);
+      y := camarcade.t_player('l' || i, true, 'netTL' || i);
+      m := camarcade.t_match(x, y, 'netTW' || i, 'netTL' || i);
+      perform camarcade.report(x, m, 1, 'rps', 'win');
+      perform camarcade.report(y, m, 1, 'rps', 'lose');
+    end loop;
+    j := camarcade.today_board();
+    v_log := v_log || camarcade.t(j->>'kind' = 'today' and jsonb_array_length(j->'rows') = 3 and (j->'rows'->0->>'n')::int = 1,
+      'with 3 winners today, the home screen shows today''s top players');
 
     -- ---------- the weekly prize's goal ----------
     update camarcade.settings set prize_from = null;

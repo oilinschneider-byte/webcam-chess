@@ -262,6 +262,32 @@ async function glingus() {
   await until(() => CA.route === 'menu', 5000, 'the menu');
   await CA.deleteAccount(PASS);
   await check('the test account was deleted', !CA.user);
+  if (role === 'b') { // play as a guest, from the first screen
+    await until(() => CA.route === 'auth' || !CA.user, 5000, 'being logged out');
+    location.hash = '#/auth';
+    await until(() => CA.route === 'auth', 5000, 'the first screen');
+    $('guestBtn').click();
+    await until(() => CA.user, 15000, 'the guest to start');
+    await check('a guest gets a funny name, and counts as under 18', CA.profile.guest && /^[A-Za-z]+[0-9]{2}$/.test(CA.profile.name) && !CA.canVideoChat(), CA.profile.name);
+    await until(() => CA.route === 'perm' || CA.route === 'menu', 5000, 'the next screen');
+    if (CA.route === 'perm') $('permSkip').click();
+    await until(() => CA.route === 'menu', 5000, 'the menu');
+    await check('the home screen says nothing is saved', getComputedStyle(document.querySelector('.guest-note')).display !== 'none');
+    await until(() => !$('todayCard').classList.contains('hidden'), 10000, "today's top players");
+    await check("today's top players shows next to Classic Games", !!$('todayTitle').textContent, $('todayTitle').textContent);
+    location.hash = '#/cat';
+    await sleep(600);
+    await check('a guest has no shop', CA.route === 'menu', CA.route);
+    location.hash = '#/pass';
+    await sleep(600);
+    await check('a guest has no Streak Pass', CA.route === 'menu', CA.route);
+    await check('the shop and Streak Pass links are hidden', getComputedStyle(document.querySelector('[data-nav="cat"]')).display === 'none' && getComputedStyle(document.querySelector('[data-nav="pass"]')).display === 'none');
+    const before = CA.profile.xp;
+    CA.applyResult('win');
+    await check('a guest earns no XP or fish', CA.profile.xp === before && CA.profile.fish === 30, { xp: CA.profile.xp, fish: CA.profile.fish });
+    CA.logOut();
+    await check('leaving as a guest ends it', !CA.user && !document.body.classList.contains('guest'));
+  }
   await log('done', true);
 }
 

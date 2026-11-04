@@ -12,6 +12,7 @@ CamArcade needs its free online server (Supabase) for accounts, matchmaking, str
 ## How it works
 
 1. **Sign up** with a username, a password and the month and year you were born. Next time, just **log in**. Accounts are saved online, so you can log in on any device. You have to be 13 or older. Players under 18 always play as their cat: other players never see or hear them, and they never see or hear other players.
+   You can also press **▶ Play as guest**: the server makes up a funny name, and you can play right away. Guests have no shop, Streak Pass or saved cat, fish or XP, their streak lasts until they close the tab, and they stay off the leaderboards. We never ask a guest's age, so they count as under 18: other players only see and hear their cat.
 2. **Allow camera & microphone**, or press **No thanks**. If you allow them, your camera turns on in games (Classic Games, Chess, Practice and Chess vs Computer) and turns off when you leave the game. In Classic Games, every new player sees your cat until you press **📷 Show my face**. With the microphone on, the other player hears you (18 and over only) and your cat's mouth moves when you talk. If you press **No thanks**, you play as your cat.
 3. Pick from the menu:
    - **⚡ Classic Games** (left): starts searching for a random player right away. Every round goes like this:

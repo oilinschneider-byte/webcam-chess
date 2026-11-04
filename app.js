@@ -107,14 +107,30 @@ async function submitAuth(e) {
   }
 }
 
+$('guestBtn').addEventListener('click', async () => {
+  const msg = $('authMsg');
+  if (ageBlocked()) { msg.className = 'msg error'; msg.textContent = 'Sorry, you have to be 13 or older to play CamArcade.'; return; }
+  $('guestBtn').disabled = true;
+  try {
+    await CA.playAsGuest();
+    CA.toast('You are ' + CA.profile.name + '! 🐱');
+    CA.resume();
+  } catch (err) {
+    msg.className = 'msg error';
+    msg.textContent = err.message;
+  } finally {
+    $('guestBtn').disabled = false;
+  }
+});
+
 CA.register('auth', {
   public: true,
-  enter() {
+  enter(params) {
     if (CA.user) { CA.resume(); return; }
     CA.showScreen('scr-auth');
     $('authCat').innerHTML = CA.catSVG({ skin: 'skin-orange', bg: 'bg-space' }, { label: 'CamArcade cat' });
     fillBirthday();
-    setAuthMode(CA.lastUser() ? 'login' : 'signup');
+    setAuthMode(params.get('mode') === 'signup' || !CA.lastUser() ? 'signup' : 'login');
     if (authMode === 'login' && !$('authUser').value) $('authUser').value = CA.lastUser();
     setTimeout(() => ($('authUser').value ? $('authPass') : $('authUser')).focus(), 50);
   },
@@ -266,6 +282,7 @@ async function showOnline() {
       (s.searching ? ' · ' + s.searching + ' looking for a match' : '');
     $('menuOnline').classList.remove('hidden');
     showPrize(s.prize);
+    showToday(await CA.server.call('ca_today'));
   } catch (e) {
     $('menuOnline').classList.add('hidden');
   }
@@ -273,6 +290,23 @@ async function showOnline() {
 
 // The weekly $100 prize: "coming soon" (with how many different internet connections have ever visited) until that
 // reaches the goal (5000), then on for good.
+// Who has won the most today, next to Classic Games (or the best streaks ever, until 3 players have won today).
+function showToday(t) {
+  if (!t || CA.route !== 'menu') return;
+  const today = t.kind === 'today', rows = t.rows || [];
+  $('todayTitle').textContent = today ? "🔥 Today's Top Players" : '🏆 Top Players';
+  $('todayNote').textContent = rows.length ? (today ? 'The most wins today. Can you get on the list?' : 'The longest win streaks ever. Can you beat them?') : 'Nobody yet. Be the first!';
+  $('todayList').innerHTML = rows.map((r, i) => '<li><span class="t-rank">' + (['🥇', '🥈', '🥉'][i] || i + 1) + '</span><span class="t-cat">' +
+    CA.catSVG(r.equip || {}, { bg: false, anim: false, label: r.name }) + '</span><span class="t-name">' + CA.esc(r.name) + '</span><span class="t-n">' +
+    (today ? r.n + (r.n === 1 ? ' win' : ' wins') : '🔥 ' + r.n) + '</span></li>').join('');
+  $('todayCard').classList.remove('hidden');
+}
+
+$('guestSignup').addEventListener('click', () => {
+  CA.logOut();
+  CA.go('auth', { mode: 'signup' });
+});
+
 function showPrize(p) {
   if (!p) return;
   if (p.on) {
@@ -319,10 +353,10 @@ function renderBar() {
   document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === route));
   $('userName').textContent = p.name;
   $('caStats').innerHTML =
-    '<a class="stat-chip" href="#/pass" title="Streak Pass tier">🎟️ <b>' + CA.tierOf(p.xp) + '</b></a>' +
+    (p.guest ? '' : '<a class="stat-chip" href="#/pass" title="Streak Pass tier">🎟️ <b>' + CA.tierOf(p.xp) + '</b></a>') +
     '<a class="stat-chip" href="#/menu" title="Your streak">🔥 <b>' + p.streak + '</b></a>' +
-    '<a class="stat-chip fish" href="#/cat" title="Fish">🐟 <b>' + p.fish + '</b></a>' +
-    '<a class="me-avatar" href="#/cat" title="My cat">' + CA.catSVG(p.equip, { bg: false, anim: false, talker: 'me', label: p.name }) + '</a>';
+    (p.guest ? '' : '<a class="stat-chip fish" href="#/cat" title="Fish">🐟 <b>' + p.fish + '</b></a>' +
+    '<a class="me-avatar" href="#/cat" title="My cat">' + CA.catSVG(p.equip, { bg: false, anim: false, talker: 'me', label: p.name }) + '</a>');
   renderMicBtn();
 }
 
@@ -359,7 +393,8 @@ $('soundBtn').textContent = CA.soundOn ? '🔊' : '🔇';
 $('userBtn').addEventListener('click', e => { e.stopPropagation(); $('userPop').classList.toggle('hidden'); });
 document.addEventListener('click', () => $('userPop').classList.add('hidden'));
 $('logoutBtn').addEventListener('click', () => {
-  CA.confirmBox('Log out?', 'You can log back in with your username and password.', 'Log out', () => {
+  const guest = CA.profile && CA.profile.guest;
+  CA.confirmBox(guest ? 'Stop playing as a guest?' : 'Log out?', guest ? 'Your guest name and streak will be gone.' : 'You can log back in with your username and password.', guest ? 'Leave' : 'Log out', () => {
     CA.requestLeave(() => {
       CA.logOut();
       if (location.hash === '#/auth') CA.render(); else location.hash = '#/auth';

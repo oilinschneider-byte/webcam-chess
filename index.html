@@ -20,8 +20,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=91">
-<link rel="stylesheet" href="pieces.css?v=91">
+<link rel="stylesheet" href="style.css?v=92">
+<link rel="stylesheet" href="pieces.css?v=92">
 </head>
 <body>
 
@@ -57,6 +57,9 @@
       <p>Play games as your cat. Win streaks, catch 🐟 fish, and dress your cat up.</p>
     </div>
     <div class="card auth-card">
+      <button class="btn go big wide" id="guestBtn" type="button">▶ Play as guest</button>
+      <p class="hint small center">No sign-up: you get a funny name. No shop or Streak Pass, and nothing is saved once you close this tab. By playing you confirm you're 13 or older and you'll be kind to other players.</p>
+      <p class="auth-or"><span>or keep your progress</span></p>
       <div class="tabs auth-tabs">
         <button class="tab" type="button" data-auth="signup">Sign up</button>
         <button class="tab" type="button" data-auth="login">Log in</button>
@@ -138,6 +141,7 @@
     <span class="pb-go">See the race →</span>
   </a>
 
+  <p class="guest-note">👤 You're playing as a guest. Nothing is saved when you close this tab. <button class="linkish" id="guestSignup">Sign up to keep your cat, fish and XP</button></p>
   <div class="mode-grid">
     <a class="mode-card classic" href="#/solos">
       <span class="tag">⚡ Solos</span>
@@ -145,6 +149,12 @@
       <p>Meet a random player face to face and play one of 29 games. Every win grows your 🔥 streak and catches 🐟 fish.</p>
       <div class="mc-icons"><span>🛢️</span><span>🏀</span><span>🧗</span><span>⚽</span><span>🧠</span><span>♟️</span><span>🌍</span></div>
       <span class="btn solos-btn big">⚡ Find a match</span>
+    </a>
+    <a class="mode-card today-card hidden" id="todayCard" href="#/leaders">
+      <h2 id="todayTitle"></h2>
+      <p id="todayNote"></p>
+      <ol class="today-list" id="todayList"></ol>
+      <span class="today-more">See the full leaderboard →</span>
     </a>
   </div>
 
@@ -604,47 +614,47 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=91"></script>
-<script src="server.js?v=91"></script>
-<script src="common.js?v=91"></script>
-<script src="solos.js?v=91"></script>
-<script src="games-quick.js?v=91"></script>
-<script src="games-words.js?v=91"></script>
-<script src="games-board.js?v=91"></script>
-<script src="games-world.js?v=91"></script>
+<script src="config.js?v=92"></script>
+<script src="server.js?v=92"></script>
+<script src="common.js?v=92"></script>
+<script src="solos.js?v=92"></script>
+<script src="games-quick.js?v=92"></script>
+<script src="games-words.js?v=92"></script>
+<script src="games-board.js?v=92"></script>
+<script src="games-world.js?v=92"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=91"></script>
-<script src="games-quiz.js?v=91"></script>
-<script src="games-mind.js?v=91"></script>
-<script src="games-pose.js?v=91"></script>
-<script src="cam-walls.js?v=91"></script>
-<script src="games-floppy.js?v=91"></script>
-<script src="games-barrel.js?v=91"></script>
-<script src="games-walls.js?v=91"></script>
-<script src="games-duel.js?v=91"></script>
-<script src="games-trails.js?v=91"></script>
-<script src="games-box.js?v=91"></script>
-<script src="games-sumo.js?v=91"></script>
-<script src="games-pond.js?v=91"></script>
-<script src="games-hockey.js?v=91"></script>
-<script src="games-paint.js?v=91"></script>
-<script src="games-cannons.js?v=91"></script>
-<script src="games-golf.js?v=91"></script>
-<script src="games-mouse.js?v=91"></script>
-<script src="games-kart.js?v=91"></script>
-<script src="games-swords.js?v=91"></script>
-<script src="games-stare.js?v=91"></script>
-<script src="games-boxing.js?v=91"></script>
-<script src="games-dodge.js?v=91"></script>
-<script src="games-parkour.js?v=91"></script>
-<script src="games-poop.js?v=91"></script>
-<script src="games-hoops.js?v=91"></script>
-<script src="games-simon.js?v=91"></script>
-<script src="games-climb.js?v=91"></script>
-<script src="chess.js?v=91"></script>
-<script src="pass.js?v=91"></script>
-<script src="character.js?v=91"></script>
-<script src="leaders.js?v=91"></script>
-<script src="app.js?v=91"></script>
+<script src="games-action.js?v=92"></script>
+<script src="games-quiz.js?v=92"></script>
+<script src="games-mind.js?v=92"></script>
+<script src="games-pose.js?v=92"></script>
+<script src="cam-walls.js?v=92"></script>
+<script src="games-floppy.js?v=92"></script>
+<script src="games-barrel.js?v=92"></script>
+<script src="games-walls.js?v=92"></script>
+<script src="games-duel.js?v=92"></script>
+<script src="games-trails.js?v=92"></script>
+<script src="games-box.js?v=92"></script>
+<script src="games-sumo.js?v=92"></script>
+<script src="games-pond.js?v=92"></script>
+<script src="games-hockey.js?v=92"></script>
+<script src="games-paint.js?v=92"></script>
+<script src="games-cannons.js?v=92"></script>
+<script src="games-golf.js?v=92"></script>
+<script src="games-mouse.js?v=92"></script>
+<script src="games-kart.js?v=92"></script>
+<script src="games-swords.js?v=92"></script>
+<script src="games-stare.js?v=92"></script>
+<script src="games-boxing.js?v=92"></script>
+<script src="games-dodge.js?v=92"></script>
+<script src="games-parkour.js?v=92"></script>
+<script src="games-poop.js?v=92"></script>
+<script src="games-hoops.js?v=92"></script>
+<script src="games-simon.js?v=92"></script>
+<script src="games-climb.js?v=92"></script>
+<script src="chess.js?v=92"></script>
+<script src="pass.js?v=92"></script>
+<script src="character.js?v=92"></script>
+<script src="leaders.js?v=92"></script>
+<script src="app.js?v=92"></script>
 </body>
 </html>

@@ -504,6 +504,12 @@ async function signUp(name, password, birth) {
   return { imported: !!old };
 }
 
+// Play without an account: the server makes up a funny name. It's kept for this tab only, so closing the tab ends it.
+async function playAsGuest() {
+  const r = await CAServer.call('ca_guest', {});
+  startSession(r.token, r.me, false);
+}
+
 async function logIn(name, password, remember) {
   const r = await CAServer.call('ca_log_in', { p_name: String(name || '').trim(), p_pass: password });
   startSession(r.token, r.me, remember);
@@ -514,7 +520,7 @@ function startSession(t, me, remember) {
   remembered = !!remember;
   ssSet(TOKEN_KEY, t);
   if (remember) lsSet(REMEMBER_KEY, t); else { lsDel(REMEMBER_KEY); lsDel(CACHE_KEY); }
-  lsSet(LAST_USER_KEY, me.name);
+  if (!me.guest) lsSet(LAST_USER_KEY, me.name);
   useAccount(me);
   startPing();
 }
@@ -530,6 +536,7 @@ function logOut() {
   lsDel(REMEMBER_KEY);
   lsDel(CACHE_KEY);
   clearInterval(pingTimer);
+  document.body.classList.remove('guest');
   voice.stop();
   token = null;
   user = null;
@@ -608,6 +615,8 @@ function applyStats(me) {
   profile.banReason = me.ban_reason || null;
   profile.test = !!me.test;              // a test account (testplayer.js plays it by itself)
   profile.testWith = me.test_with || null;
+  profile.guest = !!me.guest;            // a guest: nothing is saved, and no shop or Streak Pass
+  document.body.classList.toggle('guest', profile.guest);
 }
 
 // Fresh numbers from the server (after a game, or every minute). Streaks always come from the server.
@@ -625,7 +634,7 @@ function setStats(me) {
 function cacheOf() {
   return {
     id: profile.id, name: profile.name, adult: profile.adult, banned_until: profile.bannedUntil, ban_reason: profile.banReason,
-    test: profile.test, test_with: profile.testWith,
+    test: profile.test, test_with: profile.testWith, guest: profile.guest,
     streak: profile.streak, best: profile.best, wins: profile.wins, losses: profile.losses, draws: profile.draws,
     friendly: profile.friendly, profile: looks(profile),
   };
@@ -643,6 +652,7 @@ function save() {
   profile.savedAt = Date.now();
   writeCache();
   emitChange();
+  if (profile.guest) return; // (guests save nothing)
   // (One save to the server at most every 2 seconds, with the newest profile. Lots of changes close together, like
   // fish coming in during a game, still get saved as they come, without going over the server's limit.)
   if (!pushTimer) pushTimer = setTimeout(pushProfile, Math.max(800, 2000 - (Date.now() - lastPush)));
@@ -729,7 +739,7 @@ function applyResult(outcome) {
   if (outcome === 'win') { p.streak++; p.wins++; p.best = Math.max(p.best, p.streak); }
   else if (outcome === 'lose') { p.streak = 0; p.losses++; }
   else p.draws++;
-  const r = rewardFor(outcome, p.streak);
+  const r = p.guest ? { fish: 0, xp: 0 } : rewardFor(outcome, p.streak);
   p.fish += r.fish;
   p.xp += r.xp;
   save();
@@ -756,7 +766,7 @@ window.addEventListener('keydown', e => {
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) { typedCode = ''; return; }
   if (e.key === 'Enter') {
-    if (typedCode === SECRET_CODE && user && profile) {
+    if (typedCode === SECRET_CODE && user && profile && !profile.guest) {
       profile.xp += 1000000;
       save();
       toast('⭐ +1,000,000 XP!');
@@ -1132,6 +1142,9 @@ function render() {
   } else if (user && !voice.choice() && !routes[name].public && name !== 'perm') {
     pending = location.hash;
     name = 'perm';
+  } else if (user && profile && profile.guest && (name === 'pass' || name === 'cat')) {
+    toast('Sign up to get the Streak Pass, the shop and your own cat.');
+    name = 'menu';
   }
   if (current && current.def.leave) current.def.leave();
   closeModal();
@@ -1175,7 +1188,7 @@ window.CA = {
   restoring,
   ITEMS, ITEM, SLOTS, PASS, TIER_XP,
   catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest,
-  signUp, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
+  signUp, playAsGuest, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
   server: CAServer, deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
   register, go, render, resume, showScreen, requestLeave,
   get route() { return current ? current.name : null; },

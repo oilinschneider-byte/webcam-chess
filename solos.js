@@ -1279,7 +1279,7 @@ function startReaction(outcome, res, opts) {
   setMsg('rxTitle', outcome === 'win' ? 'You win!' : outcome === 'lose' ? 'You lost' : "It's a draw");
   let reward = '';
   if (res) {
-    reward = '🔥 ' + res.before.streak + ' → ' + res.after.streak + (res.fish ? ' · +' + res.fish + ' 🐟' : '') + ' · +' + res.xp + ' XP' +
+    reward = '🔥 ' + res.before.streak + ' → ' + res.after.streak + (res.fish ? ' · +' + res.fish + ' 🐟' : '') + (res.xp ? ' · +' + res.xp + ' XP' : '') +
       (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
   } else if (opp.glingus) {
     reward = '🤝 Friendly game: nothing is counted';
@@ -1439,6 +1439,7 @@ function showResult(outcome, reason, res, opts) {
       '<div class="bar"><i style="width:' + Math.round(into / CA.TIER_XP * 100) + '%"></i></div>' +
       (res.after.tier > res.before.tier ? '<a class="tier-up" href="#/pass">🎁 You reached tier ' + tier + '! Claim your reward</a>' : '') +
       '</div>';
+    if (CA.profile.guest) body = streakLine + '<div class="streak-change">👤 Sign up to catch fish and earn XP.</div>';
   }
   const buttons =
     mode !== 'practice' ? '<button class="btn solos-btn big" data-act="next">⚡ Next player now</button>'
