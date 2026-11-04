@@ -5,46 +5,27 @@
 
 const { $, setMsg, sound, gauss, shuffle, startTimer, stopTimer, roundMatch, L, skillOf, msOf } = CA.games.kit;
 
-const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 let detector = null;
-let loading = null;
 
 function loadDetector() {
-  if (detector) return Promise.resolve(detector);
-  if (!loading) {
-    loading = (async () => {
-      const vision = await import(CDN + '/vision_bundle.mjs');
-      const files = await vision.FilesetResolver.forVisionTasks(CDN + '/wasm');
-      const make = delegate => vision.PoseLandmarker.createFromOptions(files, {
-        baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO', numPoses: 1,
-      });
-      try { detector = await make('GPU'); } catch (e) { detector = await make('CPU'); }
-      return detector;
-    })();
-    loading.catch(err => { console.warn('Pose detector:', err); loading = null; });
-  }
-  return loading;
+  return CA.tracker.load('pose').then(d => { detector = d; return d; }); // (see games-tracker.js)
 }
 
 // Reads body points from a camera, for Pose Match and Simon Says. Each game makes its own reader(); it:
-// - only runs the detector on a new camera picture (the same picture again gives the same answer, so that's saved),
-// - gives the detector the steadily rising times it needs (the games share one detector, and a time earlier than the
-//   last one makes it throw, which used to blank the tracking for a moment),
+// - only takes a new answer from the tracker once (it works in the background, so it's usually a moment behind),
 // - smooths the points: a lot while you hold still, so they don't jitter back and forth across the edge of a pose, and
 //   hardly at all while you move, so they keep up with you.
 // read(video) → the 33 body points, or null when nobody is seen.
-let lastStamp = 0;
 function reader() {
-  let vt = -1, last = null, at = 0;
+  let seen = -1, last = null, at = 0;
   return function read(video) {
-    if (!detector || !video || video.readyState < 2) { vt = -1; last = null; return null; }
-    if (video.currentTime === vt) return last;
-    vt = video.currentTime;
+    if (!detector || !video || video.readyState < 2) { seen = -1; last = null; return null; }
+    const got = detector.look(video);
+    if (seen < 0) seen = got.n; // (an answer from before this game started isn't about you)
+    if (got.n === seen) return last;
+    seen = got.n;
     const now = performance.now();
-    const stamp = lastStamp = Math.max(now, lastStamp + 1);
-    let p = null;
-    try { const res = detector.detectForVideo(video, stamp); p = res.landmarks && res.landmarks[0]; } catch (e) { p = null; }
+    const p = got.res && got.res.landmarks && got.res.landmarks[0];
     if (!p) { last = null; return null; }
     const dt = Math.max(0.001, (now - at) / 1000);
     const prev = last && dt < 0.5 ? last : null; // (after a gap, start afresh)

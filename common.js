@@ -678,8 +678,10 @@ function emitChange() { window.dispatchEvent(new CustomEvent('ca:change')); }
 
 async function refresh() {
   if (!token) return;
+  const asked = token;
   try {
     const me = await CAServer.call('ca_me', { p_token: token });
+    if (token !== asked) return; // (logged out while waiting for the answer)
     if (!profile || Number(me.id) !== profile.id) useAccount(me);
     else setStats(me);
   } catch (err) {

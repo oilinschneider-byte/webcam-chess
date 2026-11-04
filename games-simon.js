@@ -531,7 +531,7 @@ function play(ctx) {
     if (p) drawLines(mg, p, coverMap(video.videoWidth, video.videoHeight), lineColor());
     if (!ctx.bot && now - lastSent >= (p ? SEND_MS : 500)) {
       lastSent = now;
-      ctx.send({ t: 'pts', p: p ? pack(p) : null, a: r3(tall) });
+      ctx.stream({ t: 'pts', p: p ? pack(p) : null, a: r3(tall) });
     }
   }
 

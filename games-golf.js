@@ -278,28 +278,35 @@ function snap(s) {
 
 // The bot tries angles and powers in its head and picks the putt that ends up nearest the cup (or in it). (It can't
 // know exactly when the moving bars will be where, so it guesses.)
+const THINK_MS = 3;   // (it thinks for this long at each step of the game, so the game never freezes while it does)
+const guestBot = {};  // (the test player, playing online as the guest, only has the snaps: its thoughts stay here)
 function bot(s, i, dt, api) {
   const b = s.balls[i];
-  const st = s.bs || (s.bs = {});
+  const st = s.bs || (s.bs = api.host ? {} : guestBot);
   if (b.sunk || b.vx || b.vy || b.sw > 0 || s.wait > 0) { st[i] = null; return {}; }
   const h = HOLES[s.order[s.hole]];
-  if (!st[i]) {
-    let best = null, bestD = Infinity;
-    for (let a = 0; a < Math.PI * 2; a += Math.PI / 45) {
+  if (!st[i]) st[i] = { think: { a: 0, best: null, bestD: Infinity, t: s.t } };
+  const th = st[i].think;
+  if (th) {
+    const stop = performance.now() + THINK_MS;
+    for (; th.a < Math.PI * 2 && performance.now() < stop; th.a += Math.PI / 45) {
+      const a = th.a;
       for (let p = 0.04; p <= 1.0001; p += 0.08) {
         const t = { x: b.x, y: b.y, vx: Math.cos(a) * (V_MIN + (V_MAX - V_MIN) * p), vy: Math.sin(a) * (V_MIN + (V_MAX - V_MIN) * p) };
         let d = Infinity, r = null;
-        for (let k = 0; k < 500 && (t.vx || t.vy); k++) { r = roll(h, t, 1 / 60, s.t + 1.4 + k / 60); if (r) break; }
+        for (let k = 0; k < 500 && (t.vx || t.vy); k++) { r = roll(h, t, 1 / 60, th.t + 1.4 + k / 60); if (r) break; }
         if (r === 'sunk') d = -p; // (in! the softest putt that goes in is best)
         else if (r === 'water') d = 1e4;
         else d = Math.hypot(t.x - h.cup[0], t.y - h.cup[1]);
-        if (d < bestD) { bestD = d; best = { a, p }; }
+        if (d < th.bestD) { th.bestD = d; th.best = { a, p }; }
       }
     }
+    if (th.a < Math.PI * 2) return {};
     const err = 1 - api.skill;
-    st[i] = { a: best.a + CA.games.kit.gauss(0, 0.01 + 0.06 * err), p: Math.max(0.03, Math.min(1, best.p * (1 + CA.games.kit.gauss(0, 0.03 + 0.12 * err)))), wait: 0.8 + Math.random() * 1.2 };
+    st[i] = { a: th.best.a + CA.games.kit.gauss(0, 0.01 + 0.06 * err), p: Math.max(0.03, Math.min(1, th.best.p * (1 + CA.games.kit.gauss(0, 0.03 + 0.12 * err)))), wait: 0.8 + Math.random() * 1.2 };
   }
   const plan = st[i];
+  if (th) plan.wait -= s.t - th.t; // (the time spent thinking counts)
   const out = { ax: b.x + Math.cos(plan.a) * 100, ay: b.y + Math.sin(plan.a) * 100, held: {}, hit: {} };
   plan.wait -= dt;
   if (plan.wait > 0) return out;

@@ -14,27 +14,13 @@
 'use strict';
 
 const W = 960, H = 540;
-const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-const MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
 const WIN = 2, MAX_ROUNDS = 4, ROUND = 40, SETUP_WAIT = 25, LOST_PAUSE = 0.4, LOST_RESET = 8, GRACE = 0.7;
-let detector = null, loading = null;
+let detector = null;
 let dis = null;                                   // the latest distraction: { to, k, at }
 
 function loadDetector() {
-  if (detector) return Promise.resolve(detector);
-  if (!loading) {
-    loading = (async () => {
-      const vision = await import(CDN + '/vision_bundle.mjs');
-      const files = await vision.FilesetResolver.forVisionTasks(CDN + '/wasm');
-      const make = delegate => vision.FaceLandmarker.createFromOptions(files, {
-        baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true,
-      });
-      try { detector = await make('GPU'); } catch (e) { detector = await make('CPU'); }
-      return detector;
-    })();
-    loading.catch(err => { console.warn('Face detector:', err); loading = null; });
-  }
-  return loading;
+  return CA.tracker.load('face').then(d => { detector = d; return d; }); // (see games-tracker.js)
 }
 
 CA.games.add('stare', {
@@ -58,7 +44,7 @@ CA.games.add('stare', {
     // Real blinks are quick (about a tenth of a second), so the camera is read on every new video frame (about 30 times
     // a second) and a blink counts after two closed frames in a row, or one frame of eyes squeezed fully shut.
     const BASE_THR = 0.27, MAX_THR = 0.36, ABOVE = 0.17;
-    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: BASE_THR, strong: 0.5, rdy: 0.45, closed: 0, sent: false, ph: '', rd: 0, raw: null, vt: -1, flash: 0, calm: [] };
+    const eye = { open: 1, face: false, last: 0, openSince: 0, thr: BASE_THR, strong: 0.5, rdy: 0.45, closed: 0, sent: false, ph: '', rd: 0, raw: null, seen: -1, flash: 0, calm: [] };
 
     // Reads the camera (about 15 times a second) and turns it into controls: 'face' (held while your face is
     // seen), 'ready' (held once your eyes are properly open) and 'blink' (pressed once when you blink).
@@ -86,13 +72,14 @@ CA.games.add('stare', {
         const cam = CA.voice.camera;
         if (cam && video.srcObject !== cam) { video.srcObject = cam; video.play().catch(() => {}); }
         if (detector && CA.voice.cameraOn() && video.readyState >= 2) {
-          if (video.currentTime === eye.vt) fresh = false; // (no new picture yet: keep the last reading, count nothing)
+          const got = detector.look(video);
+          if (got.n === eye.seen) fresh = false; // (no new answer yet: keep the last reading, count nothing)
           else {
-            eye.vt = video.currentTime;
+            eye.seen = got.n;
             blink = null;
             try {
-              const res = detector.detectForVideo(video, now);
-              const bs = res.faceBlendshapes && res.faceBlendshapes[0];
+              const res = got.res;
+              const bs = res && res.faceBlendshapes && res.faceBlendshapes[0];
               if (bs) {
                 const get = n => { const c = bs.categories.find(x => x.categoryName === n); return c ? c.score : 0; };
                 const l = get('eyeBlinkLeft'), r = get('eyeBlinkRight');

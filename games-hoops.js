@@ -37,8 +37,7 @@ const GREEN = 0.52, GREEN_HALF = 0.06; // the green part of the bar
 const SWAT_REACH = 46, SLAP_REACH = 84;
 const DASH_SPEED = 780, DASH_TIME = 0.17, DASH_WAIT = 0.7;
 const READY = 1.8;               // the 3-2-1 countdown
-const SEND_MS = 50;
-const VIEW_DELAY = 110;          // the other player's cat is drawn this many ms in the past, so it moves smoothly
+const SEND_MS = 33;
 
 CA.games.add('hoops', {
   name: 'Cat Hoops', icon: '🏀',
@@ -705,7 +704,7 @@ function play(ctx) {
   function onRemoteCat(s) {
     if (!s || typeof s !== 'object' || !Number.isFinite(s.x) || !Number.isFinite(s.y)) return;
     rbuf.push({
-      at: performance.now(), x: s.x, y: s.y, vx: num(s.vx, 0), vy: num(s.vy, 0), face: s.f === -1 ? -1 : 1,
+      at: ctx.netAt(), x: s.x, y: s.y, vx: num(s.vx, 0), vy: num(s.vy, 0), face: s.f === -1 ? -1 : 1,
       meter: clamp(num(s.m, -1), -1, 1), dunk: !!s.dk, hang: s.hg ? 1 : 0, stun: !!s.s, slap: !!s.w, swat: !!s.sw, dash: !!s.ds,
     });
     if (rbuf.length > 40) rbuf.shift();
@@ -714,7 +713,7 @@ function play(ctx) {
   function onSnapshot(m) {
     if (m.b && typeof m.b === 'object') {
       const b = unpackBall(m.b);
-      bbuf.push(Object.assign(b, { at: performance.now() }));
+      bbuf.push(Object.assign(b, { at: ctx.netAt() }));
       if (bbuf.length > 40) bbuf.shift();
       const k = num(m.k, 0);
       if (pred && k >= pred.id && (num(m.n, 0) > num(m.v, 0) || b.h >= 0 || b.scored)) endPred();
@@ -885,14 +884,14 @@ function play(ctx) {
   function updateViews(now) {
     if (!online) return;
     if (rbuf.length) {
-      const s = F.sample(rbuf, now - VIEW_DELAY, ['x', 'y', 'vx', 'vy'], ['meter']);
+      const s = F.sample(rbuf, now - ctx.viewDelay(SEND_MS), ['x', 'y', 'vx', 'vy'], ['meter']);
       them.rv = Object.assign(them.rv || {}, s, { i: themI, ground: Math.abs(s.y - FLOOR) < 1 });
       if (s.slap && !them.slapSeen) F.whip(them, s.face); // (their slap or swat: fling their arms here too)
       if (s.swat && !them.swatSeen) F.whip(them, s.face, -0.6);
       them.slapSeen = s.slap;
       them.swatSeen = s.swat;
     }
-    if (!host && bbuf.length) gHost = F.sample(bbuf, now - VIEW_DELAY, ['x', 'y', 'vx', 'vy', 'rot']);
+    if (!host && bbuf.length) gHost = F.sample(bbuf, now - ctx.viewDelay(SEND_MS), ['x', 'y', 'vx', 'vy', 'rot']);
   }
 
   function frame(now) {
@@ -908,7 +907,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
-    ctx.every(() => ctx.send(host
+    ctx.every(() => ctx.stream(host
       ? { t: 's', c: packCat(me), b: packBall(ball), k: ack, v: av, n: bv, sc: score, tm: r1(timeLeft), ph: phase, ev: [evN, evText, evHoop] }
       : { t: 's', c: packCat(me) }), SEND_MS);
     ctx.every(() => { if (phase !== 'over' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);

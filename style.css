@@ -371,7 +371,7 @@ a.stat-chip:hover { background: var(--surface-2); }
 .m-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .g-msg { min-height: 24px; margin: 12px 0 0; color: #dfe2ff; font-weight: 800; text-align: center; }
 .timer { width: min(420px, 100%); height: 8px; margin: 14px auto 0; overflow: hidden; border-radius: 99px; background: var(--surface-3); }
-.timer i { display: block; width: 100%; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--go), var(--warn)); }
+.timer i { display: block; width: 100%; height: 100%; transform-origin: left center; border-radius: 99px; background: linear-gradient(90deg, var(--go), var(--warn)); }
 
 .search-card {
   width: min(440px, 100%); padding: 28px 24px; border-radius: 22px; border: 1px solid var(--border);

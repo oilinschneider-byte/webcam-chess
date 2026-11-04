@@ -39,17 +39,22 @@ const camTest = q.get('mode') === 'cam';
 const wallTest = q.get('mode') === 'walls';
 const duelTest = q.get('mode') === 'duels';
 const glingusTest = q.get('mode') === 'glingus';
+const perfTest = q.get('mode') === 'perf';
+const netTest = q.get('mode') === 'net'; // (one online game, chosen with &online=, on a good and then on a bad connection)
+const withCam = camTest || !!q.get('cam');
+if (q.get('nofast') === role) window.__noFast = true;
 const DUELS = (q.get('games') || 'trails,box,sumo,pond,hockey,paint,cannons,golf,mouse,kart,swords,stare,boxing,dodge,parkour,poop').split(',');
 const DUEL_ONLINE = q.get('online') || 'sumo';
 const run = (q.get('run') || 'x').replace(/[^a-z0-9]/gi, '').slice(0, 8);
 const NAME = 'zt' + run + role;
 const PASS = 'test-pass-' + run;
-const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest;
+const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest;
 window.__introMs = 1500;   // (shorter face-to-face screens)
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
-if (wallTest || duelTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
+if (wallTest || duelTest || perfTest || netTest || camTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
+if (netTest) window.__forceGame = DUEL_ONLINE;
 if (duelTest) {
   window.__forceGame = DUEL_ONLINE;
   window.__fakeFace = { face: true, blink: 0 }; // (Staring Contest: a pretend face that never blinks)
@@ -99,11 +104,21 @@ function clickModal(text) {
   b.click();
 }
 
+// (A guest needs no password: logging out is all it takes for it to be gone.)
+async function leave() {
+  if (CA.profile && CA.profile.guest) { CA.logOut(); await sleep(800); } else await CA.deleteAccount(PASS);
+}
+
 async function main() {
   await until(() => CA.route, 15000, 'the page to load');
   if (CA.user) CA.logOut();
   if (CA.route !== 'auth') { location.hash = '#/auth'; await until(() => CA.route === 'auth', 5000, 'the sign-up page'); }
 
+  if (q.get('guest')) { // (&guest=1, for rounds that don't need an account: see -Guests in test-browsers.ps1)
+    $('guestBtn').click();
+    await until(() => CA.user, 15000, 'the guest to start');
+    await sleep(500);
+  } else {
   // Sign up through the form, like a person would.
   document.querySelector('[data-auth="signup"]').click();
   $('authUser').value = NAME;
@@ -120,12 +135,16 @@ async function main() {
   await check(adult ? 'an adult can video chat' : 'a 15-year-old plays as a cat only', CA.canVideoChat() === adult);
 
   await until(() => CA.route === 'perm', 5000, 'the camera question');
-  if (camTest) {
+  }
+  if (withCam && CA.route !== 'perm') { // (a guest goes straight to the home screen: turn the camera on from there)
+    await CA.voice.startCamera();
+    await check('the camera is on', CA.voice.cameraOn());
+  } else if (withCam) {
     $('permAllow').click();
     await until(() => !$('permContinue').classList.contains('hidden') || $('permMsg').classList.contains('error'), 15000, 'the camera to turn on');
     if ($('permMsg').classList.contains('error')) throw new Error('camera: ' + $('permMsg').textContent);
     $('permContinue').click();
-  } else {
+  } else if (CA.route === 'perm') {
     $('permSkip').click();
   }
   await until(() => CA.route === 'menu', 5000, 'the menu');
@@ -146,6 +165,8 @@ async function main() {
     await until(() => CA.route === 'menu', 5000, 'the menu');
   }
   if (wallTest) { await wallDuel(); return; }
+  if (perfTest) { await perf(); return; }
+  if (netTest) { await netRound(); return; }
   if (duelTest) { await duels(); return; }
   if (glingusTest) { await glingus(); return; }
   location.hash = '#/solos';
@@ -175,6 +196,8 @@ async function main() {
       await sleep(500);
       $('faceBtn').click();
       await until(() => shows('meVideo'), 5000, 'my own camera tile to show what they see');
+      await until(() => window.__videoCapped, 15000, 'my camera to get its limit');
+      await check('my camera has a limit, so it can\'t hold up the game', true);
       await check('after "Show my face", my tile shows my camera', true, $('faceBtn').textContent);
       await sleep(5000); // (b checks it can see me)
       await check("b didn't press it, so I still see b's cat", !shows('themVideo'));
@@ -211,7 +234,7 @@ async function main() {
 
   location.hash = '#/menu';
   await until(() => CA.route === 'menu', 5000, 'the menu');
-  await CA.deleteAccount(PASS);
+  await leave();
   await check('the test account was deleted', !CA.user);
   await log('done', true);
 }
@@ -260,7 +283,7 @@ async function glingus() {
   }
   location.hash = '#/menu';
   await until(() => CA.route === 'menu', 5000, 'the menu');
-  await CA.deleteAccount(PASS);
+  await leave();
   await check('the test account was deleted', !CA.user);
   if (role === 'b') { // the ads choice and the Privacy Policy, with an adult account
     const consents = () => window.dataLayer.filter(d => d[0] === 'consent').map(d => [d[1], d[2].ad_storage]);
@@ -321,7 +344,7 @@ async function wallDuel() {
   await wallOnline();
   location.hash = '#/menu';
   await until(() => CA.route === 'menu', 5000, 'the menu');
-  await CA.deleteAccount(PASS);
+  await leave();
   await check('the test account was deleted', !CA.user);
   await log('done', true);
 }
@@ -543,6 +566,165 @@ function mash(d) { // random controls, changing every few moments
 }
 const letGo = d => DUEL_KEYS.forEach(k => d.release(k));
 
+// How smoothly each game runs (tools/perf.ps1 shows the results): frames a second, how long the slowest frames took, how
+// much time the code takes each frame, tasks that froze the page for over 50 ms, and how big one online update is.
+async function perf() {
+  const realRaf = window.requestAnimationFrame.bind(window);
+  let cost = 0, rec = null;
+  window.requestAnimationFrame = fn => realRaf(t => { const a = performance.now(); try { fn(t); } finally { cost += performance.now() - a; } });
+  try { new PerformanceObserver(l => { if (rec) rec.long += l.getEntries().length; }).observe({ entryTypes: ['longtask'] }); } catch (e) { /* not in this browser */ }
+  const beat = t => { if (rec) { if (rec.last) { rec.gaps.push(t - rec.last); rec.js.push(cost); } rec.last = t; } cost = 0; realRaf(beat); };
+  realRaf(beat);
+  const pct = (list, p) => { const a = list.slice().sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * p))] : 0; };
+  const avg = list => list.reduce((x, y) => x + y, 0) / (list.length || 1);
+  const r1 = v => Math.round(v * 10) / 10;
+  async function sample(ms, tick) {
+    rec = { gaps: [], js: [], long: 0, last: 0 };
+    const end = performance.now() + ms;
+    while (performance.now() < end) { if (tick) tick(); await sleep(150); }
+    const r = rec;
+    rec = null;
+    return { fps: r1(1000 / (avg(r.gaps) || 1)), gap95: r1(pct(r.gaps, 0.95)), worst: r1(pct(r.gaps, 1)), js: r1(avg(r.js)), js95: r1(pct(r.js, 0.95)), long: r.long };
+  }
+  await sleep(1500);
+  await log('perf home screen', true, Object.assign(await sample(4000), { bytes: 0 }));
+  const wanted = q.get('games');
+  const ids = wanted === 'all' ? CA.games.ids() : wanted ? wanted.split(',') : ['trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'swords', 'stare', 'boxing', 'dodge', 'parkour', 'poop', 'hoops', 'barrel', 'walls', 'climb', 'snake', 'stack', 'simon'];
+  if (!withCam) window.__fakeFace = { face: true, blink: 0 };
+  for (const id of ids) {
+    if (!CA.games.ids().includes(id)) { await check(id + ' is a game', false); continue; }
+    location.hash = '#/menu';
+    await until(() => CA.route === 'menu', 8000, 'the menu');
+    window.__duel = null;
+    location.hash = '#/practice?game=' + id;
+    await until(() => CA.route === 'practice' || CA.route === 'solos', 8000, id);
+    await until(() => $('stage').children.length && !$('stage').querySelector('.stage-wait'), 20000, id + ' to start');
+    await sleep(3500);
+    const d = window.__duel;
+    const stats = await sample(7000, d ? () => { if (d.phase() === 'play') mash(d); } : null);
+    if (d) letGo(d);
+    stats.bytes = d && d.snapBytes ? d.snapBytes() : 0;
+    await log('perf ' + id, true, stats);
+    if (!$('caModal').classList.contains('hidden')) clickModal('Leave');
+  }
+  await sleep(500);
+  location.hash = '#/menu';
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await sleep(1500);
+  await log('perf home, after', true, Object.assign(await sample(4000), { bytes: 0 }));
+  // The body tracker: how long it holds up the page each time it looks at a camera picture.
+  if (!wanted || wanted.includes('tracker')) {
+    try {
+      const P = CA.games.pose;
+      const loaded = sample(5000);
+      const det = await P.loadDetector();
+      await loaded.then(st => log('perf tracker load', true, Object.assign(st, { bytes: 0 })));
+      await log('body tracker runs in a background thread', det.inWorker, det.inWorker);
+      const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      const v = document.createElement('video');
+      v.muted = true;
+      v.srcObject = cam;
+      await v.play();
+      const read = P.reader(), times = [];
+      for (let k = 0; k < 40; k++) {
+        await sleep(50);
+        const a = performance.now();
+        read(v);
+        times.push(performance.now() - a);
+      }
+      cam.getTracks().forEach(t => t.stop());
+      await log('body tracker, ms per look', true, { first: r1(times[0]), usual: r1(pct(times.slice(5), 0.5)), slow: r1(pct(times.slice(5), 0.95)) });
+      // And does it still find a real person, and their face? (the clip has someone in it)
+      const clip = document.createElement('video');
+      clip.muted = true;
+      clip.loop = true;
+      clip.src = 'glingus.mp4';
+      await clip.play();
+      const read2 = P.reader();
+      let body = null;
+      for (let k = 0; k < 150 && !body; k++) { await sleep(100); body = read2(clip); }
+      await check('the body tracker finds the person in a video', !!body, body ? { nose: [r1(body[0].x * 100), r1(body[0].y * 100)], seen: r1(body[0].visibility * 100) } : null);
+      const face = await CA.tracker.load('face');
+      let eyes = null, seenN = -1;
+      for (let k = 0; k < 150 && !eyes; k++) {
+        await sleep(100);
+        const got = face.look(clip);
+        if (got.n === seenN) continue;
+        seenN = got.n;
+        const bs = got.res && got.res.faceBlendshapes && got.res.faceBlendshapes[0];
+        if (bs && bs.categories.length) eyes = bs.categories.map(c => [c.categoryName, r1(c.score * 100)]);
+      }
+      await check('the face tracker reads the eyes of the person in a video', !!eyes, { eyes, inWorker: face.inWorker });
+      clip.pause();
+    } catch (e) { await log('body tracker', false, String(e)); }
+  }
+  location.hash = '#/menu';
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
+}
+
+// One online game, on a good connection and then on a bad one: everything has to keep arriving, without a single error.
+async function netRound() {
+  location.hash = '#/solos';
+  await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
+  clickModal('find a match');
+  await until(() => seen.match, 90000, 'the server to pair the two browsers');
+  await until(() => $('vs').classList.contains('hidden') && $('stage').children.length && !$('stage').querySelector('.stage-wait'), 40000, 'the game to start');
+  if (role === 'a') await videoLimit();
+  await sleep(6000);
+  const noFast = !!q.get('nofast');
+  const a = window.__net();
+  if (noFast) await check(DUEL_ONLINE + ': with no fast lane, it uses the normal connection', !a.fast && a.got > 5, a);
+  else await check(DUEL_ONLINE + ': updates take the fast lane', a.fast && a.got > 5, a);
+  await sleep(3000);
+  const b = window.__net();
+  await check(DUEL_ONLINE + ': updates keep coming', b.got > a.got, b);
+  // (Only some players use this: not the host of an arcade duel, who runs the game, and not in Pond Duel or Shadow Boxing, where
+  // each app runs its own half. Paint Wars sends its big updates less often, so it stays about the same.)
+  if (!noFast && b.used && DUEL_ONLINE !== 'paint') await check(DUEL_ONLINE + ': the other player is drawn less far in the past than before (100 ms), now ' + b.delay + ' ms', b.delay < 100, b);
+  if (!noFast && !q.get('nochaos')) {
+    window.__netChaos = { drop: 0.1, late: 70 };
+    await sleep(5000);
+    window.__netChaos = null;
+    const c = window.__net();
+    await check(DUEL_ONLINE + ': on a bad connection, updates keep coming', c.got > b.got, c);
+    if (b.used) await check(DUEL_ONLINE + ': on a bad connection, it draws further in the past to stay smooth, now ' + c.delay + ' ms', c.delay > b.delay, { before: b.delay, after: c.delay });
+  }
+  await sleep(1000);
+  await check(DUEL_ONLINE + ': the game is still going', !$('stage').querySelector('.result'), $('scGame').textContent);
+  if (role === 'b') await sleep(6000); // (a got here later: it stopped to check the camera limit, and b leaving ends a's game)
+  if ($('skipBtn') && !$('skipBtn').closest('.hidden')) { $('skipBtn').click(); try { clickModal('Skip'); } catch (e) { /* no question this time */ } }
+  await sleep(1500);
+  location.hash = '#/menu';
+  await sleep(1000);
+  if (!$('caModal').classList.contains('hidden')) { $('caModalBtns').querySelector('button:last-child').click(); await sleep(800); }
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
+}
+
+// The limit on the camera, on a connection from this page to itself. (A real one needs two adult accounts: see round 2.)
+async function videoLimit() {
+  const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+  const one = new RTCPeerConnection(), two = new RTCPeerConnection();
+  one.onicecandidate = e => { if (e.candidate) two.addIceCandidate(e.candidate); };
+  two.onicecandidate = e => { if (e.candidate) one.addIceCandidate(e.candidate); };
+  cam.getTracks().forEach(t => one.addTrack(t, cam));
+  await one.setLocalDescription(await one.createOffer());
+  await two.setRemoteDescription(one.localDescription);
+  await two.setLocalDescription(await two.createAnswer());
+  await one.setRemoteDescription(two.localDescription);
+  CA.capVideo({ peerConnection: one });
+  const sender = one.getSenders().find(s => s.track && s.track.kind === 'video');
+  const on = () => { const e = sender.getParameters().encodings; return e && e[0] && e[0].maxBitrate === 700000 && e[0].maxFramerate === 24; };
+  await until(on, 10000, 'the camera limit');
+  await check('the camera gets its limit once it is connected', true, sender.getParameters().encodings[0].maxBitrate);
+  one.close();
+  two.close();
+  cam.getTracks().forEach(t => t.stop());
+}
+
 async function duels() {
   if (role === 'a') {
     for (const id of DUELS) {
@@ -553,7 +735,7 @@ async function duels() {
   await duelOnline();
   location.hash = '#/menu';
   await until(() => CA.route === 'menu', 5000, 'the menu');
-  await CA.deleteAccount(PASS);
+  await leave();
   await check('the test account was deleted', !CA.user);
   await log('done', true);
 }
@@ -593,6 +775,19 @@ async function duelOnline() {
   const host = d.api.host;
   const t0 = Date.now();
   while (Date.now() - t0 < 6000 && d.phase() === 'play') { mash(d); await sleep(150); }
+  const n = window.__net();
+  await check('online: updates take the fast lane', n.fast, n);
+  if (n.used) await check('online: the game is drawn less far in the past than before (100 ms), now ' + n.delay + ' ms', n.delay < 100, n);
+  if (d.phase() === 'play') { // a bad connection: some updates get lost, the rest come late and out of order
+    const before = d.snaps();
+    window.__netChaos = { drop: 0.1, late: 70 };
+    const t1 = Date.now();
+    while (Date.now() - t1 < 5000 && d.phase() === 'play') { mash(d); await sleep(150); }
+    window.__netChaos = null;
+    const bad = window.__net();
+    await check('online, on a bad connection: the game keeps going', d.api.host ? !!d.guestInput() : d.snaps() >= Math.min(before, 20), { snaps: d.snaps(), net: bad });
+    if (d.phase() === 'play' && n.used) await check('online, on a bad connection: it draws further in the past to stay smooth, now ' + bad.delay + ' ms', bad.delay > n.delay, { before: n, after: bad });
+  }
   letGo(d);
   const st = d.state();
   if (st && st.mine) await check('online (' + DUEL_ONLINE + '): the other player\'s half of the game arrives', !!st.theirs, st.theirs);

@@ -47,8 +47,7 @@ const TEAM = [
   { main: '#2f7bff', light: '#a9cbff', dark: '#163f99' }, // the host: blue
   { main: '#ff8a1f', light: '#ffd0a1', dark: '#9a4700' }, // the guest: orange
 ];
-const SEND_MS = 50;
-const VIEW_DELAY = 110;          // the other player's cat is drawn this many ms in the past, so it moves smoothly
+const SEND_MS = 33;
 const HELP = 'WASD move · mouse aim · click or hold to shoot · Space build · enemy walls hurt · shoot the DOTS when they flash open (only dots break) · pick up crates · stay in the zone';
 const HELP_TOUCH = 'Stick moves · Shoot aims at the other cat · Build drops a dot · enemy walls hurt · shoot the DOTS when they flash open (only dots break) · pick up crates · stay in the zone';
 
@@ -676,7 +675,7 @@ function play(ctx) {
     const s = m.c;
     if (!s || typeof s !== 'object' || !Number.isFinite(s.x) || !Number.isFinite(s.y)) return;
     rbuf.push({
-      at: performance.now(), x: clamp(s.x, 0, W), y: clamp(s.y, 0, H), vx: clamp(num(s.vx, 0), -600, 600), vy: clamp(num(s.vy, 0), -600, 600),
+      at: ctx.netAt(), x: clamp(s.x, 0, W), y: clamp(s.y, 0, H), vx: clamp(num(s.vx, 0), -600, 600), vy: clamp(num(s.vy, 0), -600, 600),
       ax: clamp(num(s.ax, 1), -1, 1), ay: clamp(num(s.ay, 0), -1, 1), hurt: !!s.h,
     });
     if (rbuf.length > 40) rbuf.shift();
@@ -698,14 +697,14 @@ function play(ctx) {
     them.dead = true;
     them.shield = false;
     them.why = ['wall', 'zone'].includes(why) ? why : 'shot';
-    ctx.later(() => koFx(them, them.why), VIEW_DELAY);
+    ctx.later(() => koFx(them, them.why), ctx.viewDelay(SEND_MS));
   }
 
   // The other app says its cat's shield broke.
   function remoteHurt() {
     if (!them.shield || them.dead) return;
     them.shield = false;
-    ctx.later(() => shieldFx(them), VIEW_DELAY);
+    ctx.later(() => shieldFx(them), ctx.viewDelay(SEND_MS));
   }
 
   function onDot(m) {
@@ -982,7 +981,7 @@ function play(ctx) {
 
   function updateViews(now) {
     if (!online || !rbuf.length) return;
-    them.rv = Object.assign(them.rv || {}, F.sample(rbuf, now - VIEW_DELAY, ['x', 'y', 'vx', 'vy', 'ax', 'ay']));
+    them.rv = Object.assign(them.rv || {}, F.sample(rbuf, now - ctx.viewDelay(SEND_MS), ['x', 'y', 'vx', 'vy', 'ax', 'ay']));
   }
 
   function frame(now) {
@@ -998,7 +997,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
-    ctx.every(() => ctx.send(host ? { t: 's', c: packCat(me), T: r3(t) } : { t: 's', c: packCat(me) }), SEND_MS);
+    ctx.every(() => ctx.stream(host ? { t: 's', c: packCat(me), T: r3(t) } : { t: 's', c: packCat(me) }), SEND_MS);
     ctx.every(() => { if (host) ctx.send({ t: 'pk', l: picks.map(p => [p.id, Math.round(p.x), Math.round(p.y), p.type]) }); }, 300);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }

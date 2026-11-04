@@ -9,7 +9,8 @@ const playRoot = document.getElementById('scr-play');
 const practiceRoot = document.getElementById('scr-practice');
 const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('#' + id);
 
-const PROTOCOL = 38;              // bump when the games or the match flow change, so old and new versions don't meet
+const VIDEO_BPS = 700000, VIDEO_FPS = 24; // (the most your camera sends the other player: see capVideo)
+const PROTOCOL = 39;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
 const BASE_ICE = (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) || [];
@@ -150,27 +151,28 @@ function esc(s) { return CA.esc(s); }
 function sound(kind) { CA.sound(kind); }
 function practiceLevel() { try { return localStorage.getItem('camarcade-practice-level') || 'medium'; } catch (e) { return 'medium'; } }
 
+// (The bar shrinks with a transform, not its width: changing a width makes the browser lay out the page again on every frame.)
 function startTimer(id, ms) {
   const bar = $(id);
   if (!bar) return;
   bar.style.transition = 'none';
-  bar.style.width = '100%';
+  bar.style.transform = 'scaleX(1)';
   bar.getBoundingClientRect();
-  bar.style.transition = 'width ' + ms + 'ms linear';
-  bar.style.width = '0%';
+  bar.style.transition = 'transform ' + ms + 'ms linear';
+  bar.style.transform = 'scaleX(0)';
 }
 function stopTimer(id) {
   const bar = $(id);
   if (!bar) return;
-  const w = bar.getBoundingClientRect().width;
+  const k = bar.getBoundingClientRect().width / (bar.parentElement.getBoundingClientRect().width || 1);
   bar.style.transition = 'none';
-  bar.style.width = w + 'px';
+  bar.style.transform = 'scaleX(' + k + ')';
 }
 function resetTimer(id) {
   const bar = $(id);
   if (!bar) return;
   bar.style.transition = 'none';
-  bar.style.width = '100%';
+  bar.style.transform = 'scaleX(1)';
 }
 
 /* ================= THE MINI-GAMES ================= */
@@ -1118,6 +1120,11 @@ function makeCtx(gameId, seed, extra) {
     started: false,
     alive: () => !!match && match.ctx === ctx && !match.over,
     send(msg) { if (opp && !opp.bot) send({ t: 'g', m: msg }); },
+    // For updates where only the newest one matters, many times a second, like "here's where everything is": the fast
+    // lane (see below). They can get lost, so each one has to say everything, not just what changed since the last one.
+    stream(msg) { if (opp && !opp.bot) sendFast({ t: 'g', m: msg }); },
+    netAt,       // when the update being handled would have arrived with no hold-ups on the way (use it to time smoothing)
+    viewDelay,   // how many ms in the past to draw what the other player sends every sendMs, so it moves smoothly
     on(fn) { handlers.push(fn); },
     deliver(msg) {
       if (!ctx.alive()) return;
@@ -2031,12 +2038,99 @@ function commit(c, asHost, card, game, seed) {
   muteThem = false;
   hideThem = false;
   lastSeen = Date.now();
+  openFast(c);
   startHeartbeat();
   startTalking();
   callOpponent();
   sendMediaState(); // the camera may have finished starting while we were matching
   sound('found');
   beginMatch(game, seed);
+}
+
+/* The fast lane. PeerJS's connection delivers everything, in order: one lost packet holds up everything behind it until
+   it's been sent again, and that's a lag spike. Updates like "here's where everything is" don't need that, because the
+   next one makes the last one out of date. So they go on a second channel of the same connection, which never resends
+   and never waits. Anything that must arrive (game events, results, rematches) stays on the normal connection.
+   Each update carries a number and the time it was sent (q and s: see onNet). From those, this app works out how uneven
+   the connection is right now, and draws the other player only as far in the past as that needs (see viewDelay). */
+const FAST_ID = 73;     // (both apps make the channel themselves with this number, so there's nothing to agree on first)
+const FAST_MAX = 16000; // (bigger updates take the normal connection: if one piece of a big message is lost, all of it is)
+let fast = null, fastOk = false, fastSeq = 0, fastSeen = Object.create(null);
+const net = { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0 };
+
+function openFast(c) {
+  fast = null;
+  fastOk = false;
+  fastSeq = 0;
+  fastSeen = Object.create(null);
+  Object.assign(net, { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0 });
+  if (window.__testHooks) window.__net = () => ({ fast: fastOk, jitter: Math.round(net.jitter), delay: Math.round(net.delay), lossy: performance.now() - net.lossAt < 5000, got: net.got, used: net.delayAt > 0 });
+  if (window.__noFast) return; // (the tests can check that everything still works on the normal connection)
+  let d;
+  try { d = c.peerConnection.createDataChannel('fast', { negotiated: true, id: FAST_ID, ordered: false, maxRetransmits: 0 }); } catch (e) { return; }
+  fast = d;
+  d.onmessage = e => {
+    if (fast !== d || typeof e.data !== 'string' || e.data.length > FAST_MAX * 2) return;
+    if (!fastOk) { fastOk = true; try { d.send('{"t":"ping"}'); } catch (err) { /* ignore */ } } // (now they can use it too)
+    let msg;
+    try { msg = JSON.parse(e.data); } catch (err) { return; }
+    const chaos = window.__netChaos; // (the tests can make the connection bad)
+    if (chaos) {
+      if (Math.random() < chaos.drop) return;
+      setTimeout(() => { if (fast === d) onNet(msg); }, Math.random() * chaos.late);
+      return;
+    }
+    onNet(msg);
+  };
+  // Until we've heard from them on it, the updates take the normal connection: the channel may not be there yet on their side.
+  const hello = setInterval(() => {
+    if (fast !== d || fastOk || d.readyState === 'closed') { clearInterval(hello); return; }
+    if (d.readyState === 'open') { try { d.send('{"t":"ping"}'); } catch (e) { /* ignore */ } }
+  }, 150);
+}
+
+function sendFast(msg) {
+  msg.q = ++fastSeq;
+  msg.s = Math.round(performance.now());
+  if (fast && fastOk && fast.readyState === 'open') {
+    const text = JSON.stringify(msg);
+    if (text.length <= FAST_MAX) {
+      if (fast.bufferedAmount < FAST_MAX * 4) { // (the connection can't keep up: skip this one, the next will be newer anyway)
+        try { fast.send(text); } catch (e) { fastOk = false; }
+      }
+      return;
+    }
+  }
+  send(msg);
+}
+
+// An update has come in: how late was it?
+function noteUpdate(q, s) {
+  const now = performance.now(), d = now - s; // (the time on the way, plus however far apart the two apps' clocks are)
+  // The quickest one is the best guess of an update with no hold-ups; it creeps up slowly in case the route got longer.
+  net.base = net.base === null ? d : Math.min(d, net.base + (now - net.seenAt) * 0.01);
+  const late = Math.max(0, d - net.base);
+  // How late they tend to be: goes up fast (but one odd one only moves it a bit), and comes down over a few seconds.
+  net.jitter = late > net.jitter ? net.jitter + (late - net.jitter) * 0.25 : net.jitter * Math.pow(0.5, (now - net.seenAt) / 3000);
+  net.seenAt = now;
+  net.at = s + net.base;
+  if (q > net.lastQ + 1) net.lossAt = now;
+  net.lastQ = Math.max(q, net.lastQ);
+  net.got++;
+}
+
+function netAt() { return net.base === null ? performance.now() : net.at; }
+
+// Drawing the other player in the past gives the next update time to arrive. It only needs the time between updates, plus
+// however late they tend to be (and one more update if some are getting lost). It changes gradually so nothing visibly jumps.
+function viewDelay(sendMs) {
+  const now = performance.now();
+  const lossy = now - net.lossAt < 5000;
+  const want = Math.min(350, sendMs * (lossy ? 2.2 : 1.4) + net.jitter * 1.5 + 6);
+  const dt = Math.min(0.1, (now - net.delayAt) / 1000);
+  net.delayAt = now;
+  net.delay = want > net.delay ? Math.min(want, net.delay + 400 * dt) : Math.max(want, net.delay - 40 * dt);
+  return net.delay;
 }
 
 function sendMediaState() { send({ t: 'media', mic: canShare() && CA.voice.micOn(), face: sendingVideo(), cam: CA.voice.cameraOn() }); }
@@ -2050,6 +2144,12 @@ function send(msg) {
 function onNet(msg) {
   lastSeen = Date.now();
   if (!msg || typeof msg !== 'object') return;
+  if (Number.isFinite(msg.q) && Number.isFinite(msg.s)) { // (an update from sendFast: a newer one of the same kind may have overtaken it)
+    const kind = msg.t === 'g' && msg.m ? 'g' + msg.m.t : msg.t;
+    if (msg.q <= (fastSeen[kind] || 0)) return;
+    fastSeen[kind] = msg.q;
+    noteUpdate(msg.q, msg.s);
+  }
   switch (msg.t) {
     case 'ping':
       return;
@@ -2104,10 +2204,10 @@ function startTalking() {
   talkOff = CA.voice.onLevel(v => {
     const q = Math.round(v * 10) / 10;
     const now = performance.now();
-    if (q === lastTalk || (now - lastTalkAt < 70 && q !== 0)) return;
+    if ((q === lastTalk && now - lastTalkAt < 500) || (now - lastTalkAt < 70 && q !== 0)) return; // (said again now and then: an update can get lost)
     lastTalk = q;
     lastTalkAt = now;
-    send({ t: 'talk', v: q });
+    sendFast({ t: 'talk', v: q });
   });
 }
 
@@ -2244,9 +2344,31 @@ function callOpponent() {
   const call = peer.call(conn.peer, stream);
   if (!call) return;
   outCall = call;
+  capVideo(call);
   call.on('close', () => { if (outCall === call) outCall = null; });
   call.on('error', err => console.warn('Outgoing call error:', err));
 }
+
+// Home internet is often slow going up. Video that takes all of it would hold up the game's own messages, so it gets a limit.
+function capVideo(call) {
+  const pc = call.peerConnection;
+  if (!pc) return;
+  const cap = () => {
+    if (pc.connectionState !== 'connected') return;
+    pc.getSenders().forEach(s => {
+      if (!s.track || s.track.kind !== 'video') return;
+      const params = s.getParameters();
+      if (!params.encodings || !params.encodings.length) return;
+      params.encodings[0].maxBitrate = VIDEO_BPS;
+      params.encodings[0].maxFramerate = VIDEO_FPS;
+      s.setParameters(params).then(() => { if (window.__testHooks) window.__videoCapped = true; }, () => {});
+    });
+  };
+  pc.addEventListener('connectionstatechange', cap);
+  cap();
+}
+
+CA.capVideo = capVideo; // (for the tests)
 
 function onIncomingCall(call) {
   // (Under 18, or a cats-only match: their voice and camera are never taken in, whatever their browser sends.)

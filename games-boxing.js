@@ -44,15 +44,17 @@ CA.games.add('boxing', {
       CA.games.pose.loadDetector().then(d => { detector = d; status = 'ready'; }, () => { status = 'failed'; });
     }
     // Your fists, as the camera sees them: [{ x, y, k: 'l' or 'r' }], in the mirrored picture (0 to 1).
-    let fists = [], lastLook = 0;
+    let fists = [], lastLook = 0, lastAnswer = -1;
     function look(now) {
       if (!detector || !CA.voice.cameraOn()) { fists = []; return; }
       const cam = CA.voice.camera;
       if (cam && video.srcObject !== cam) { video.srcObject = cam; video.play().catch(() => {}); }
       if (now - lastLook < 33 || video.readyState < 2) return;
       lastLook = now;
-      let p = null;
-      try { const res = detector.detectForVideo(video, now); p = res.landmarks && res.landmarks[0]; } catch (e) { p = null; }
+      const got = detector.look(video); // (see games-tracker.js)
+      if (got.n === lastAnswer) return;
+      lastAnswer = got.n;
+      const p = got.res && got.res.landmarks && got.res.landmarks[0];
       if (!p) { fists = []; return; }
       // each fist: the middle of the wrist, the knuckles and the thumb that the camera can see
       fists = [[[15, 17, 19, 21], 'l'], [[16, 18, 20, 22], 'r']].map(([pts, k]) => {

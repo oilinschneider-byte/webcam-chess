@@ -39,8 +39,7 @@ const LIVES = 3;
 const HOME = [200, W - 200];     // where the cats start (cat 0 is the host's, on the left)
 const CRACK = 1.3;               // seconds a tile shakes before it falls
 const READY = 1.8;               // the 3-2-1 countdown
-const SEND_MS = 50;
-const VIEW_DELAY = 110;          // the other player's cat is drawn this many ms in the past, so it moves smoothly
+const SEND_MS = 33;
 const BANNERS = {
   crack: '⚠️ The lava is creeping in from the sides!', quake: '💥 EARTHQUAKE!', last: '🌋 The ground holds… for now!', fewer: '🌋 The lava creeps in a little more!',
 };
@@ -637,7 +636,7 @@ function play(ctx) {
   function onRemoteCat(s) {
     if (!s || typeof s !== 'object' || !Number.isFinite(s.x) || !Number.isFinite(s.y)) return;
     rbuf.push({
-      at: performance.now(), x: s.x, y: s.y, vx: num(s.vx, 0), vy: num(s.vy, 0), face: s.f === -1 ? -1 : 1,
+      at: ctx.netAt(), x: s.x, y: s.y, vx: num(s.vx, 0), vy: num(s.vy, 0), face: s.f === -1 ? -1 : 1,
       power: clamp(num(s.pw, -1), -1, 1), toss: clamp(num(s.ts, -1), -1, TOP), hold: !!s.h, stun: !!s.s, inv: !!s.i,
       respawn: !!s.r, out: !!s.o, chute: !!s.p, slap: !!s.w, dash: !!s.ds,
     });
@@ -657,7 +656,7 @@ function play(ctx) {
       ctx.later(() => { // (when it shows on this screen)
         const v = vw(them);
         if (fell) { splash(v.x, 22); pop(v.x, LAVA - 50, 'SPLASH!', '#ffb43c'); } else bonk(v.x, v.y - HH + 10);
-      }, VIEW_DELAY);
+      }, ctx.viewDelay(SEND_MS));
     }
   }
 
@@ -665,8 +664,8 @@ function play(ctx) {
     if (m.b && typeof m.b === 'object') {
       const b = unpackBarrel(m.b);
       const last = bbuf[bbuf.length - 1];
-      if (b.lava && last && !last.lava && !pred) ctx.later(() => splash(b.x, 12), VIEW_DELAY); // (the host's barrel fell in the lava)
-      bbuf.push(Object.assign(b, { at: performance.now() }));
+      if (b.lava && last && !last.lava && !pred) ctx.later(() => splash(b.x, 12), ctx.viewDelay(SEND_MS)); // (the host's barrel fell in the lava)
+      bbuf.push(Object.assign(b, { at: ctx.netAt() }));
       if (bbuf.length > 40) bbuf.shift();
       const k = num(m.k, 0);
       if (pred && k >= pred.id && (num(m.n, 0) > num(m.v, 0) || pred.rest > 0.25 || b.h >= 0)) endPred();
@@ -921,12 +920,12 @@ function play(ctx) {
   function updateViews(now) {
     if (!online) return;
     if (rbuf.length) {
-      const s = F.sample(rbuf, now - VIEW_DELAY, ['x', 'y', 'vx', 'vy'], ['power', 'toss']);
+      const s = F.sample(rbuf, now - ctx.viewDelay(SEND_MS), ['x', 'y', 'vx', 'vy'], ['power', 'toss']);
       them.rv = Object.assign(them.rv || {}, s, { i: themI, ground: Math.abs(s.y - GY) < 1 });
       if (s.slap && !them.slapSeen) F.whip(them, s.face); // (their slap: fling their arms here too)
       them.slapSeen = s.slap;
     }
-    if (!host && bbuf.length) gHost = F.sample(bbuf, now - VIEW_DELAY, ['x', 'y', 'vx', 'vy', 'rot']);
+    if (!host && bbuf.length) gHost = F.sample(bbuf, now - ctx.viewDelay(SEND_MS), ['x', 'y', 'vx', 'vy', 'rot']);
   }
 
   function frame(now) {
@@ -942,7 +941,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
-    ctx.every(() => ctx.send(host
+    ctx.every(() => ctx.stream(host
       ? { t: 's', c: packCat(me), b: packBarrel(barrel), g: tiles.join(''), k: ack, v: av, n: bv, bn: bannerN, bt: bannerKey, cr: crates.map(c => [c.id, Math.round(c.x), c.type]) }
       : { t: 's', c: packCat(me) }), SEND_MS);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);

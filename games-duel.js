@@ -4,7 +4,7 @@
 
    There are two kinds of game:
    - 'host' (most of them): the host's app runs the whole game from both players' controls, 60 times a second, and
-     sends what happened to the guest's app 20 times a second. The guest's app sends its controls and draws what the
+     sends what happened to the guest's app 30 times a second. The guest's app sends its controls and draws what the
      host sends, smoothed out. So both always agree on collisions, goals and who won.
    - 'own' (Pond Duel and Boxing): each app runs its own player's half, so it reacts instantly, and sends it to
      the other app. The host's app is the referee: it decides when the game is over and who won.
@@ -42,9 +42,8 @@ const r2 = v => Math.round(v * 100) / 100;
 
 const READY = 1.8;         // the 3-2-1
 const DT = 1 / 60;         // the game runs in fixed steps of this many seconds
-const SEND_MS = 50;        // the host sends what happened this often
+const SEND_MS = 33;        // the host sends what happened this often
 const INPUT_MS = 33;       // the guest sends its controls this often
-const VIEW_DELAY = 100;    // the guest draws the game this many ms in the past, so it moves smoothly
 const TEAM = [
   { main: '#2f7bff', light: '#a9cbff', dark: '#163f99' }, // the host (and you, against a bot): blue
   { main: '#ff8a1f', light: '#ffd0a1', dark: '#9a4700' }, // the guest: orange
@@ -155,8 +154,13 @@ function run(ctx, def) {
       const now = performance.now();
       if (now - lastTap[k] < 280) { bump(k === 'l' ? 'dl' : 'dr'); lastTap[k] = -1e9; } else lastTap[k] = now;
     }
+    sendInput();
   }
-  const release = k => { held[k] = false; };
+  const release = k => { held[k] = false; sendInput(); };
+  // (guest) A press goes to the host right away, not when the next regular update is due.
+  function sendInput() {
+    if (online && !host && !own && !auto) ctx.stream({ t: 'i', i: readInput() });
+  }
   ctx.listen(document, 'keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = KEYS[e.code] || LETTERS[(e.key || '').toLowerCase()];
@@ -348,21 +352,12 @@ function run(ctx, def) {
   /* ---------- online ---------- */
 
   const sbuf = [];                    // (guest) the host's recent snaps
-  // (guest) How far the host's game clock (in ms) is ahead of this computer's. Each snap says when the host made it, so
-  // it can be shown when it happened, not when it arrived: a snap held up on the way and then two arriving together
-  // still play back evenly. The quickest snap is the best guess; it creeps down slowly in case the delay grew.
-  let hostAhead = null, lastSnapAt = 0;
   ctx.on(m => {
     if (!m || typeof m !== 'object') return;
     lastMsg = performance.now();
     if (m.t === 's' && !host && !own) {
-      const at = performance.now(), hT = Number.isFinite(m.T) ? m.T * 1000 : NaN;
-      if (Number.isFinite(hT)) {
-        const ahead = hT - at;
-        hostAhead = hostAhead === null ? ahead : Math.max(ahead, hostAhead - (at - lastSnapAt) * 0.01);
-        lastSnapAt = at;
-      }
-      sbuf.push({ at, hT, g: m.g });
+      // (It's shown by when it was sent, not when it arrived: a snap held up on the way, then two arriving together, still play back evenly.)
+      sbuf.push({ at: ctx.netAt(), g: m.g });
       if (sbuf.length > 30) sbuf.shift();
       clock(m.T);
       if (Array.isArray(m.sc)) { score = [num(m.sc[0], 0), num(m.sc[1], 0)]; ctx.score(score[meI], score[themI]); }
@@ -376,7 +371,7 @@ function run(ctx, def) {
       def.onMsg(mine, m.m, api.mine);
     } else if (m.t === 'e' && !host && m.e && typeof m.e === 'object') {
       const e = m.e;
-      ctx.later(() => runEvent(e), own ? 0 : VIEW_DELAY);
+      ctx.later(() => runEvent(e), own ? 0 : ctx.viewDelay(def.sendMs || SEND_MS));
     } else if (m.t === 'end' && !host && [-1, 0, 1].includes(m.w)) {
       endGame(m.w, typeof m.x === 'string' ? m.x.slice(0, 20) : '');
     }
@@ -387,17 +382,15 @@ function run(ctx, def) {
     off = off === null ? d : Math.max(off, d); // (messages arrive a little late, never early: the biggest is the closest)
   }
 
-  // (guest) the game as it was VIEW_DELAY ms ago, smoothed between two snaps
+  // (guest) the game a moment ago (see viewDelay in solos.js), smoothed between two snaps
   function guestView(now) {
     if (!sbuf.length) return null;
-    const byHost = hostAhead !== null && Number.isFinite(sbuf[0].hT); // (by the host's clock: see hostAhead)
-    const when = byHost ? (sn => sn.hT) : (sn => sn.at);
-    const rt = byHost ? now + hostAhead - VIEW_DELAY : now - VIEW_DELAY;
+    const rt = now - ctx.viewDelay(def.sendMs || SEND_MS);
     let k = sbuf.length - 1;
-    while (k > 0 && when(sbuf[k]) > rt) k--;
+    while (k > 0 && sbuf[k].at > rt) k--;
     const a = sbuf[k], b = sbuf[k + 1];
     if (!b) return a.g;
-    const f = clamp((rt - when(a)) / Math.max(1, when(b) - when(a)), 0, 1);
+    const f = clamp((rt - a.at) / Math.max(1, b.at - a.at), 0, 1);
     return def.lerp ? def.lerp(a.g, b.g, f) : deepLerp(a.g, b.g, f, def.angles, def.jump || 80);
   }
 
@@ -552,9 +545,9 @@ function run(ctx, def) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) advance(now, 1.5); }, 250);
   if (online) {
-    if (own) ctx.every(() => ctx.send({ t: 'o', p: def.snapMine(mine), T: host ? Math.round(simT * 1000) / 1000 : undefined, sc: host ? score : undefined }), def.sendMs || SEND_MS);
-    else if (host) ctx.every(() => { if (S) ctx.send({ t: 's', g: def.snap(S), T: Math.round(simT * 1000) / 1000, sc: score }); }, def.sendMs || SEND_MS);
-    else ctx.every(() => ctx.send({ t: 'i', i: auto ? autoRaw() : readInput() }), INPUT_MS);
+    if (own) ctx.every(() => ctx.stream({ t: 'o', p: def.snapMine(mine), T: host ? Math.round(simT * 1000) / 1000 : undefined, sc: host ? score : undefined }), def.sendMs || SEND_MS);
+    else if (host) ctx.every(() => { if (S) ctx.stream({ t: 's', g: def.snap(S), T: Math.round(simT * 1000) / 1000, sc: score }); }, def.sendMs || SEND_MS);
+    else ctx.every(() => ctx.stream({ t: 'i', i: auto ? autoRaw() : readInput() }), INPUT_MS);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
@@ -564,6 +557,7 @@ function run(ctx, def) {
       id: def.id, api, view, held, count, aim, press, release, phase: () => phase, winner: () => winner,
       state: () => (own ? { mine, theirs: botP || theirs } : host ? S : guestView(performance.now())),
       snaps: () => sbuf.length, guestInput: () => guestRaw, end: (w, x) => endGame(w, x || 'TEST'),
+      snapBytes: () => JSON.stringify(own ? def.snapMine(mine) : def.snap(S)).length,
     };
   }
 }

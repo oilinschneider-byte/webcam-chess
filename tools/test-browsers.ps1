@@ -1,7 +1,10 @@
 # Plays real Classic Games matches between two hidden browsers on this computer, through your Supabase server.
 # Start it with tools\test-browsers.bat (or: powershell -ExecutionPolicy Bypass -File tools\test-browsers.ps1).
 # What the browsers do is described at the top of tools\autotest.js. Their test accounts are deleted at the end.
-param([int]$TimeoutSec = 150)
+# -Guests: plays as guests, without making any accounts, and skips the rounds that need them (for when this internet
+# connection has reached the server's limit on new accounts).
+# -Only hoops,simon,nofast: just these rounds of "one online game" (see round 6 below).
+param([int]$TimeoutSec = 150, [switch]$Guests, [string]$Only = '')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -42,17 +45,17 @@ function Stop-Browsers($list, $dir) {
     Where-Object { $_.CommandLine -like "*$dir*" } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch { } }
 }
 
-function Run-Round($mode, $title, $whoA, $whoB, $limit = $TimeoutSec) {
+function Run-Round($mode, $title, $whoA, $whoB, $limit = $TimeoutSec, $extra = '') {
   Write-Host ''
   Write-Host "  $title" -ForegroundColor Cyan
   $run = -join ((1..6) | ForEach-Object { [char[]]'abcdefghijkmnpqrstuvwxyz23456789' | Get-Random })
-  $dir = Join-Path $tmp $mode
+  $dir = Join-Path $tmp ($mode + ($extra -replace '[^a-z0-9]', ''))
   $list = @()
   foreach ($role in 'a', 'b') {
     $list += Start-Process -FilePath $browser -PassThru -WindowStyle Hidden -ArgumentList @(
       '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--mute-audio',
       '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required',
-      "--user-data-dir=$dir\profile-$role", "http://localhost:$port/?autotest=$role&mode=$mode&run=$run")
+      "--user-data-dir=$dir\profile-$role", "http://localhost:$port/?autotest=$role&mode=$mode&run=$run$extra$(if ($Guests) { '&guest=1' })")
   }
   $done = @{}
   $deadline = (Get-Date).AddSeconds($limit)
@@ -85,11 +88,21 @@ function Run-Round($mode, $title, $whoA, $whoB, $limit = $TimeoutSec) {
 
 Write-Host ''
 Write-Host '  Two hidden browsers are playing Classic Games against each other through your server...' -ForegroundColor Cyan
-Run-Round 'teen' 'Round 1: an adult and a 15-year-old (cats only)' 'A (adult)' 'B (15)   '
-Run-Round 'cam' 'Round 2: two adults with cameras (each starts out as a cat)' 'A (adult)' 'B (adult)'
-Run-Round 'walls' 'Round 3: Wall Duel (A checks the rules and the bot first, then both play it online)' 'A' 'B' ($TimeoutSec + 200)
-Run-Round 'duels' 'Round 4: the 14 arcade duels (A plays each one against the bot, then both play Sumo Cats online)' 'A' 'B' ($TimeoutSec + 900)
-Run-Round 'glingus' 'Round 5: nobody turns up, so A plays the bot, then Glingus' 'A' 'B' ($TimeoutSec + 150)
+if (-not $Guests -and -not $Only) {
+  Run-Round 'teen' 'Round 1: an adult and a 15-year-old (cats only)' 'A (adult)' 'B (15)   '
+  Run-Round 'cam' 'Round 2: two adults with cameras (each starts out as a cat)' 'A (adult)' 'B (adult)'
+}
+if (-not $Only) {
+  Run-Round 'walls' 'Round 3: Wall Duel (A checks the rules and the bot first, then both play it online)' 'A' 'B' ($TimeoutSec + 200)
+  Run-Round 'duels' 'Round 4: the 14 arcade duels (A plays each one against the bot, then both play Sumo Cats online)' 'A' 'B' ($TimeoutSec + 900)
+}
+if (-not $Guests -and -not $Only) { Run-Round 'glingus' 'Round 5: nobody turns up, so A plays the bot, then Glingus' 'A' 'B' ($TimeoutSec + 150) }
+$games = if ($Only) { $Only -split ',' } else { 'hoops', 'barrel', 'walls', 'climb', 'pond', 'boxing', 'paint', 'kart', 'simon', 'nofast' }
+foreach ($game in $games) {
+  if ($game -eq 'simon') { Run-Round 'net' 'Round 6: Simon Says online with cameras' 'A' 'B' 120 '&online=simon&cam=1' }
+  elseif ($game -eq 'nofast') { Run-Round 'net' "Round 6: when one player's fast lane doesn't work" 'A' 'B' 120 '&online=sumo&nofast=b' }
+  else { Run-Round 'net' "Round 6: $game online, on a good and then a bad connection" 'A' 'B' 120 "&online=$game" }
+}
 
 try { Stop-Process -Id $server.Id -Force -ErrorAction Stop } catch { }
 Start-Sleep -Milliseconds 800

@@ -47,7 +47,7 @@ const FISH_LEN = 112, FISH_USES = 3, SLAP_SPEED = 950; // a slap needs the fish 
 const TIME_LIMIT = 240;          // seconds; then whoever got further wins
 const READY = 2.4;               // the 3-2-1 countdown
 const GHOST_AFTER = 1.1, GHOST_FOR = 2.5; // stuck against each other this long: slip through each other this long
-const SEND_MS = 50, VIEW_DELAY = 100; // (the other cat is drawn this many ms in the past, so it moves smoothly)
+const SEND_MS = 33;
 const START_X = [150, 265];      // where the cats start (the host's on the left)
 
 CA.games.add('climb', {
@@ -755,7 +755,7 @@ function play(ctx) {
     if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) return;
     const x = clamp(s.x, -100, course.w + 100), y = clamp(s.y, -600, course.h + 200);
     rbuf.push({
-      at: performance.now(), x, y, vx: clamp(num(s.vx, 0), -3000, 3000), vy: clamp(num(s.vy, 0), -3000, 3000),
+      at: ctx.netAt(), x, y, vx: clamp(num(s.vx, 0), -3000, 3000), vy: clamp(num(s.vy, 0), -3000, 3000),
       px: clamp(num(s.px, x), x - 300, x + 300), py: clamp(num(s.py, y), y - 300, y + 300),
       fx: clamp(num(s.fx, x), x - 300, x + 300), fy: clamp(num(s.fy, y), y - 300, y + 300),
       hold: !!s.h, fish: !!s.f, stun: !!s.s,
@@ -767,7 +767,7 @@ function play(ctx) {
   const viewOf = c => ({ x: c.x, y: c.y, vx: c.vx, vy: c.vy, px: c.paw.x, py: c.paw.y, hold: !!c.hold, fish: c.fish, fx: c.fishPaw.x, fy: c.fishPaw.y, stun: c.stun > 0 });
   function theirView(now) {
     if (!online || !rbuf.length) return viewOf(them);
-    return F.sample(rbuf, now - VIEW_DELAY, ['x', 'y', 'px', 'py', 'fx', 'fy']);
+    return F.sample(rbuf, now - ctx.viewDelay(SEND_MS), ['x', 'y', 'px', 'py', 'fx', 'fy']);
   }
 
   ctx.on(m => {
@@ -960,7 +960,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) advance(now, 1.5); }, 250);
   if (online) {
-    ctx.every(() => ctx.send(packMe()), SEND_MS);
+    ctx.every(() => ctx.stream(packMe()), SEND_MS);
     ctx.every(() => { if (phase !== 'over' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
