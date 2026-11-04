@@ -129,6 +129,22 @@ async function main() {
     $('permSkip').click();
   }
   await until(() => CA.route === 'menu', 5000, 'the menu');
+  if (glingusTest && role === 'b') { // the home screen has no chess with a friend, old links go home, and Chess vs Computer still works
+    await check('no Chess card on the home screen', !document.querySelector('.mode-card.chess') && !!document.querySelector('.mode-card.classic'));
+    location.hash = '#/chess?room=ABCDEF';
+    await sleep(800);
+    await check('an old chess invite link goes to the home screen', CA.route === 'menu', CA.route);
+    location.hash = '#/chess?bot=1';
+    await until(() => CA.route === 'chess', 5000, 'Chess vs Computer');
+    await sleep(800);
+    await check('Chess vs Computer still starts', !$('leaveBtn').closest('.hidden'), CA.route);
+    $('leaveBtn').click();
+    await sleep(800);
+    if (!$('caModal').classList.contains('hidden')) { $('caModalBtns').querySelector('button:last-child').click(); await sleep(800); }
+    await check('leaving it goes back to the home screen, not a chess lobby', CA.route === 'menu', CA.route);
+    location.hash = '#/menu';
+    await until(() => CA.route === 'menu', 5000, 'the menu');
+  }
   if (wallTest) { await wallDuel(); return; }
   if (duelTest) { await duels(); return; }
   if (glingusTest) { await glingus(); return; }

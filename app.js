@@ -219,12 +219,6 @@ $('permContinue').addEventListener('click', () => CA.resume());
 
 /* ================= MENU ================= */
 
-const ART = [
-  ['bR', 0, 0], ['bQ', 3, 0], ['bR', 5, 0], ['bK', 6, 0], ['bP', 0, 1], ['bP', 1, 1], ['bP', 5, 1], ['bP', 6, 1], ['bP', 7, 1],
-  ['bN', 2, 2], ['bP', 4, 3], ['wP', 4, 4], ['wB', 2, 4], ['wN', 5, 5], ['wP', 0, 6], ['wP', 1, 6], ['wP', 5, 6],
-  ['wP', 6, 6], ['wP', 7, 6], ['wR', 0, 7], ['wQ', 3, 7], ['wR', 5, 7], ['wK', 6, 7],
-];
-
 function practiceLevel() {
   try { return localStorage.getItem('camarcade-practice-level') || 'medium'; } catch (e) { return 'medium'; }
 }
@@ -299,9 +293,6 @@ CA.register('menu', {
     showOnline();
   },
 });
-
-$('menuBoard').innerHTML = '<div class="art-board">' +
-  ART.map(([pc, x, y]) => '<span class="piece ' + pc + '" style="left:' + x * 12.5 + '%;top:' + y * 12.5 + '%"></span>').join('') + '</div>';
 
 $('practiceLevel').addEventListener('click', e => {
   const b = e.target.closest('[data-level]');

@@ -474,9 +474,7 @@ function goToLobby() {
   cleanupNet();
   leaving = false;
   resetView();
-  showPanel('menu');
-  menuMsg('');
-  renderLobby();
+  CA.go('menu'); // (there's no chess lobby any more)
 }
 
 function resetView() {
@@ -1412,26 +1410,11 @@ window.addEventListener('pagehide', () => {
 
 CA.register('chess', {
   enter(params) {
+    if (!params.get('bot')) { CA.go('menu'); return; } // (chess with a friend is gone: old links go to the home screen)
     CA.showScreen('scr-chess');
     resetView();
-    showPanel('menu');
-    menuMsg('');
-    renderLobby();
-    const onFile = location.protocol === 'file:';
-    const onThisPcOnly = onFile || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-    $('copyLinkBtn').classList.toggle('hidden', onFile);
-    $('linkHint').classList.toggle('hidden', !onThisPcOnly);
-    if (params.get('bot')) {
-      try { botLevel = localStorage.getItem('camarcade-practice-level') || 'medium'; } catch (e) { botLevel = 'medium'; }
-      startBotGame('w');
-      return;
-    }
-    const invite = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-    if (invite.length === 6) {
-      $('inviteCode').textContent = invite;
-      $('joinInput').value = invite;
-      $('inviteBox').classList.remove('hidden');
-    }
+    try { botLevel = localStorage.getItem('camarcade-practice-level') || 'medium'; } catch (e) { botLevel = 'medium'; }
+    startBotGame('w');
   },
   leave() {
     leaving = true;

@@ -24,7 +24,6 @@ CamArcade needs its free online server (Supabase) for accounts, matchmaking, str
      **What counts for your streak:** both players' apps report every game to the server, and it only counts when they agree. Games against someone on the same internet connection (your own second window, or someone in your house) are friendly games and don't count. The same two players count for up to 3 games a day; after that, rematches are just for fun. Leaving in the middle of a game counts as a loss.
      **Nobody around?** If nobody turns up after about 20 seconds (or 60 seconds if other players are online but haven't joined), you play a bot. It says it's a bot, laughs at you and makes fun of you, and its games never count for your streak or fish. Very rarely (1 time in 50) you get **omegakilla6769** (called Glingus in the code) instead, who looks like a player and turns his camera on once in the middle of a game (`glingus.mp4`), but his games don't count either. Afterwards you go back to looking for real players.
    - **🏆 Leaderboard**: the longest win streaks ever, and the longest streaks going on right now. It works without logging in, so you can share the link (`…/#/leaders`).
-   - **♞ Chess** (right): create a room and send the code to a friend. Your cameras turn on when the game starts.
    - **🎯 Practice mode** (underneath): press **🎲 Classic mode vs bots** to play random games one after another against bots (face to face with each bot, then Rematch or a new bot), or pick one game to practice. There's also **Chess vs Computer**. Choose Easy, Medium or Hard bots. Practice doesn't change your streak or fish. **Math Sprint** practice lets you choose which kinds of problems, the number ranges, and the time limit.
    - **🐱 My Cat & Shop**: spend fish on fur colors, hats, glasses, shirts, collars, things to hold and backgrounds.
    - **🎟️ Streak Pass**: wins earn XP (more with a longer streak) that unlock 20 tiers of fish and exclusive items.
@@ -143,7 +142,6 @@ Classic Games matches you with strangers. Every new player sees your cat until y
 | Classic Games keeps searching | Nobody else is searching right now. Keep it open, or use Practice mode. |
 | "CamArcade isn't connected to its server yet" | Follow [SETUP.md](SETUP.md) and fill in `config.js`. |
 | My streak didn't go up after a win | It was a friendly game: same internet connection, or the 4th game against the same player today. Or the two apps reported different results. A message says which. |
-| Chess: "Room not found" | Check the code. Your friend must keep their game open. |
 | Forgot my password | There's no email, so it can't be reset by itself. The owner can set a new one in Supabase (see [SETUP.md](SETUP.md)). |
 | I played before accounts went online | Press **Sign up** and use the same username and password as before. Your cat, fish and items come along (your old streak doesn't, because the server didn't see those games). |
 
@@ -174,7 +172,7 @@ Classic Games matches you with strangers. Every new player sees your cat until y
 - `games-hoops.js`: Cat Hoops
 - `games-simon.js`: Simon Says (it shares Pose Match's pose detector)
 - `games-climb.js`: Claw Climb (the junk mountain course, the one-armed climbing, the fish, and the bot that finds its way up)
-- `chess.js`: chess (online, pass & play, vs computer)
+- `chess.js`: Chess vs Computer (from Practice; the old online and pass & play modes are no longer reachable)
 - `pass.js`, `character.js`: the Streak Pass and My Cat screens
 - `style.css`, `pieces.css`: how everything looks
 - `lib/`: chess rules ([chess.js](https://github.com/jhlywa/chess.js), BSD), connections between players ([PeerJS](https://peerjs.com), MIT), the world map and country outlines (`world-map.js`, `countries.js`), the word list (`words.js`) and the rhyme families (`rhymes.js`)
