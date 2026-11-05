@@ -32,8 +32,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=101">
-<link rel="stylesheet" href="pieces.css?v=101">
+<link rel="stylesheet" href="style.css?v=102">
+<link rel="stylesheet" href="pieces.css?v=102">
 </head>
 <body>
 
@@ -153,13 +153,7 @@
       <h2>Classic Games</h2>
       <p>You get a random player and one of 29 games. Win and your streak keeps going.</p>
       <span class="btn solos-btn big">Find a match</span>
-      <span class="mc-shots">
-        <span><img src="img/home-turf.jpg" alt="Turf War" width="480" height="270" loading="lazy"><i>Turf War</i></span>
-        <span><img src="img/home-heist.jpg" alt="Cheese Heist" width="480" height="270" loading="lazy"><i>Cheese Heist</i></span>
-        <span><img src="img/home-pond.jpg" alt="Pond War" width="480" height="270" loading="lazy"><i>Pond War</i></span>
-        <span><img src="img/home-chess.jpg" alt="Panic Chess" width="480" height="270" loading="lazy"><i>Panic Chess</i></span>
-      </span>
-    </a>
+      <span class="mc-shots" id="menuShots"></span></a>
     <a class="mode-card today-card hidden" id="todayCard" href="#/leaders">
       <h2 id="todayTitle"></h2>
       <p id="todayNote"></p>
@@ -756,48 +750,48 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=101"></script>
-<script src="server.js?v=101"></script>
-<script src="common.js?v=101"></script>
-<script src="solos.js?v=101"></script>
-<script src="games-quick.js?v=101"></script>
-<script src="games-words.js?v=101"></script>
-<script src="games-board.js?v=101"></script>
-<script src="games-world.js?v=101"></script>
+<script src="config.js?v=102"></script>
+<script src="server.js?v=102"></script>
+<script src="common.js?v=102"></script>
+<script src="solos.js?v=102"></script>
+<script src="games-quick.js?v=102"></script>
+<script src="games-words.js?v=102"></script>
+<script src="games-board.js?v=102"></script>
+<script src="games-world.js?v=102"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=101"></script>
-<script src="games-quiz.js?v=101"></script>
-<script src="games-mind.js?v=101"></script>
-<script src="games-tracker.js?v=101"></script>
-<script src="games-pose.js?v=101"></script>
-<script src="cam-walls.js?v=101"></script>
-<script src="games-floppy.js?v=101"></script>
-<script src="games-barrel.js?v=101"></script>
-<script src="games-walls.js?v=101"></script>
-<script src="games-duel.js?v=101"></script>
-<script src="games-trails.js?v=101"></script>
-<script src="games-box.js?v=101"></script>
-<script src="games-sumo.js?v=101"></script>
-<script src="games-pond.js?v=101"></script>
-<script src="games-hockey.js?v=101"></script>
-<script src="games-paint.js?v=101"></script>
-<script src="games-cannons.js?v=101"></script>
-<script src="games-golf.js?v=101"></script>
-<script src="games-mouse.js?v=101"></script>
-<script src="games-kart.js?v=101"></script>
-<script src="games-swords.js?v=101"></script>
-<script src="games-stare.js?v=101"></script>
-<script src="games-boxing.js?v=101"></script>
-<script src="games-dodge.js?v=101"></script>
-<script src="games-parkour.js?v=101"></script>
-<script src="games-poop.js?v=101"></script>
-<script src="games-hoops.js?v=101"></script>
-<script src="games-simon.js?v=101"></script>
-<script src="games-climb.js?v=101"></script>
-<script src="chess.js?v=101"></script>
-<script src="pass.js?v=101"></script>
-<script src="character.js?v=101"></script>
-<script src="leaders.js?v=101"></script>
-<script src="app.js?v=101"></script>
+<script src="games-action.js?v=102"></script>
+<script src="games-quiz.js?v=102"></script>
+<script src="games-mind.js?v=102"></script>
+<script src="games-tracker.js?v=102"></script>
+<script src="games-pose.js?v=102"></script>
+<script src="cam-walls.js?v=102"></script>
+<script src="games-floppy.js?v=102"></script>
+<script src="games-barrel.js?v=102"></script>
+<script src="games-walls.js?v=102"></script>
+<script src="games-duel.js?v=102"></script>
+<script src="games-trails.js?v=102"></script>
+<script src="games-box.js?v=102"></script>
+<script src="games-sumo.js?v=102"></script>
+<script src="games-pond.js?v=102"></script>
+<script src="games-hockey.js?v=102"></script>
+<script src="games-paint.js?v=102"></script>
+<script src="games-cannons.js?v=102"></script>
+<script src="games-golf.js?v=102"></script>
+<script src="games-mouse.js?v=102"></script>
+<script src="games-kart.js?v=102"></script>
+<script src="games-swords.js?v=102"></script>
+<script src="games-stare.js?v=102"></script>
+<script src="games-boxing.js?v=102"></script>
+<script src="games-dodge.js?v=102"></script>
+<script src="games-parkour.js?v=102"></script>
+<script src="games-poop.js?v=102"></script>
+<script src="games-hoops.js?v=102"></script>
+<script src="games-simon.js?v=102"></script>
+<script src="games-climb.js?v=102"></script>
+<script src="chess.js?v=102"></script>
+<script src="pass.js?v=102"></script>
+<script src="character.js?v=102"></script>
+<script src="leaders.js?v=102"></script>
+<script src="app.js?v=102"></script>
 </body>
 </html>

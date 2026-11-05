@@ -44,6 +44,7 @@ const duelTest = q.get('mode') === 'duels';
 const glingusTest = q.get('mode') === 'glingus';
 const perfTest = q.get('mode') === 'perf';
 const rulesTest = q.get('mode') === 'rules'; // (the rules of Turf War, Cheese Heist, Pond War and Panic Chess, one by one)
+const shotsTest = q.get('mode') === 'shots'; // (pictures of the games, for the home screen: see homeShots)
 const lookTest = q.get('mode') === 'look'; // (just stops at the home screen, for a screenshot)
 const netTest = q.get('mode') === 'net'; // (one online game, chosen with &online=, on a good and then on a bad connection)
 const withCam = camTest || !!q.get('cam');
@@ -53,12 +54,12 @@ const DUEL_ONLINE = q.get('online') || 'sumo';
 const run = (q.get('run') || 'x').replace(/[^a-z0-9]/gi, '').slice(0, 8);
 const NAME = 'zt' + run + role;
 const PASS = 'test-pass-' + run;
-const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest || rulesTest;
+const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest || rulesTest || shotsTest;
 window.__introMs = 1500;   // (shorter face-to-face screens)
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
-if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
+if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest || shotsTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
 if (netTest) window.__forceGame = DUEL_ONLINE;
 if (duelTest) {
   window.__forceGame = DUEL_ONLINE;
@@ -170,7 +171,26 @@ async function main() {
     await until(() => CA.route === 'menu', 5000, 'the menu');
   }
   if (wallTest) { await wallDuel(); return; }
-  if (lookTest) return;
+  if (lookTest) {
+    const seen = new Set();
+    let fine = true;
+    for (let k = 0; k < 12; k++) {
+      location.hash = '#/leaders';
+      await until(() => CA.route === 'leaders', 5000, 'the leaderboard');
+      location.hash = '#/menu';
+      await until(() => CA.route === 'menu', 5000, 'the menu');
+      const imgs = Array.from($('menuShots').querySelectorAll('img'));
+      const ids = imgs.map(i => i.getAttribute('src'));
+      if (imgs.length !== 4 || new Set(ids).size !== 4) fine = false;
+      ids.forEach(x => seen.add(x));
+    }
+    await sleep(1500);
+    const all = Array.from($('menuShots').querySelectorAll('img'));
+    await check('the home screen shows 4 different games, and changes each time', fine && seen.size > 8, { seen: seen.size });
+    await check('...and their pictures load', all.every(i => i.complete && i.naturalWidth === 480), all.map(i => i.getAttribute('src')));
+    return;
+  }
+  if (shotsTest) { await homeShots(); return; }
   if (perfTest) { await perf(); return; }
   if (netTest) { await netRound(); return; }
   if (rulesTest) { await rules(); return; }
@@ -775,6 +795,29 @@ async function videoLimit() {
   one.close();
   two.close();
   cam.getTracks().forEach(t => t.stop());
+}
+
+// Plays a little of each game against the bot and takes a picture of it.
+async function homeShots() {
+  window.__fakeFace = { face: true, blink: 0 };
+  for (const id of q.get('games').split(',')) {
+    location.hash = '#/menu';
+    await until(() => CA.route === 'menu', 8000, 'the menu');
+    await sleep(300);
+    window.__duel = null;
+    location.hash = '#/practice?game=' + id;
+    await until(() => $('stage').querySelector('canvas'), 20000, id + ' to start');
+    const end = Date.now() + 9000;
+    while (Date.now() < end) { const d = window.__duel; if (d && d.phase() === 'play') mash(d); await sleep(150); }
+    if (window.__duel) letGo(window.__duel);
+    const c = $('stage').querySelector('canvas');
+    await log('shot game-' + id, true, c.toDataURL('image/png'));
+    if (!$('caModal').classList.contains('hidden')) clickModal('Leave');
+  }
+  location.hash = '#/menu';
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
 }
 
 /* ---------- the rules of the four big games ---------- */

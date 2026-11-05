@@ -359,9 +359,23 @@ function showPrize(p) {
   $('prizeBanner').classList.remove('hidden');
 }
 
+// Pictures of four games on the home screen, different ones each time. (img/home-<game>.jpg are real screens from the
+// games: tools/autotest.js takes them, in its "shots" mode.)
+const SHOT_GAMES = ['trails', 'box', 'sumo', 'hockey', 'cannons', 'golf', 'kart', 'swords', 'dodge', 'parkour', 'poop', 'hoops', 'barrel', 'walls', 'climb', 'paint', 'mouse', 'pond', 'speedchess'];
+function showShots() {
+  const pool = SHOT_GAMES.slice();
+  const picks = [];
+  while (picks.length < 4 && pool.length) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  $('menuShots').innerHTML = picks.map(id => {
+    const name = CA.esc(CA.games.name(id));
+    return '<span><img src="img/home-' + id + '.jpg" alt="' + name + '" width="480" height="270"><i>' + name + '</i></span>';
+  }).join('');
+}
+
 CA.register('menu', {
   enter() {
     CA.showScreen('scr-menu');
+    showShots();
     renderMenu();
     showOnline();
   },
