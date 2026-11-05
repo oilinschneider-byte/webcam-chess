@@ -1617,12 +1617,12 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 
 #scr-menu .menu-hello { margin-bottom: 10px; }
 #scr-menu .menu-hello-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; width: 100%; }
-#scr-menu .menu-hello h1 { margin: 0; color: #7a4a24; font-size: clamp(30px, 3.8vw, 42px); line-height: 1.05; overflow-wrap: anywhere; }
+#scr-menu .spin-name { margin: 0; color: #7a4a24; text-align: center; font-size: clamp(18px, 2vw, 22px); line-height: 1.05; overflow-wrap: anywhere; }
 #scr-menu .hero-stats { gap: 4px 16px; }
 #scr-menu .stat-chip { padding: 0; border: 0; border-radius: 0; background: none; color: var(--muted); font-weight: 700; }
 #scr-menu .stat-chip b { color: var(--text); font-weight: 900; }
 #scr-menu .stat-chip.fish b { color: var(--text); }
-#scr-menu .online-note { position: relative; margin: 0; font-size: 13px; padding: 0 0 0 14px; border: 0; background: none; color: var(--text); font-size: 13px; font-weight: 800; }
+#scr-menu .online-note { position: relative; margin: 0 0 0 auto; font-size: 13px; padding: 0 0 0 14px; border: 0; background: none; color: var(--text); font-size: 13px; font-weight: 800; }
 #scr-menu .online-note::before { content: ''; position: absolute; left: 0; top: .42em; width: 8px; height: 8px; border-radius: 50%; background: #3ddc84; }
 
 #scr-menu .guest-note { padding: 6px 0; font-size: 14px; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; font-weight: 600; }
