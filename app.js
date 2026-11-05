@@ -356,7 +356,6 @@ $('spinCat').addEventListener('keydown', e => {
 function renderMenu() {
   const p = CA.profile;
   if (!p) return;
-  $('menuCat').innerHTML = CA.catSVG(p.equip, { label: p.name, talker: 'me' });
   renderSpinCat(p);
   $('menuName').textContent = p.name;
   $('menuStreak').textContent = p.streak;
@@ -365,26 +364,8 @@ function renderMenu() {
   $('menuTier').textContent = CA.tierOf(p.xp);
   const ready = CA.PASS.filter(t => t.tier <= CA.tierOf(p.xp) && !p.claimed.includes(t.tier)).length;
   $('menuPassNote').textContent = ready ? '🎁 ' + ready + ' reward' + (ready > 1 ? 's' : '') + ' ready to claim!' : 'Tier ' + CA.tierOf(p.xp) + ' of 20 · win to unlock more';
-  renderMenuMic();
   const lvl = practiceLevel();
   document.querySelectorAll('#practiceLevel [data-level]').forEach(b => b.classList.toggle('active', b.dataset.level === lvl));
-}
-
-function renderMenuMic() {
-  const el = $('menuMic');
-  const adult = CA.canVideoChat();
-  let mic;
-  if (CA.voice.micOn()) mic = adult ? 'Microphone on: your cat talks when you do.' : "Microphone on: your cat's mouth moves when you talk (other players can't hear you).";
-  else if (CA.voice.hasMic()) mic = 'Microphone muted. Press 🎤 at the top to unmute.';
-  else mic = 'Microphone off. <button class="linkish" id="menuMicOn">Turn it on</button>';
-  const cam = !CA.voice.camWanted() ? 'Camera off: you play as your cat. <button class="linkish" id="menuCamOn">Turn it on</button>'
-    : adult ? 'Camera on when you play. Strangers see your cat until you press Show my face.'
-    : 'Camera on for pose games. Other players always see your cat.';
-  el.innerHTML = mic + '<br>' + cam;
-  const b = $('menuMicOn');
-  if (b) b.addEventListener('click', turnMicOn);
-  const c = $('menuCamOn');
-  if (c) c.addEventListener('click', () => toggleCamera(true));
 }
 
 // "12 players online", from the server.
@@ -564,7 +545,6 @@ window.addEventListener('ca:change', () => {
 });
 window.addEventListener('ca:media', () => {
   renderMicBtn();
-  if (CA.route === 'menu') renderMenuMic();
 });
 window.addEventListener('ca:route', () => setTimeout(renderBar, 0));
 
