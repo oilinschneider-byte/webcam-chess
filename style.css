@@ -1617,7 +1617,7 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 
 #scr-menu .menu-hello { margin-bottom: 10px; }
 #scr-menu .menu-hello-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; width: 100%; }
-#scr-menu .menu-hello h1 { margin: 0; font-size: clamp(20px, 2.4vw, 26px); line-height: 1.05; overflow-wrap: anywhere; }
+#scr-menu .menu-hello h1 { margin: 0; color: #7a4a24; font-size: clamp(30px, 3.8vw, 42px); line-height: 1.05; overflow-wrap: anywhere; }
 #scr-menu .hero-stats { gap: 4px 16px; }
 #scr-menu .stat-chip { padding: 0; border: 0; border-radius: 0; background: none; color: var(--muted); font-weight: 700; }
 #scr-menu .stat-chip b { color: var(--text); font-weight: 900; }
