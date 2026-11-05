@@ -1651,10 +1651,9 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 .spin-cat:focus-visible { outline: 2px solid var(--home); outline-offset: 4px; }
 .spin-cat > span { position: absolute; inset: 0; pointer-events: none; }
 .spin-cat svg { display: block; width: 100%; height: 100%; }
-#scr-menu .spin-hint { margin: 0; font-size: 14px; }
 
 
-#scr-menu .prize-banner { display: block; margin: 0 0 26px; padding: 12px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: none; transition: none; }
+#scr-menu .prize-banner { display: block; margin: 0 0 64px; padding: 12px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: none; transition: none; }
 #scr-menu .prize-banner:hover { transform: none; }
 #scr-menu .prize-banner .pb-text { display: block; }
 #scr-menu .prize-banner .pb-text b { margin-right: 10px; color: var(--home); font-size: 16px; }
