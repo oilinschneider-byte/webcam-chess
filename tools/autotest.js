@@ -172,6 +172,22 @@ async function main() {
   }
   if (wallTest) { await wallDuel(); return; }
   if (lookTest) {
+    if (q.get('spin')) { $('spinCat').style.transform = 'rotateY(' + q.get('spin') + 'deg)'; return; } // (a picture of it turned)
+    // grab your cat and flick it
+    const cat = $('spinCat');
+    const turned = () => Number((/rotateY\((-?[\d.]+)deg\)/.exec(cat.style.transform) || [0, 0])[1]);
+    const ptr = (type, x) => cat.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x }));
+    await check('your cat has its slices', cat.querySelectorAll('svg').length === 9, cat.querySelectorAll('svg').length);
+    ptr('pointerdown', 100);
+    for (let x = 140; x <= 500; x += 40) { await sleep(16); ptr('pointermove', x); }
+    ptr('pointerup', 500);
+    await sleep(100);
+    const a1 = turned();
+    await sleep(400);
+    const a2 = turned();
+    await check('a flick spins your cat fast, and it keeps going', a2 - a1 > 200, { a1, a2 });
+    await until(() => cat.style.transform === 'rotateY(0deg)', 25000, 'your cat to stop').catch(() => {});
+    await check('...then it settles facing you', cat.style.transform === 'rotateY(0deg)', cat.style.transform);
     const seen = new Set();
     let fine = true;
     for (let k = 0; k < 12; k++) {
@@ -341,8 +357,6 @@ async function glingus() {
     if (CA.route === 'perm') $('permSkip').click();
     await until(() => CA.route === 'menu', 5000, 'the menu');
     await check('the home screen says nothing is saved', getComputedStyle(document.querySelector('.guest-note')).display !== 'none');
-    await until(() => !$('todayCard').classList.contains('hidden'), 10000, "today's top players");
-    await check("today's top players shows next to Classic Games", !!$('todayTitle').textContent, $('todayTitle').textContent);
     location.hash = '#/cat';
     await sleep(600);
     await check('a guest has no shop', CA.route === 'menu', CA.route);

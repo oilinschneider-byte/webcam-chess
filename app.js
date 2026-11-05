@@ -279,10 +279,85 @@ function practiceLevel() {
   try { return localStorage.getItem('camarcade-practice-level') || 'medium'; } catch (e) { return 'medium'; }
 }
 
+// Your cat, next to Classic Games: grab it and spin it. (The drawing is flat, so it's stacked in slices to have some
+// thickness side on. Flick it hard and it spins for a while, then settles facing you again.)
+const SLICES = 9, SLICE_GAP = 3, SPIN_MAX = 3600, SPIN_FLICK = 2.5, SPIN_DRAG = 0.9, SPIN_TAP = 1800, SPIN_FRICTION = 0.8;
+const spin = { angle: 0, vel: 0, drag: null, raf: 0, last: 0 };
+
+function renderSpinCat(p) {
+  let h = '';
+  for (let k = 0; k < SLICES; k++) {
+    const outside = k === 0 || k === SLICES - 1;
+    h += '<span style="transform: translateZ(' + (k - (SLICES - 1) / 2) * SLICE_GAP + 'px)">' +
+      CA.catSVG(p.equip, { bg: false, anim: false, label: p.name, talker: outside ? 'me' : undefined }) + '</span>';
+  }
+  $('spinCat').innerHTML = h;
+}
+
+function spinFrame(now) {
+  const dt = Math.min(0.05, (now - spin.last) / 1000);
+  spin.last = now;
+  spin.raf = 0;
+  if (!spin.drag) {
+    spin.vel *= Math.exp(-SPIN_FRICTION * dt);
+    spin.angle += spin.vel * dt;
+    if (Math.abs(spin.vel) < 120) { // nearly stopped: turn back to face you
+      const front = Math.round(spin.angle / 360) * 360;
+      spin.angle += (front - spin.angle) * Math.min(1, dt * 4);
+      if (Math.abs(front - spin.angle) < 0.3) { spin.angle = 0; spin.vel = 0; }
+    }
+  }
+  $('spinCat').style.transform = 'rotateY(' + spin.angle.toFixed(1) + 'deg)';
+  if (spin.drag || spin.vel || spin.angle) spin.raf = requestAnimationFrame(spinFrame);
+}
+
+function spinGo() {
+  if (spin.raf) return;
+  spin.last = performance.now();
+  spin.raf = requestAnimationFrame(spinFrame);
+}
+
+function spinTap() {
+  spin.vel = Math.max(-SPIN_MAX, Math.min(SPIN_MAX, spin.vel + (spin.vel < 0 ? -SPIN_TAP : SPIN_TAP)));
+  spinGo();
+}
+
+$('spinCat').addEventListener('pointerdown', e => {
+  try { $('spinCat').setPointerCapture(e.pointerId); } catch (err) { /* (only a nicety) */ }
+  spin.drag = { x: e.clientX, t: performance.now(), rate: 0, moved: 0 };
+  spin.vel = 0;
+  spinGo();
+});
+$('spinCat').addEventListener('pointermove', e => {
+  const d = spin.drag;
+  if (!d) return;
+  const now = performance.now(), dx = e.clientX - d.x;
+  spin.angle += dx * SPIN_DRAG;
+  d.moved += Math.abs(dx);
+  if (now > d.t) d.rate = d.rate * 0.5 + 0.5 * (dx * SPIN_DRAG / ((now - d.t) / 1000));
+  d.x = e.clientX;
+  d.t = now;
+});
+const spinLetGo = () => {
+  const d = spin.drag;
+  if (!d) return;
+  spin.drag = null;
+  if (d.moved < 4) { spinTap(); return; }
+  const fresh = performance.now() - d.t < 100; // (they stopped moving before letting go: no flick)
+  spin.vel = fresh ? Math.max(-SPIN_MAX, Math.min(SPIN_MAX, d.rate * SPIN_FLICK)) : 0;
+  spinGo();
+};
+$('spinCat').addEventListener('pointerup', spinLetGo);
+$('spinCat').addEventListener('pointercancel', spinLetGo);
+$('spinCat').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); spinTap(); }
+});
+
 function renderMenu() {
   const p = CA.profile;
   if (!p) return;
   $('menuCat').innerHTML = CA.catSVG(p.equip, { label: p.name, talker: 'me' });
+  renderSpinCat(p);
   $('menuName').textContent = p.name;
   $('menuStreak').textContent = p.streak;
   $('menuBest').textContent = p.best;
@@ -322,23 +397,11 @@ async function showOnline() {
       (s.searching ? ' · ' + s.searching + ' looking for a match' : '');
     $('menuOnline').classList.remove('hidden');
     showPrize(s.prize);
-    showToday(await CA.server.call('ca_today'));
   } catch (e) {
     $('menuOnline').classList.add('hidden');
   }
 }
 
-// Who has won the most today, next to Classic Games (or the best streaks ever, until 3 players have won today).
-function showToday(t) {
-  if (!t || CA.route !== 'menu') return;
-  const today = t.kind === 'today', rows = t.rows || [];
-  $('todayTitle').textContent = today ? 'Winning today' : 'Longest streaks';
-  $('todayNote').textContent = rows.length ? '' : 'Nobody yet. Be the first!';
-  $('todayList').innerHTML = rows.map((r, i) => '<li><span class="t-rank">' + (i + 1) + '</span><span class="t-cat">' +
-    CA.catSVG(r.equip || {}, { bg: false, anim: false, label: r.name }) + '</span><span class="t-name">' + CA.esc(r.name) + '</span><span class="t-n">' +
-    (today ? r.n + (r.n === 1 ? ' win' : ' wins') : r.n + ' in a row') + '</span></li>').join('');
-  $('todayCard').classList.remove('hidden');
-}
 
 $('guestSignup').addEventListener('click', () => {
   CA.logOut();
