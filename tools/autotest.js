@@ -195,22 +195,22 @@ async function main() {
     await check('a flick spins your cat fast, and it keeps going', a2 - a1 > 200, { a1, a2 });
     await until(() => cat.style.transform === 'rotateY(0deg)', 25000, 'your cat to stop').catch(() => {});
     await check('...then it settles facing you', cat.style.transform === 'rotateY(0deg)', cat.style.transform);
-    const seen = new Set();
-    let fine = true;
-    for (let k = 0; k < 12; k++) {
-      location.hash = '#/leaders';
-      await until(() => CA.route === 'leaders', 5000, 'the leaderboard');
-      location.hash = '#/menu';
-      await until(() => CA.route === 'menu', 5000, 'the menu');
-      const imgs = Array.from($('menuShots').querySelectorAll('img'));
-      const ids = imgs.map(i => i.getAttribute('src'));
-      if (imgs.length !== 4 || new Set(ids).size !== 4) fine = false;
-      ids.forEach(x => seen.add(x));
+    const shown = () => $('menuShots').querySelector('.mc-slide img');
+    await check('the home screen shows one game at a time', $('menuShots').querySelectorAll('.mc-track').length === 1);
+    const seen = new Set([shown().getAttribute('src')]);
+    let tall = 0;
+    for (let k = 0; k < 7; k++) {
+      await sleep(3000);
+      seen.add(shown().getAttribute('src'));
+      tall = Math.max(tall, shown().naturalWidth);
     }
-    await sleep(1500);
-    const all = Array.from($('menuShots').querySelectorAll('img'));
-    await check('the home screen shows 4 different games, and changes each time', fine && seen.size > 8, { seen: seen.size });
-    await check('...and their pictures load', all.every(i => i.complete && i.naturalWidth === 480), all.map(i => i.getAttribute('src')));
+    await check('...and moves on to the next one, and the next', seen.size >= 5, { seen: seen.size });
+    await check('...and the pictures load', tall === 720, tall);
+    location.hash = '#/leaders';
+    await until(() => CA.route === 'leaders', 5000, 'the leaderboard');
+    location.hash = '#/menu';
+    await until(() => CA.route === 'menu', 5000, 'the menu');
+    await check('...and it still works after coming back', !!shown());
     return;
   }
   if (shotsTest) { await homeShots(); return; }

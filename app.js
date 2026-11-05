@@ -422,17 +422,34 @@ function showPrize(p) {
   $('prizeBanner').classList.remove('hidden');
 }
 
-// Pictures of four games on the home screen, different ones each time. (img/home-<game>.jpg are real screens from the
+// Pictures of the games on the home screen, one after another in a random order. (img/home-<game>.jpg are real screens from the
 // games: tools/autotest.js takes them, in its "shots" mode.)
 const SHOT_GAMES = ['trails', 'box', 'sumo', 'hockey', 'cannons', 'golf', 'kart', 'swords', 'dodge', 'parkour', 'poop', 'hoops', 'barrel', 'walls', 'climb', 'paint', 'mouse', 'pond', 'speedchess'];
+function shotSlide(id) {
+  const name = CA.esc(CA.games.name(id));
+  return '<span class="mc-slide"><img src="img/home-' + id + '.jpg?v=3" alt="' + name + '" width="720" height="405"><i>' + name + '</i></span>';
+}
+const SHOT_MS = 3000, SHOT_SLIDE_MS = 600; // (how long each game shows, and how long it takes to move on: see .mc-track.go)
+let shotTimer = 0;
 function showShots() {
-  const pool = SHOT_GAMES.slice();
-  const picks = [];
-  while (picks.length < 4 && pool.length) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
-  $('menuShots').innerHTML = picks.map(id => {
-    const name = CA.esc(CA.games.name(id));
-    return '<span><img src="img/home-' + id + '.jpg?v=2" alt="' + name + '" width="480" height="270"><i>' + name + '</i></span>';
-  }).join('');
+  clearInterval(shotTimer);
+  const order = SHOT_GAMES.slice();
+  for (let k = order.length - 1; k > 0; k--) {
+    const j = Math.floor(Math.random() * (k + 1));
+    [order[k], order[j]] = [order[j], order[k]];
+  }
+  let at = 0;
+  const game = n => order[n % order.length];
+  const draw = () => {
+    $('menuShots').innerHTML = '<span class="mc-track">' + shotSlide(game(at)) + shotSlide(game(at + 1)) + '</span>';
+    new Image().src = 'img/home-' + game(at + 2) + '.jpg?v=3'; // (so it's ready when its turn comes)
+  };
+  draw();
+  shotTimer = setInterval(() => {
+    if (CA.route !== 'menu') { clearInterval(shotTimer); return; }
+    $('menuShots').firstChild.classList.add('go');
+    setTimeout(() => { at++; draw(); }, SHOT_SLIDE_MS);
+  }, SHOT_MS);
 }
 
 CA.register('menu', {
