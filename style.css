@@ -1,4 +1,32 @@
 :root {
+  --bg: #f6efe0;
+  --bg-2: #efe6d3;
+  --surface: #fffaf0;
+  --surface-2: #f3ead8;
+  --surface-3: #e9dec8;
+  --border: #d6c9ae;
+  --text: #2a211a;
+  --muted: #74675a;
+  --accent: #d8432b;
+  --accent-hover: #c23a24;
+  --accent-soft: rgba(216, 67, 43, .12);
+  --go: #0f8f68;
+  --go-soft: rgba(15, 143, 104, .12);
+  --warn: #b86e00;
+  --warn-soft: rgba(184, 110, 0, .12);
+  --danger: #c9304c;
+  --danger-soft: rgba(201, 48, 76, .1);
+  --fish: #1b7fbd;
+  --top: #fffaf0;
+  --logo: #d8432b;
+  --sq-light: #ebecd0;
+  --sq-dark: #739552;
+  --shadow: 0 10px 26px rgba(70, 50, 20, .16);
+  --font: 'Nunito', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  color-scheme: light;
+}
+/* While you play it's dark: the games, and their labels over the cameras, are made for it. */
+body:has(#scr-play:not(.hidden), #scr-practice:not(.hidden), #scr-chess:not(.hidden)) {
   --bg: #0e0f1a;
   --bg-2: #13142a;
   --surface: #1a1b30;
@@ -17,10 +45,9 @@
   --danger: #ff5a78;
   --danger-soft: rgba(255, 90, 120, .13);
   --fish: #6cc8ff;
-  --sq-light: #ebecd0;
-  --sq-dark: #739552;
+  --top: #14151c;
+  --logo: #ffc933;
   --shadow: 0 12px 32px rgba(0, 0, 0, .35);
-  --font: 'Nunito', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
   color-scheme: dark;
 }
 
@@ -1205,10 +1232,10 @@ button.choice:hover { border-color: var(--accent); background: var(--surface-3);
 .pass-hero { display: grid; grid-template-columns: 1.4fr 1fr; align-items: start; gap: 20px; margin-bottom: 22px; }
 .pass-head {
   padding: 26px 28px; border-radius: 22px; border: 1px solid var(--border);
-  background: radial-gradient(120% 140% at 0% 0%, #5b2fd8 0%, #2a1a6e 50%, #161734 100%);
+  background: var(--surface);
 }
 .pass-head h1 { margin: 10px 0 6px; font-size: clamp(30px, 4vw, 46px); }
-.pass-head p { margin: 0 0 16px; color: #d3d5f7; }
+.pass-head p { margin: 0 0 16px; color: var(--muted); }
 .pp-top { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-weight: 900; }
 .pass-actions { margin-top: 18px; }
 .xp-card h3 { margin: 0 0 6px; font-size: 18px; }
@@ -1545,7 +1572,7 @@ body:has(#scr-play:not(.hidden)) #appBar { display: none; }
 .pb-icon { font-size: 34px; }
 .pb-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
 .pb-text b { font-size: 18px; color: #7dff8a; }
-.prize-banner.on .pb-text b { color: #ffd23f; }
+.prize-banner.on .pb-text b { color: var(--warn); }
 .pb-text small { color: var(--muted); font-weight: 700; }
 .pb-go { flex: none; color: #7dff8a; font-weight: 900; white-space: nowrap; }
 .prize-card { margin-bottom: 12px; padding: 14px 18px; border: 2px solid #3ddc84; }
@@ -1581,14 +1608,14 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
    One color (the yellow the games use for highlights), flat panels, small corners, real pictures of the games, and lines
    instead of a box around everything. */
 .logo { font-family: 'Bowlby One', var(--font); font-weight: 400; letter-spacing: .3px; }
-.logo b { color: #ffc933; font-weight: 400; }
+.logo b { color: var(--logo); font-weight: 400; }
 .logo-mark { width: 30px; height: 30px; border-radius: 0; background: none; box-shadow: none; color: #ffc933; }
 .logo-mark svg { width: 100%; height: 100%; display: block; }
 .auth-hero h1 { font-family: 'Bowlby One', var(--font); font-weight: 400; }
-.auth-hero h1 b { color: #ffc933; font-weight: 400; }
-.topbar { background: #14151c; backdrop-filter: none; }
+.auth-hero h1 b { color: var(--logo); font-weight: 400; }
+.topbar { background: var(--top); backdrop-filter: none; }
 
-#scr-menu { --home: #ffc933; max-width: 1180px; padding-top: 28px; }
+#scr-menu { --home: var(--accent); max-width: 1180px; padding-top: 28px; }
 #scr-menu h1, #scr-menu h2 { font-family: 'Bowlby One', var(--font); font-weight: 400; letter-spacing: .2px; }
 
 #scr-menu .menu-hello { align-items: flex-end; gap: 18px; margin-bottom: 26px; }
@@ -1610,17 +1637,17 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 #scr-menu .mode-card h2 { margin: 0; font-size: clamp(26px, 3vw, 34px); }
 #scr-menu .mode-card p { color: var(--muted); font-weight: 600; }
 #scr-menu .mode-card p:empty { display: none; }
-#scr-menu .btn.solos-btn { border: 0; border-radius: 6px; background: var(--home); box-shadow: none; color: #17130a; font-weight: 900; }
-#scr-menu .btn.solos-btn:hover:not(:disabled) { background: #ffd95e; }
+#scr-menu .btn.solos-btn { border: 0; border-radius: 6px; background: var(--home); box-shadow: none; color: #fff7ef; font-weight: 900; }
+#scr-menu .btn.solos-btn:hover:not(:disabled) { background: var(--accent-hover); }
 #scr-menu .mode-card.classic .btn { margin: 6px 0 8px; padding: 14px 34px; font-size: 18px; }
-#scr-menu .mode-card.classic:hover .btn { background: #ffd95e; }
+#scr-menu .mode-card.classic:hover .btn { background: var(--accent-hover); }
 .mc-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
 .mc-shots > span { display: block; min-width: 0; }
 .mc-shots img { display: block; width: 100%; height: auto; border-radius: 4px; }
 .mc-shots i { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; font-style: normal; font-weight: 800; }
 #scr-menu .spin-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
 .spin-stage { position: relative; width: min(100%, 340px); perspective: 1100px; }
-.spin-stage::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 1%; height: 16px; border-radius: 50%; background: rgba(0, 0, 0, .45); filter: blur(5px); z-index: -1; }
+.spin-stage::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 1%; height: 16px; border-radius: 50%; background: rgba(70, 50, 20, .3); filter: blur(5px); z-index: -1; }
 .spin-cat { position: relative; aspect-ratio: 5 / 6; transform-style: preserve-3d; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .spin-cat:active { cursor: grabbing; }
 .spin-cat:focus-visible { outline: 2px solid var(--home); outline-offset: 4px; }

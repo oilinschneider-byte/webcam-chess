@@ -172,6 +172,13 @@ async function main() {
   }
   if (wallTest) { await wallDuel(); return; }
   if (lookTest) {
+    if (q.get('page')) { // (a picture of another screen)
+      if (q.get('page') === 'auth') await leave();
+      if (q.get('page') === 'cat' || q.get('page') === 'pass') CA.profile.guest = false; // (guests can't open these)
+      location.hash = '#/' + q.get('page');
+      await sleep(2500);
+      return;
+    }
     if (q.get('spin')) { $('spinCat').style.transform = 'rotateY(' + q.get('spin') + 'deg)'; return; } // (a picture of it turned)
     // grab your cat and flick it
     const cat = $('spinCat');
