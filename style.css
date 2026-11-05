@@ -1655,11 +1655,11 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 #scr-menu .pc-mix-text small { color: var(--muted); font-weight: 600; }
 #scr-menu .pc-sub { display: none; }
 #scr-menu .pc-group { margin: 18px 0 4px; color: var(--muted); font-size: 13px; letter-spacing: .6px; text-transform: uppercase; }
-#scr-menu .pc-games { display: block; columns: 4 170px; column-gap: 24px; }
-#scr-menu .pc-game { display: block; padding: 3px 0; border: 0; border-radius: 0; background: none; break-inside: avoid; text-align: left; transition: none; }
-#scr-menu .pc-game:hover { transform: none; color: var(--home); }
+#scr-menu .pc-games { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+#scr-menu .pc-game { border-radius: 6px; background: var(--surface); transition: border-color .12s; }
+#scr-menu .pc-game:hover { transform: none; border-color: var(--home); }
 #scr-menu .pc-game b { font-size: 15px; font-weight: 700; }
-#scr-menu .pc-game small { display: inline; margin-left: 6px; font-weight: 600; }
+#scr-menu .pc-game small { font-weight: 600; }
 
 #scr-menu .menu-links { display: flex; flex-wrap: wrap; gap: 8px 36px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
 #scr-menu .link-card { display: block; padding: 0; border: 0; border-radius: 0; background: none; transition: none; }
@@ -1674,6 +1674,6 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
   #scr-menu .menu-hello { align-items: center; }
   #scr-menu .menu-cat { width: 76px; }
   #scr-menu .mode-card.classic .btn { align-self: stretch; text-align: center; }
-  #scr-menu .pc-games { columns: 2 130px; }
+  #scr-menu .pc-games { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
 #scr-menu .linkish { color: var(--home); }
