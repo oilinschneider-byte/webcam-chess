@@ -799,6 +799,7 @@ async function videoLimit() {
 
 // Plays a little of each game against the bot and takes a picture of it.
 async function homeShots() {
+  CA.camWalls.draw = () => {}; // (no camera walls in these pictures: nobody's camera is there to explain them)
   window.__fakeFace = { face: true, blink: 0 };
   for (const id of q.get('games').split(',')) {
     location.hash = '#/menu';
@@ -808,7 +809,7 @@ async function homeShots() {
     location.hash = '#/practice?game=' + id;
     await until(() => $('stage').querySelector('canvas'), 20000, id + ' to start');
     const end = Date.now() + 9000;
-    while (Date.now() < end) { const d = window.__duel; if (d && d.phase() === 'play') mash(d); await sleep(150); }
+    while (Date.now() < end) { const d = window.__duel; if (d && d.phase() === 'play') { if (id === 'paint') { const G = d.state().grid; for (let k = 0; k < G.length; k++) if (G[k] === 3) G[k] = 0; } mash(d); } await sleep(150); }
     if (window.__duel) letGo(window.__duel);
     const c = $('stage').querySelector('canvas');
     await log('shot game-' + id, true, c.toDataURL('image/png'));
@@ -839,6 +840,7 @@ function shot(name) {
 const wait = sleep;
 
 async function rules() {
+  if (q.get('nowalls')) CA.camWalls.draw = () => {}; // (for the home screen's pictures: see homeShots)
   if (!q.get('skip') || !q.get('skip').includes('paint')) await turfRules();
   if (!q.get('skip') || !q.get('skip').includes('mouse')) await heistRules();
   if (!q.get('skip') || !q.get('skip').includes('pond')) await pondRules();

@@ -368,7 +368,7 @@ function showShots() {
   while (picks.length < 4 && pool.length) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   $('menuShots').innerHTML = picks.map(id => {
     const name = CA.esc(CA.games.name(id));
-    return '<span><img src="img/home-' + id + '.jpg" alt="' + name + '" width="480" height="270"><i>' + name + '</i></span>';
+    return '<span><img src="img/home-' + id + '.jpg?v=2" alt="' + name + '" width="480" height="270"><i>' + name + '</i></span>';
   }).join('');
 }
 

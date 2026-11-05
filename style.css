@@ -1599,7 +1599,7 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 .auth-hero h1 b { color: #ffc933; font-weight: 400; }
 .topbar { background: #14151c; backdrop-filter: none; }
 
-#scr-menu { --home: #ffc933; max-width: 1040px; padding-top: 28px; }
+#scr-menu { --home: #ffc933; max-width: 1320px; padding-top: 28px; }
 #scr-menu h1, #scr-menu h2 { font-family: 'Bowlby One', var(--font); font-weight: 400; letter-spacing: .2px; }
 
 #scr-menu .menu-hello { align-items: flex-end; gap: 18px; margin-bottom: 26px; }
@@ -1615,7 +1615,7 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 
 #scr-menu .guest-note { padding: 10px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; font-weight: 600; }
 
-#scr-menu .mode-grid { grid-template-columns: 1.65fr 1fr; gap: 28px; margin-bottom: 20px; }
+#scr-menu .mode-grid { grid-template-columns: 1.55fr 1fr; gap: 28px; margin-bottom: 20px; }
 #scr-menu .mode-card { min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; overflow: visible; transition: none; }
 #scr-menu .mode-card:hover { transform: none; box-shadow: none; }
 #scr-menu .mode-card h2 { margin: 0; font-size: clamp(26px, 3vw, 34px); }
@@ -1630,11 +1630,12 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 .mc-shots img { display: block; width: 100%; height: auto; border-radius: 4px; }
 .mc-shots i { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; font-style: normal; font-weight: 800; }
 
-#scr-menu .today-list { width: 100%; gap: 0; margin: 0; }
-#scr-menu .today-list li { padding: 8px 0; border-radius: 0; border-bottom: 1px solid var(--border); background: none; }
+#scr-menu .today-list { flex: 1; width: 100%; gap: 0; margin: 0; }
+#scr-menu .today-list li { flex: 1 1 auto; max-height: 136px; gap: 14px; padding: 8px 0; border-radius: 0; border-bottom: 1px solid var(--border); background: none; font-size: 18px; }
+#scr-menu .today-list .t-cat { width: 56px; height: 56px; }
 #scr-menu .today-list .t-rank { width: 16px; color: var(--muted); text-align: left; }
 #scr-menu .today-list .t-n { color: var(--text); }
-#scr-menu .today-more { margin-top: 4px; color: var(--home); }
+#scr-menu .today-more { margin-top: 12px; color: var(--home); }
 #scr-menu .today-card:hover .today-more { text-decoration: underline; }
 
 #scr-menu .prize-banner { display: block; margin: 0 0 26px; padding: 12px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: none; transition: none; }
