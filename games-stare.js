@@ -114,15 +114,15 @@ CA.games.add('stare', {
     function draw(v, s) {
       const g = v.g;
       const bgr = g.createLinearGradient(0, 0, 0, H);
-      bgr.addColorStop(0, '#20163a');
-      bgr.addColorStop(1, '#0e0b1c');
+      bgr.addColorStop(0, '#134a86');
+      bgr.addColorStop(1, '#0f2f55');
       g.fillStyle = bgr;
       g.fillRect(0, 0, W, H);
       const panel = (x, i) => {
         g.save();
         v.roundRect(x, 110, 400, 300, 22);
         g.clip();
-        g.fillStyle = '#2a2050';
+        g.fillStyle = '#1b5a9c';
         g.fillRect(x, 110, 400, 300);
         let shown = false;
         if (i === v.me && CA.voice.cameraOn() && video.readyState >= 2) {

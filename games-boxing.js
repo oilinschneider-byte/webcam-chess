@@ -81,7 +81,7 @@ CA.games.add('boxing', {
         if (ring.w >= 0) { ring.at[ring.w] = now; v.sound([[160, 0.12, 0.2], [90, 0.2, 0.3]]); v.shake(12); }
       }
       // the mat, the corner posts and the ropes
-      g.fillStyle = '#4a3480';
+      g.fillStyle = '#1b5a9c';
       v.roundRect(RING.l, F - 6, RING.r - RING.l, 34, 8); g.fill();
       g.fillStyle = '#c94a4a';
       [RING.l + 2, RING.r - 8].forEach(px => g.fillRect(px, F - 150, 6, 146));
@@ -183,8 +183,8 @@ CA.games.add('boxing', {
         const g = v.g;
         look(performance.now());
         const bgr = g.createLinearGradient(0, 0, 0, H);
-        bgr.addColorStop(0, '#2a1838');
-        bgr.addColorStop(1, '#120b1c');
+        bgr.addColorStop(0, '#134a86');
+        bgr.addColorStop(1, '#0f2f55');
         g.fillStyle = bgr;
         g.fillRect(0, 0, W, H);
         const ps = [];
@@ -195,7 +195,7 @@ CA.games.add('boxing', {
           g.save();
           v.roundRect(x, y, PW, PH, 22);
           g.clip();
-          g.fillStyle = '#2a2050';
+          g.fillStyle = '#1b5a9c';
           g.fillRect(x, y, PW, PH);
           const vid = i === v.me ? (CA.voice.cameraOn() ? video : null) : their;
           if (i !== v.me) {

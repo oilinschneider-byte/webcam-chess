@@ -57,7 +57,7 @@ function draw(g) {
     const left = b.x === 0, rx = left ? [0, 18, 18, 0] : [18, 0, 0, 18];
     g.beginPath();
     g.roundRect(b.x, b.y - 20, b.w, b.h + 20, rx);
-    g.fillStyle = '#241c4a';
+    g.fillStyle = '#5ba4e0';
     g.fill();
     g.save();
     g.clip();
@@ -70,7 +70,7 @@ function draw(g) {
     }
     g.stroke();
     g.restore();
-    g.strokeStyle = '#4a3a8c';
+    g.strokeStyle = '#1b6fd6';
     g.lineWidth = 4;
     g.beginPath();
     g.roundRect(b.x, b.y - 20, b.w, b.h + 20, rx);

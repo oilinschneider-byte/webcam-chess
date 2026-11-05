@@ -381,7 +381,7 @@ function drawPiece(v, p, picked) {
 
 function draw(v, s, pcs, picked, queued) {
   const g = v.g;
-  g.fillStyle = '#231a33';
+  g.fillStyle = '#0f2f55';
   g.fillRect(0, 0, W, H);
   const next = BURN[s.b], warn = next !== undefined && s.t >= next - WARN;
   for (let y = 0; y < 8; y++) {
@@ -392,7 +392,7 @@ function draw(v, s, pcs, picked, queued) {
         g.fillRect(left, top, T, T);
         continue;
       }
-      g.fillStyle = (x + y) % 2 ? '#7a5c8f' : '#d9cdb8';
+      g.fillStyle = (x + y) % 2 ? '#5b8fc4' : '#d9e6f2';
       g.fillRect(left, top, T, T);
       if (warn && !onBoard(x, y, s.b + 1)) { g.fillStyle = 'rgba(255, 60, 20, ' + (0.3 + 0.3 * Math.abs(Math.sin(v.now / 130))) + ')'; g.fillRect(left, top, T, T); }
     }
@@ -428,7 +428,7 @@ function draw(v, s, pcs, picked, queued) {
   v.label('⏱ ' + Math.ceil(left), BX / 2 + 10, H / 2 - 40, 28, '#ffffff');
   if (next !== undefined) {
     const to = Math.max(0, Math.ceil(next - s.t));
-    v.label('🔥 Burns in', BX / 2 + 10, H / 2, 16, warn ? '#ff9a6a' : '#cfc6e6');
+    v.label('🔥 Burns in', BX / 2 + 10, H / 2, 16, warn ? '#ff9a6a' : '#cfe0f2');
     v.label(to + 's', BX / 2 + 10, H / 2 + 28, warn ? 34 : 24, warn ? '#ff5a3a' : '#ffffff');
   } else v.label('🔥 Last stand!', BX / 2 + 10, H / 2, 16, '#ff9a6a');
   const count = c => pcs.filter(p => p.c === c).length;

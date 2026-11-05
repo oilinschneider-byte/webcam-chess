@@ -408,7 +408,7 @@ function showPrize(p) {
 const SHOT_GAMES = ['trails', 'box', 'sumo', 'hockey', 'cannons', 'golf', 'kart', 'swords', 'dodge', 'parkour', 'poop', 'hoops', 'barrel', 'walls', 'climb', 'paint', 'mouse', 'pond', 'speedchess'];
 function shotSlide(id) {
   const name = CA.esc(CA.games.name(id));
-  return '<span class="mc-slide"><img src="img/home-' + id + '.jpg?v=3" alt="' + name + '" width="720" height="405"><i>' + name + '</i></span>';
+  return '<span class="mc-slide"><img src="img/home-' + id + '.jpg?v=4" alt="' + name + '" width="720" height="405"><i>' + name + '</i></span>';
 }
 const SHOT_MS = 3000, SHOT_SLIDE_MS = 600; // (how long each game shows, and how long it takes to move on: see .mc-track.go)
 let shotTimer = 0;
@@ -423,7 +423,7 @@ function showShots() {
   const game = n => order[n % order.length];
   const draw = () => {
     $('menuShots').innerHTML = '<span class="mc-track">' + shotSlide(game(at)) + shotSlide(game(at + 1)) + '</span>';
-    new Image().src = 'img/home-' + game(at + 2) + '.jpg?v=3'; // (so it's ready when its turn comes)
+    new Image().src = 'img/home-' + game(at + 2) + '.jpg?v=4'; // (so it's ready when its turn comes)
   };
   draw();
   shotTimer = setInterval(() => {
