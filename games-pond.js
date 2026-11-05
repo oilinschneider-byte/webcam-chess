@@ -1,10 +1,10 @@
 /* Classic Games: Pond War. Two cats on opposite banks, one pond, and you can see the fish swimming. Aim, click to cast
-   near a fish, and click when your bobber dips to hook it. Then hold the button to reel in: your line's tension goes up
-   while you pull, and goes up fast when the fish makes a run, so let go when it does. Too much tension and the line snaps.
+   near a fish, and when your bobber dips, press and hold to hook it and start reeling. Tension goes up fast while you pull,
+   and too much snaps the line, so one long pull never lands a fish: pull, let go, pull again. You pull hardest with the
+   tension in the green part of the meter, but a fish slips back while you let go, and when it makes a run, let go at once.
    - Cast onto a fish the other cat is reeling in and you both have it: a tug of war, and the winner takes the fish.
    - Throw a rock (E or right-click): it scares fish away, ruins a waiting cast, and jolts a line.
-   - What you catch goes in your bucket. Bank it (B): it takes a moment, and only banked fish count in full. A snapped line
-     spills half your bucket, and at the end whatever's still in it counts half.
+   - A fish scores the moment you land it. A snapped line just costs you the fish, and a moment to recover.
    - 15 seconds before the end, a legendary golden fish appears.
    The host's app runs the pond (see games-duel.js). */
 (() => {
@@ -27,21 +27,23 @@ const FISH = [
 ];
 const LEGEND = FISH.length - 1;
 const POND_FISH = 6, LURE = 90, SNAG = 65;       // fish in the pond, how far a bobber attracts them, how near a hooked fish a cast snags it
-const RISE = 0.3, RISE_FIGHT = 0.5, RISE_RUN = 1.6, RISE_TUG = 1.15, EASE = 1.2; // the line's tension: per second while pulling; and letting go
+const RISE = 0.85, RISE_FIGHT = 0.75, RISE_RUN = 2.6, RISE_TUG = 1.15, EASE = 1.5; // the line's tension: per second while pulling; and letting go
+const SWEET = [0.5, 0.85], SWEET_PULL = 1.6;     // the green part of the tension meter, and how much harder you pull in it
+const PULL = 0.5, PULL_FIGHT = 0.2, SLIP = 0.05, SLIP_FIGHT = 0.08; // how fast you pull a fish in, and how fast it slips back, per second
+const TAP = 0.3;                                 // while waiting for a bite: a press shorter than this reels back in; held longer, it hooks the next bite
 const SLACK = 4;                                 // a fish you stop pulling on for this long gets away
 const ROCK_WAIT = 7, ROCK_FLY = 0.5, ROCK_R = 85, ROCK_JOLT = 0.32;
-const BANK_TIME = 1.2;
 const BEHIND = 6, BOOST = 0.85;                  // the comeback boost: tension rises slower for whoever's this far behind
 
 CA.games.add('pond', {
   name: 'Pond War', icon: '🎣',
-  blurb: 'One pond, one fish at a time! Cast near a fish, hook it, and hold to reel in, letting go when it runs. Cast onto their fish for a tug of war, throw rocks, and bank your bucket before it spills. A golden fish comes at the end!',
+  blurb: 'One pond, one fish at a time! Cast near a fish, press and hold when it bites, then pull and let go, again and again, keeping the line in the green. Cast onto their fish for a tug of war, and throw rocks. A golden fish comes at the end!',
   start(ctx) {
     CA.duel.run(ctx, {
-      id: 'pond', mouse: true, keys: { KeyB: 'b', KeyE: 'e' }, letters: { b: 'b', e: 'e' },
-      pad: { buttons: [{ k: 'e', label: '🪨 Rock' }, { k: 'b', label: '🪣 Bank' }, { k: 'fire', label: '🎣 Cast / Reel', main: true }] },
-      help: 'Aim with the mouse · click to cast, click when it dips, hold to reel (let go when it runs!) · B banks your bucket · E or right-click throws a rock',
-      helpTouch: 'Touch the pond to cast · tap when it dips · hold to reel, let go when it runs · Bank your bucket!',
+      id: 'pond', mouse: true, keys: { KeyE: 'e' }, letters: { e: 'e' },
+      pad: { buttons: [{ k: 'e', label: '🪨 Rock' }, { k: 'fire', label: '🎣 Cast / Reel', main: true }] },
+      help: 'Aim with the mouse · click to cast · press and hold when it dips · pull and let go over and over, keeping the tension in the green · E or right-click throws a rock',
+      helpTouch: 'Touch the pond to cast · hold when it dips · pull and let go over and over',
       note: 'Most points in ' + LENGTH + ' seconds',
       init, step, snap, bot, draw, event, lerp,
     });
@@ -66,13 +68,12 @@ function randomType() {
 function init() {
   const s = {
     t: 0, fish: [], rocks: [], gold: false, ended: false,
-    cats: [0, 1].map(() => ({ ph: 'idle', k: 0, bx: 0, by: 0, tx: 0, ty: 0, fish: null, ten: 0, slack: 0, bk: 0, sc: 0, got: 0, rock: 0, ax: WATER.x, ay: WATER.y, big: 0, boost: false, last: -1 })),
+    cats: [0, 1].map(() => ({ ph: 'idle', k: 0, bx: 0, by: 0, tx: 0, ty: 0, fish: null, ten: 0, slack: 0, tapAt: -1, sc: 0, got: 0, rock: 0, ax: WATER.x, ay: WATER.y, big: 0, boost: false, last: -1 })),
   };
   for (let k = 0; k < POND_FISH; k++) spawnFish(s, randomType());
   return s;
 }
 
-const worth = c => c.sc + Math.floor(c.bk / 2);
 function letGoFish(s, f, except) {
   f.on = [false, false];
   f.st = 'flee';
@@ -89,16 +90,16 @@ function step(s, inp, dt, api) {
     f.x = WATER.x; f.y = WATER.y;
     api.ev('legend', {});
   }
-  s.cats[0].boost = worth(s.cats[1]) - worth(s.cats[0]) >= BEHIND;
-  s.cats[1].boost = worth(s.cats[0]) - worth(s.cats[1]) >= BEHIND;
+  s.cats[0].boost = s.cats[1].sc - s.cats[0].sc >= BEHIND;
+  s.cats[1].boost = s.cats[0].sc - s.cats[1].sc >= BEHIND;
   s.cats.forEach((c, i) => stepCat(s, c, i, inp[i], dt, api));
   stepRocks(s, dt, api);
   stepFish(s, dt, api);
-  api.score(worth(s.cats[0]), worth(s.cats[1]));
+  api.score(s.cats[0].sc, s.cats[1].sc);
   if (s.t >= LENGTH && !s.ended) {
     s.ended = true;
-    api.ev('rec', { big: s.cats.map(c => c.big), got: s.cats.map(c => c.got), sc: s.cats.map(worth) });
-    const [a, b] = s.cats.map(worth);
+    api.ev('rec', { big: s.cats.map(c => c.big), got: s.cats.map(c => c.got), sc: s.cats.map(c => c.sc) });
+    const [a, b] = s.cats.map(c => c.sc);
     api.end(a === b ? -1 : a > b ? 0 : 1, 'TIME!');
   }
 }
@@ -116,17 +117,11 @@ function stepCat(s, c, i, n, dt, api) {
   }
   c.ax = ax;
   c.ay = ay;
-  const busy = c.ph === 'reel' || c.ph === 'bank' || c.ph === 'bite';
+  const busy = c.ph === 'reel' || c.ph === 'bite';
   if ((n.hit.e || n.hit.alt) && c.rock <= 0 && !busy) { // throw a rock
     c.rock = ROCK_WAIT;
     s.rocks.push({ i, x: ax, y: ay, k: ROCK_FLY });
     api.ev('throw', { i });
-  }
-  if (n.hit.b && c.bk > 0 && c.ph !== 'reel' && c.ph !== 'bank') { // bank your bucket: you have to leave your line
-    if (c.fish) { c.fish.st = 'flee'; c.fish.k = 1; c.fish = null; }
-    c.ph = 'bank';
-    c.k = BANK_TIME;
-    api.ev('banking', { i });
   }
   if (c.ph === 'idle') {
     if (act) { c.ph = 'cast'; c.k = 0.4; c.tx = ax; c.ty = ay; api.ev('cast', { i }); }
@@ -147,9 +142,14 @@ function stepCat(s, c, i, n, dt, api) {
       } else api.ev('plop', { x: Math.round(c.bx), y: Math.round(c.by) });
     }
   } else if (c.ph === 'wait') {
-    if (act) { c.ph = 'back'; c.k = 0.35; } // (reeled in with nothing on it)
+    if (act) c.tapAt = s.t;
+    if (c.tapAt >= 0 && !hold) { // (a quick press: reeled in with nothing on it)
+      if (s.t - c.tapAt < TAP) { c.ph = 'back'; c.k = 0.35; }
+      c.tapAt = -1;
+    }
   } else if (c.ph === 'bite') {
-    if (act) {
+    if (act || hold) { // (press and hold to hook it, and you're already reeling)
+      c.tapAt = -1;
       const f = c.fish;
       c.ph = 'reel';
       c.ten = 0;
@@ -176,24 +176,22 @@ function stepCat(s, c, i, n, dt, api) {
       c.slack = 0;
       const rise = (f.run ? RISE_RUN : RISE + RISE_FIGHT * d) * (tug ? RISE_TUG : 1) * (c.boost ? BOOST : 1);
       c.ten += rise * dt;
-      if (!f.run) f.p += dir * (0.95 - 0.5 * d) * dt;
+      if (!f.run) f.p += dir * (PULL - PULL_FIGHT * d) * (c.ten >= SWEET[0] && c.ten <= SWEET[1] ? SWEET_PULL : 1) * dt;
     } else {
       c.ten = Math.max(0, c.ten - EASE * dt);
       c.slack += dt;
       if (!tug) { // (it slips back a little)
-        const back = 0.15 * dt;
+        const back = (SLIP + SLIP_FIGHT * d) * dt;
         f.p = i ? Math.max(0, f.p - back) : Math.min(0, f.p + back);
       }
     }
-    if (c.ten >= 1) { // the line snaps: you lose the fish, and half your bucket spills
-      const spill = Math.ceil(c.bk / 2);
-      c.bk -= spill;
+    if (c.ten >= 1) { // the line snaps: you lose the fish
       f.on[i] = false;
       c.fish = null;
       c.ph = 'snapped';
       c.k = 1.2;
       c.ten = 0;
-      api.ev('snap', { i, spill });
+      api.ev('snap', { i });
       if (!f.on[1 - i]) letGoFish(s, f, i);
       return;
     }
@@ -209,7 +207,7 @@ function stepCat(s, c, i, n, dt, api) {
     }
     if (f.p * dir >= 1) { // caught!
       const info = FISH[f.t];
-      c.bk += info.p;
+      c.sc += info.p;
       c.got++;
       c.big = Math.max(c.big, info.p);
       c.last = f.t;
@@ -226,13 +224,6 @@ function stepCat(s, c, i, n, dt, api) {
         o.ten = 0;
       }
       api.ev('caught', { i, t: f.t, x: SHORE[i].x, y: SHORE[i].y, tug: tug ? 1 : 0 });
-    }
-  } else if (c.ph === 'bank') {
-    if (c.k <= 0) {
-      c.sc += c.bk;
-      api.ev('banked', { i, n: c.bk });
-      c.bk = 0;
-      c.ph = 'idle';
     }
   } else if (c.k <= 0) c.ph = 'idle'; // (after a catch, a miss, or a snapped line)
 }
@@ -330,7 +321,7 @@ function snap(s) {
     t: Math.round(s.t * 10) / 10,
     f: s.fish.map(f => [f.t, r0(f.x), r0(f.y), Math.round(f.a * 10) / 10, f.st === 'hooked' ? 1 : f.st === 'bite' ? 2 : 0, f.run ? 1 : 0, f.runK < 0.3 && !f.run ? 1 : 0, f.on[0] && f.on[1] ? 1 : 0, Math.round(f.p * 100) / 100, f.fade > 0 ? 1 : 0]),
     r: s.rocks.map(r => [r0(r.x), r0(r.y), Math.round(r.k * 100) / 100, r.i]),
-    c: s.cats.map(c => ({ ph: c.ph, k: Math.round(Math.max(0, c.k) * 100) / 100, bx: r0(c.ph === 'cast' ? c.tx : c.bx), by: r0(c.ph === 'cast' ? c.ty : c.by), fx: c.fish ? r0(c.fish.x) : -1, fy: c.fish ? r0(c.fish.y) : -1, ten: Math.round(c.ten * 100) / 100, bk: c.bk, sc: c.sc, got: c.got, rk: Math.round(c.rock), ax: r0(c.ax), ay: r0(c.ay), cb: c.boost ? 1 : 0, l: c.last })),
+    c: s.cats.map((c, i) => ({ ph: c.ph, k: Math.round(Math.max(0, c.k) * 100) / 100, bx: r0(c.ph === 'cast' ? c.tx : c.bx), by: r0(c.ph === 'cast' ? c.ty : c.by), fx: c.fish ? r0(c.fish.x) : -1, fy: c.fish ? r0(c.fish.y) : -1, ten: Math.round(c.ten * 100) / 100, pg: c.fish ? Math.round(Math.max(0, c.fish.p * (i ? 1 : -1)) * 100) / 100 : 0, sc: c.sc, got: c.got, rk: Math.round(c.rock), ax: r0(c.ax), ay: r0(c.ay), cb: c.boost ? 1 : 0, l: c.last })),
   };
 }
 function lerp(a, b, f) {
@@ -341,7 +332,7 @@ function lerp(a, b, f) {
 }
 
 // The bot looks for the best fish it can reach, casts near it (better bots cast closer, and go for bigger fish), and reels
-// in, letting go when the line gets tight or the fish runs. Good bots bank in time, snag your big fish and throw rocks.
+// in, letting go when the line gets tight or the fish runs. Good bots snag your big fish and throw rocks.
 function bot(s, i, dt, api) {
   const c = s.cats[i], o = s.cats[1 - i];
   const st = s.bs || (s.bs = {});
@@ -349,8 +340,7 @@ function bot(s, i, dt, api) {
   const out = { ax: b.tx, ay: b.ty, held: {}, hit: {} };
   b.wait -= dt;
   const skill = api.skill, gauss = CA.games.kit.gauss;
-  const shouldBank = c.bk > 0 && (s.t > LENGTH - 5 - 5 * skill || c.bk >= 16 - 6 * skill);
-  if ((c.ph === 'idle' || c.ph === 'wait') && shouldBank && b.wait <= 0) { out.hit.b = true; b.wait = 0.5; return out; }
+
   if (c.ph === 'idle' && b.wait <= 0) {
     // a fish the other cat has on the line, big enough to fight for?
     const theirs = s.fish.find(f => f.st === 'hooked' && f.on[1 - i] && !f.on[i] && FISH[f.t].p >= 5);
@@ -382,10 +372,10 @@ function bot(s, i, dt, api) {
     if (b.react <= 0) { out.hit.fire = true; b.react = -1; }
   } else b.react = -1;
   if (c.ph === 'reel' && c.fish) {
-    const careful = 0.45 + 0.4 * skill;
+    const careful = 0.6 + 0.25 * skill, again = 0.2 + 0.35 * skill; // (good bots stay in the green)
     const sees = c.fish.run && Math.random() < 0.6 + 0.4 * skill;
     if (sees || c.ten > careful) b.hold = false;
-    else if (c.ten < careful * 0.45) b.hold = true;
+    else if (c.ten < again) b.hold = true;
     if (b.hold) out.held.fire = true;
   }
   return out;
@@ -400,7 +390,7 @@ function event(v, e) {
   if (e.type === 'away' && mine) v.sound('miss');
   if (e.type === 'snag') { v.ring(e.x, e.y, '#ffd23f', 18); v.pop(e.x, e.y - 34, '⚔️ TUG OF WAR!', '#ffd23f'); v.shake(5); v.sound('notify'); }
   if (e.type === 'snap') {
-    v.pop(BANK[e.i].x, BANK[e.i].y - 110, '💥 SNAP!' + (e.spill ? ' -' + e.spill : ''), '#ff5a5a');
+    v.pop(BANK[e.i].x, BANK[e.i].y - 110, '💥 SNAP!', '#ff5a5a');
     if (mine) { v.shake(7); v.sound('miss'); }
   }
   if (e.type === 'caught') {
@@ -410,8 +400,7 @@ function event(v, e) {
     if (e.t === LEGEND) v.shake(12);
     v.sound(mine ? (f.p ? 'point' : 'draw') : 'miss');
   }
-  if (e.type === 'banked') { v.pop(BANK[e.i].x, BANK[e.i].y - 110, '🪣 Banked +' + e.n, '#7dff8a'); if (mine) v.sound('point'); }
-  if (e.type === 'banking' && mine) v.sound([[420, 0, 0.05]]);
+
   if (e.type === 'throw' && mine) v.sound([[400, 0, 0.04]]);
   if (e.type === 'splash') { v.burst(e.x, e.y, '#bfe9ff', 16, 220); v.ring(e.x, e.y, '#ffffff', 24); v.sound([[160, 0, 0.1]]); }
   if (e.type === 'jolt') v.pop(BANK[e.i].x, BANK[e.i].y - 110, '🪨 Jolted!', '#ff9a9a');
@@ -477,8 +466,7 @@ function draw(v, s) {
   (s.f || []).forEach(f => drawFish(v, f));
   s.c.forEach((p, i) => {
     const bank = BANK[i], side = i ? -1 : 1;
-    if (p.ph !== 'bank') v.catSide(i, bank.x, bank.y + 40, 0.9, { lookRight: i === 0 });
-    else v.catSide(i, bank.x + side * -28, bank.y + 54, 0.9, { lookRight: i !== 0 });
+    v.catSide(i, bank.x, bank.y + 40, 0.9, { lookRight: i === 0 });
     v.label(i === v.me ? 'You' : v.names[i], bank.x, bank.y + 60, 13, i === v.me ? '#ffd23f' : '#ffffff');
     const tipX = bank.x + side * 85, tipY = bank.y - 80;
     g.strokeStyle = '#6b3d1c'; // the rod
@@ -506,20 +494,27 @@ function draw(v, s) {
       }
     }
     if (p.ph === 'reel') { // the tension meter, by the cat
-      const mx = bank.x - 40, my = bank.y + 74;
-      g.fillStyle = 'rgba(10, 30, 50, .85)';
-      v.roundRect(mx, my, 80, 12, 6); g.fill();
-      g.fillStyle = p.ten > 0.7 ? '#ff5a5a' : p.ten > 0.4 ? '#ffd23f' : '#7dff8a';
-      v.roundRect(mx + 2, my + 2, Math.max(4, 76 * Math.min(1, p.ten)), 8, 4); g.fill();
+      const mx = bank.x - 55, my = bank.y + 72, mw = 110;
+      g.fillStyle = 'rgba(10, 30, 50, .9)';
+      v.roundRect(mx, my, mw, 26, 7); g.fill();
+      g.fillStyle = 'rgba(60, 220, 110, .55)'; // the green part: pull here
+      g.fillRect(mx + 3 + (mw - 6) * SWEET[0], my + 3, (mw - 6) * (SWEET[1] - SWEET[0]), 12);
+      g.fillStyle = 'rgba(255, 70, 70, .5)';
+      g.fillRect(mx + 3 + (mw - 6) * SWEET[1], my + 3, (mw - 6) * (1 - SWEET[1]), 12);
+      const inSweet = p.ten >= SWEET[0] && p.ten <= SWEET[1];
+      g.fillStyle = inSweet ? '#7dff8a' : p.ten > SWEET[1] ? '#ff5a5a' : '#ffffff';
+      g.fillRect(mx + 3 + (mw - 6) * Math.min(1, p.ten) - 2, my + 1, 4, 16); // the needle
+      g.fillStyle = '#ffd23f'; // how far in the fish is
+      v.roundRect(mx + 3, my + 18, Math.max(3, (mw - 6) * Math.min(1, p.pg)), 5, 2.5); g.fill();
     }
-    if (p.ph === 'bank') v.label('🪣 Banking…', bank.x, bank.y - 96, 14, '#ffffff');
+
     if (p.ph === 'snapped') v.label('Line snapped!', bank.x, bank.y - 96, 14, '#ff9a9a');
     // the scoreboard (between the camera walls in the top corners)
     const x = i ? W - 300 : 300;
     g.fillStyle = 'rgba(20, 30, 50, .78)';
     v.roundRect(x - 120, 16, 240, 56, 14); g.fill();
-    v.label((i === v.me ? 'You' : v.names[i]) + ': ' + p.sc + ' banked', x, 33, 16, v.team[i].light);
-    v.label('🪣 ' + p.bk + (p.bk ? ' (' + Math.floor(p.bk / 2) + ' if not banked)' : '') + (p.rk > 0 ? '  🪨 ' + p.rk + 's' : '  🪨'), x, 56, 12, p.bk >= 10 ? '#ffd23f' : '#ffffff');
+    v.label((i === v.me ? 'You' : v.names[i]) + ': ' + p.sc + ' pts', x, 33, 16, v.team[i].light);
+    v.label('🐟 × ' + p.got + (p.rk > 0 ? '   🪨 ' + p.rk + 's' : '   🪨'), x, 56, 12, '#ffffff');
     if (p.cb) v.label('🔥', x - 108, 33, 14, '#000000');
   });
   (s.r || []).forEach(([x, y, k, i]) => { // rocks in the air
@@ -534,13 +529,13 @@ function draw(v, s) {
     g.strokeStyle = 'rgba(255, 255, 255, .7)'; g.lineWidth = 1.5;
     g.beginPath(); g.arc(me.ax, me.ay, 12, 0, Math.PI * 2); g.moveTo(me.ax - 16, me.ay); g.lineTo(me.ax + 16, me.ay); g.moveTo(me.ax, me.ay - 16); g.lineTo(me.ax, me.ay + 16); g.stroke();
   }
-  if (me.ph === 'bite') v.msg('NOW! Click to hook it!', true);
+  if (me.ph === 'bite') v.msg('NOW! Press and hold to hook it!', true);
   else if (me.ph === 'reel') {
     const mine = (s.f || []).find(f => Math.abs(f[1] - me.fx) < 3 && Math.abs(f[2] - me.fy) < 3);
-    v.msg(mine && mine[5] ? 'It\'s running! Let go or the line snaps!' : me.ten > 0.7 ? 'The line is about to snap! Let go!' : 'Hold to reel it in · let go when it runs', !!(mine && mine[5]) || me.ten > 0.7);
+    v.msg(mine && mine[5] ? 'It\'s running! Let go or the line snaps!' : me.ten > SWEET[1] ? 'The line is about to snap! Let go!' : 'Pull and let go, over and over: you pull hardest with the needle in the green', !!(mine && mine[5]) || me.ten > SWEET[1]);
   }
-  else if (me.ph === 'wait') v.msg('Wait for it… click when the bobber dips · click now to reel back in');
-  else if (me.ph === 'idle') v.msg(me.bk >= 8 ? 'Press B to bank your bucket before it spills!' : 'Click near a fish to cast · E or right-click throws a rock', me.bk >= 8 && left <= 15);
+  else if (me.ph === 'wait') v.msg('Wait for it… press and hold when the bobber dips · a quick click reels back in');
+  else if (me.ph === 'idle') v.msg('Click near a fish to cast · E or right-click throws a rock');
 }
 
 })();

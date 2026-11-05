@@ -299,12 +299,12 @@ function renderMenuMic() {
   const el = $('menuMic');
   const adult = CA.canVideoChat();
   let mic;
-  if (CA.voice.micOn()) mic = adult ? '🎤 Microphone on: your cat talks when you do.' : "🎤 Microphone on: your cat's mouth moves when you talk (other players can't hear you).";
-  else if (CA.voice.hasMic()) mic = '🔇 Microphone muted. Press 🎤 at the top to unmute.';
-  else mic = '🔇 Microphone off. <button class="linkish" id="menuMicOn">Turn it on</button>';
-  const cam = !CA.voice.camWanted() ? '🐱 Camera off: you play as your cat. <button class="linkish" id="menuCamOn">Turn it on</button>'
-    : adult ? '📷 Camera on when you play. Strangers see your cat until you press 📷 Show my face.'
-    : '📷 Camera on for pose games. Other players always see your cat.';
+  if (CA.voice.micOn()) mic = adult ? 'Microphone on: your cat talks when you do.' : "Microphone on: your cat's mouth moves when you talk (other players can't hear you).";
+  else if (CA.voice.hasMic()) mic = 'Microphone muted. Press 🎤 at the top to unmute.';
+  else mic = 'Microphone off. <button class="linkish" id="menuMicOn">Turn it on</button>';
+  const cam = !CA.voice.camWanted() ? 'Camera off: you play as your cat. <button class="linkish" id="menuCamOn">Turn it on</button>'
+    : adult ? 'Camera on when you play. Strangers see your cat until you press Show my face.'
+    : 'Camera on for pose games. Other players always see your cat.';
   el.innerHTML = mic + '<br>' + cam;
   const b = $('menuMicOn');
   if (b) b.addEventListener('click', turnMicOn);
@@ -312,13 +312,13 @@ function renderMenuMic() {
   if (c) c.addEventListener('click', () => toggleCamera(true));
 }
 
-// "🟢 12 players online", from the server.
+// "12 players online", from the server.
 async function showOnline() {
   try {
     const s = await CA.server.call('ca_stats');
     if (CA.route !== 'menu') return;
     const n = Number(s.online) || 0;
-    $('menuOnline').textContent = '🟢 ' + n + ' player' + (n === 1 ? '' : 's') + ' online now' +
+    $('menuOnline').textContent = n + ' player' + (n === 1 ? '' : 's') + ' online now' +
       (s.searching ? ' · ' + s.searching + ' looking for a match' : '');
     $('menuOnline').classList.remove('hidden');
     showPrize(s.prize);
@@ -332,11 +332,11 @@ async function showOnline() {
 function showToday(t) {
   if (!t || CA.route !== 'menu') return;
   const today = t.kind === 'today', rows = t.rows || [];
-  $('todayTitle').textContent = today ? "🔥 Today's Top Players" : '🏆 Top Players';
-  $('todayNote').textContent = rows.length ? (today ? 'The most wins today. Can you get on the list?' : 'The longest win streaks ever. Can you beat them?') : 'Nobody yet. Be the first!';
-  $('todayList').innerHTML = rows.map((r, i) => '<li><span class="t-rank">' + (['🥇', '🥈', '🥉'][i] || i + 1) + '</span><span class="t-cat">' +
+  $('todayTitle').textContent = today ? 'Winning today' : 'Longest streaks';
+  $('todayNote').textContent = rows.length ? '' : 'Nobody yet. Be the first!';
+  $('todayList').innerHTML = rows.map((r, i) => '<li><span class="t-rank">' + (i + 1) + '</span><span class="t-cat">' +
     CA.catSVG(r.equip || {}, { bg: false, anim: false, label: r.name }) + '</span><span class="t-name">' + CA.esc(r.name) + '</span><span class="t-n">' +
-    (today ? r.n + (r.n === 1 ? ' win' : ' wins') : '🔥 ' + r.n) + '</span></li>').join('');
+    (today ? r.n + (r.n === 1 ? ' win' : ' wins') : r.n + ' in a row') + '</span></li>').join('');
   $('todayCard').classList.remove('hidden');
 }
 

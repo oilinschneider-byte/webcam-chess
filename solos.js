@@ -10,7 +10,7 @@ const practiceRoot = document.getElementById('scr-practice');
 const $ = id => playRoot.querySelector('#' + id) || practiceRoot.querySelector('#' + id);
 
 const VIDEO_BPS = 700000, VIDEO_FPS = 24; // (the most your camera sends the other player: see capVideo)
-const PROTOCOL = 40;              // bump when the games or the match flow change, so old and new versions don't meet
+const PROTOCOL = 42;              // bump when the games or the match flow change, so old and new versions don't meet
 const PEER_PREFIX = 'camarcade-';
 const PEER_OPTS = { debug: 0 };   // (a peer we were paired with may have just left: we handle those errors ourselves)
 const BASE_ICE = (window.CAMARCADE_CONFIG && CAMARCADE_CONFIG.iceServers) || [];

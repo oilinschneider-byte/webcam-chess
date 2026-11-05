@@ -1587,3 +1587,93 @@ body.guest #deleteAccountBtn, body.guest .stat-chip.only-account { display: none
   border-radius: 14px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); font-weight: 700; }
 .consent p { margin: 0; flex: 1 1 240px; }
 body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"]):not([data-route="stats"]):not([data-route="leaders"]) .consent { display: none; }
+
+/* ================= THE HOME SCREEN =================
+   One color (the yellow the games use for highlights), flat panels, small corners, real pictures of the games, and lines
+   instead of a box around everything. */
+.logo { font-family: 'Bowlby One', var(--font); font-weight: 400; letter-spacing: .3px; }
+.logo b { color: #ffc933; font-weight: 400; }
+.logo-mark { width: 30px; height: 30px; border-radius: 0; background: none; box-shadow: none; color: #ffc933; }
+.logo-mark svg { width: 100%; height: 100%; display: block; }
+.auth-hero h1 { font-family: 'Bowlby One', var(--font); font-weight: 400; }
+.auth-hero h1 b { color: #ffc933; font-weight: 400; }
+.topbar { background: #14151c; backdrop-filter: none; }
+
+#scr-menu { --home: #ffc933; max-width: 1040px; padding-top: 28px; }
+#scr-menu h1, #scr-menu h2 { font-family: 'Bowlby One', var(--font); font-weight: 400; letter-spacing: .2px; }
+
+#scr-menu .menu-hello { align-items: flex-end; gap: 18px; margin-bottom: 26px; }
+#scr-menu .menu-cat { width: 96px; border-radius: 6px; box-shadow: none; }
+#scr-menu .menu-hello h1 { margin: 0 0 4px; font-size: clamp(28px, 4vw, 42px); line-height: 1.05; overflow-wrap: anywhere; }
+#scr-menu .hero-stats { gap: 4px 16px; }
+#scr-menu .stat-chip { padding: 0; border: 0; border-radius: 0; background: none; color: var(--muted); font-weight: 700; }
+#scr-menu .stat-chip b { color: var(--text); font-weight: 900; }
+#scr-menu .stat-chip.fish b { color: var(--text); }
+#scr-menu .menu-mic { margin-top: 6px; font-size: 13px; font-weight: 600; }
+#scr-menu .online-note { position: relative; margin: 4px 0 0; padding: 0 0 0 14px; border: 0; background: none; color: var(--text); font-size: 13px; font-weight: 800; }
+#scr-menu .online-note::before { content: ''; position: absolute; left: 0; top: .42em; width: 8px; height: 8px; border-radius: 50%; background: #3ddc84; }
+
+#scr-menu .guest-note { padding: 10px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; font-weight: 600; }
+
+#scr-menu .mode-grid { grid-template-columns: 1.65fr 1fr; gap: 28px; margin-bottom: 20px; }
+#scr-menu .mode-card { min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; overflow: visible; transition: none; }
+#scr-menu .mode-card:hover { transform: none; box-shadow: none; }
+#scr-menu .mode-card h2 { margin: 0; font-size: clamp(26px, 3vw, 34px); }
+#scr-menu .mode-card p { color: var(--muted); font-weight: 600; }
+#scr-menu .mode-card p:empty { display: none; }
+#scr-menu .btn.solos-btn { border: 0; border-radius: 6px; background: var(--home); box-shadow: none; color: #17130a; font-weight: 900; }
+#scr-menu .btn.solos-btn:hover:not(:disabled) { background: #ffd95e; }
+#scr-menu .mode-card.classic .btn { margin: 6px 0 8px; padding: 14px 34px; font-size: 18px; }
+#scr-menu .mode-card.classic:hover .btn { background: #ffd95e; }
+.mc-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.mc-shots > span { display: block; min-width: 0; }
+.mc-shots img { display: block; width: 100%; height: auto; border-radius: 4px; }
+.mc-shots i { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; font-style: normal; font-weight: 800; }
+
+#scr-menu .today-list { width: 100%; gap: 0; margin: 0; }
+#scr-menu .today-list li { padding: 8px 0; border-radius: 0; border-bottom: 1px solid var(--border); background: none; }
+#scr-menu .today-list .t-rank { width: 16px; color: var(--muted); text-align: left; }
+#scr-menu .today-list .t-n { color: var(--text); }
+#scr-menu .today-more { margin-top: 4px; color: var(--home); }
+#scr-menu .today-card:hover .today-more { text-decoration: underline; }
+
+#scr-menu .prize-banner { display: block; margin: 0 0 26px; padding: 12px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: none; transition: none; }
+#scr-menu .prize-banner:hover { transform: none; }
+#scr-menu .prize-banner .pb-text { display: block; }
+#scr-menu .prize-banner .pb-text b { margin-right: 10px; color: var(--home); font-size: 16px; }
+
+#scr-menu .practice-card { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+#scr-menu .pc-head { align-items: flex-end; margin-bottom: 12px; }
+#scr-menu .pc-head h2 { font-size: 26px; }
+#scr-menu .pc-head p { font-weight: 600; }
+#scr-menu .seg { padding: 0; gap: 14px; border: 0; border-radius: 0; background: none; }
+#scr-menu .seg button { padding: 4px 0; border-radius: 0; border-bottom: 2px solid transparent; }
+#scr-menu .seg button.active { border-bottom-color: var(--home); background: none; color: var(--text); }
+#scr-menu .pc-mix { gap: 16px; padding: 12px 0; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: none; transition: none; }
+#scr-menu .pc-mix:hover { transform: none; }
+#scr-menu .pc-mix-text b { font-size: 17px; }
+#scr-menu .pc-mix-text small { color: var(--muted); font-weight: 600; }
+#scr-menu .pc-sub { display: none; }
+#scr-menu .pc-group { margin: 18px 0 4px; color: var(--muted); font-size: 13px; letter-spacing: .6px; text-transform: uppercase; }
+#scr-menu .pc-games { display: block; columns: 4 170px; column-gap: 24px; }
+#scr-menu .pc-game { display: block; padding: 3px 0; border: 0; border-radius: 0; background: none; break-inside: avoid; text-align: left; transition: none; }
+#scr-menu .pc-game:hover { transform: none; color: var(--home); }
+#scr-menu .pc-game b { font-size: 15px; font-weight: 700; }
+#scr-menu .pc-game small { display: inline; margin-left: 6px; font-weight: 600; }
+
+#scr-menu .menu-links { display: flex; flex-wrap: wrap; gap: 8px 36px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
+#scr-menu .link-card { display: block; padding: 0; border: 0; border-radius: 0; background: none; transition: none; }
+#scr-menu .link-card:hover { transform: none; }
+#scr-menu .link-card:hover b { color: var(--home); }
+#scr-menu .link-card b { display: block; font-size: 16px; }
+#scr-menu .link-card small { font-weight: 600; }
+#scr-menu .menu-foot { margin-top: 20px; text-align: left; font-size: 13px; font-weight: 600; }
+
+@media (max-width: 760px) {
+  #scr-menu .mode-grid { grid-template-columns: 1fr; }
+  #scr-menu .menu-hello { align-items: center; }
+  #scr-menu .menu-cat { width: 76px; }
+  #scr-menu .mode-card.classic .btn { align-self: stretch; text-align: center; }
+  #scr-menu .pc-games { columns: 2 130px; }
+}
+#scr-menu .linkish { color: var(--home); }

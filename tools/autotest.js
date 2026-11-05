@@ -44,6 +44,7 @@ const duelTest = q.get('mode') === 'duels';
 const glingusTest = q.get('mode') === 'glingus';
 const perfTest = q.get('mode') === 'perf';
 const rulesTest = q.get('mode') === 'rules'; // (the rules of Turf War, Cheese Heist, Pond War and Panic Chess, one by one)
+const lookTest = q.get('mode') === 'look'; // (just stops at the home screen, for a screenshot)
 const netTest = q.get('mode') === 'net'; // (one online game, chosen with &online=, on a good and then on a bad connection)
 const withCam = camTest || !!q.get('cam');
 if (q.get('nofast') === role) window.__noFast = true;
@@ -169,6 +170,7 @@ async function main() {
     await until(() => CA.route === 'menu', 5000, 'the menu');
   }
   if (wallTest) { await wallDuel(); return; }
+  if (lookTest) return;
   if (perfTest) { await perf(); return; }
   if (netTest) { await netRound(); return; }
   if (rulesTest) { await rules(); return; }
@@ -951,7 +953,7 @@ async function heistRules() {
 async function pondRules() {
   const d = await startPractice('pond');
   const S = d.state(), me = S.cats[0], them = S.cats[1];
-  const parkThem = () => { them.ph = 'bank'; them.k = 1e6; them.bk = 0; them.fish = null; };
+  const parkThem = () => { them.ph = 'parked'; them.k = 1e6; them.fish = null; }; // (the bot does nothing in a phase it doesn't know)
   parkThem();
   const oneFish = (t, x, y) => { S.fish.length = 0; S.fish.push({ t, x, y, a: 0, st: 'swim', k: 0, on: [false, false], p: 0, hx: 0, hy: 0, run: false, runK: 1, fade: 0, by: -1 }); return S.fish[0]; };
   const tap = async k => { d.press(k); await wait(70); d.release(k); };
@@ -963,19 +965,43 @@ async function pondRules() {
   await check('Pond War: cast near a fish and it comes and bites', me.ph === 'bite', me.ph);
   await shot('pond-bite');
   await tap('fire');
-  await check('Pond War: click when it bites to hook it', me.ph === 'reel' && f.st === 'hooked', me.ph);
+  await check('Pond War: press when it bites to hook it', me.ph === 'reel' && f.st === 'hooked', me.ph);
+  await shot('pond-reel');
   f.runK = 1e6; f.run = false;
+  // one long pull: it snaps, even on the smallest fish
   d.press('fire');
-  await until(() => me.ph === 'caught' || me.ph === 'snapped', 5000, 'the catch').catch(() => {});
+  await until(() => me.ph !== 'reel', 5000, 'the long pull to end').catch(() => {});
   d.release('fire');
-  await check('Pond War: hold to reel it in: it goes in your bucket, not your score', me.bk === 1 && me.sc === 0 && me.got === 1, { bk: me.bk, sc: me.sc, ph: me.ph });
+  await check("Pond War: one long pull can't land a fish: the line snaps", me.ph === 'snapped' && me.got === 0, { ph: me.ph, got: me.got });
   await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
-  await tap('b');
-  await check('Pond War: banking takes a moment', me.ph === 'bank', me.ph);
-  await until(() => me.ph === 'idle', 3000, 'banking').catch(() => {});
-  await check('Pond War: banked fish count', me.sc === 1 && me.bk === 0, { sc: me.sc, bk: me.bk });
+  // a quick click while waiting reels back in; holding hooks the next bite
+  S.fish.length = 0;
+  await tap('fire');
+  await until(() => me.ph === 'wait', 2000, 'the cast').catch(() => {});
+  await wait(150);
+  await tap('fire');
+  await wait(100);
+  await check('Pond War: a quick click while waiting reels back in', me.ph === 'back' || me.ph === 'idle', me.ph);
+  await until(() => me.ph === 'idle', 2000, 'idle').catch(() => {});
+  const f1 = oneFish(0, 420, 330);
+  await tap('fire');
+  await until(() => me.ph === 'wait', 2000, 'the cast').catch(() => {});
+  d.press('fire');
+  await until(() => me.ph === 'reel', 6000, 'the fish to hook itself').catch(() => {});
+  await check('Pond War: press and hold, and the bite hooks and starts reeling by itself', me.ph === 'reel' && f1.st === 'hooked', me.ph);
+  f1.runK = 1e6; f1.run = false;
+  // pull and let go, keeping the needle in the green
+  let pulls = 0, holding = true;
+  const reelEnd = Date.now() + 15000;
+  while (Date.now() < reelEnd && me.ph === 'reel') {
+    if (holding && me.ten > 0.8) { d.release('fire'); holding = false; pulls++; }
+    else if (!holding && me.ten < 0.5) { d.press('fire'); holding = true; }
+    await sleep(16);
+  }
+  d.release('fire');
+  await check('Pond War: pulling and letting go lands it, takes several pulls, and scores right away', me.sc === 1 && me.got === 1 && pulls >= 2, { sc: me.sc, ph: me.ph, pulls });
+  await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
   // too much tension
-  me.bk = 10;
   const f2 = oneFish(1, 420, 330);
   d.aim.x = 420; d.aim.y = 330;
   await tap('fire');
@@ -985,7 +1011,7 @@ async function pondRules() {
   d.press('fire');
   await until(() => me.ph === 'snapped', 3000, 'the line to snap').catch(() => {});
   d.release('fire');
-  await check('Pond War: pull while it runs and the line snaps, spilling half your bucket', me.ph === 'snapped' && me.bk === 5, { ph: me.ph, bk: me.bk });
+  await check('Pond War: pull while it runs and the line snaps, and you keep your score', me.ph === 'snapped' && me.sc === 1, { ph: me.ph, sc: me.sc });
   await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
   // a tug of war: cast onto the other cat's fish
   const f3 = oneFish(2, 500, 330);
@@ -1002,7 +1028,7 @@ async function pondRules() {
   const tugEnd = Date.now() + 8000;
   while (Date.now() < tugEnd && me.ph === 'reel') { me.ten = 0; them.ten = 0.95; await sleep(30); }
   d.release('fire');
-  await check('Pond War: winning the tug of war takes the fish from them', me.ph === 'caught' && them.fish === null && them.ph !== 'reel', { me: me.ph, them: them.ph, bk: me.bk });
+  await check('Pond War: winning the tug of war takes the fish from them', me.ph === 'caught' && them.fish === null && them.ph !== 'reel', { me: me.ph, them: them.ph, sc: me.sc });
   parkThem();
   await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
   // a rock
@@ -1016,18 +1042,19 @@ async function pondRules() {
   await wait(100);
   await check('Pond War: the legendary fish appears for the last 15 seconds', S.fish.some(x => x.t === 6));
   await shot('pond-legend');
-  me.ph = 'idle'; me.sc = 10; me.bk = 5; them.sc = 13; them.bk = 0;
+  me.ph = 'idle'; me.sc = 10; them.sc = 13;
   S.t = 59.9;
   await until(() => d.phase() === 'ko', 3000, 'the end').catch(() => {});
-  await check('Pond War: at the end, what is still in your bucket only counts half', d.winner() === 1, { winner: d.winner(), me: [me.sc, me.bk], them: [them.sc, them.bk] });
+  await check('Pond War: at the end, the most points wins', d.winner() === 1, { winner: d.winner(), me: me.sc, them: them.sc });
   await until(() => $('stage').querySelector('.result'), 6000, 'the result').catch(() => {});
   const d2 = await startPractice('pond');
   window.__duelSpeed = 6;
   const end = Date.now() + 20000;
-  while (Date.now() < end && d2.phase() === 'play') await sleep(150);
+  const seenPh = {}; let bestP = 0, bestTen = 0, lastT = 0;
+  while (Date.now() < end && d2.phase() === 'play') { const z = d2.state().cats[1]; seenPh[z.ph] = (seenPh[z.ph] || 0) + 1; if (z.fish) bestP = Math.max(bestP, z.fish.p); bestTen = Math.max(bestTen, z.ten); lastT = d2.state().t; await sleep(50); }
   window.__duelSpeed = 1;
   const st = d2.state();
-  await log('Pond War, a whole game: the bot', true, { sc: st.cats[1].sc, bk: st.cats[1].bk, got: st.cats[1].got, big: st.cats[1].big });
+  await log('Pond War, a whole game: the bot', true, { sc: st.cats[1].sc, got: st.cats[1].got, big: st.cats[1].big, seenPh, bestP, bestTen, lastT, level: d2.api.skill });
   await check('Pond War: the bot catches fish', st.cats[1].got > 0 && st.cats[1].sc > 0, st.cats[1].got);
   await until(() => $('stage').querySelector('.result'), 8000, 'the result').catch(() => {});
 }

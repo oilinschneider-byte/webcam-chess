@@ -30,15 +30,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=97">
-<link rel="stylesheet" href="pieces.css?v=97">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap"></noscript>
+<link rel="stylesheet" href="style.css?v=100">
+<link rel="stylesheet" href="pieces.css?v=100">
 </head>
 <body>
 
 <header class="topbar hidden" id="appBar">
-  <a class="logo" href="#/menu"><span class="logo-mark">🐱</span><span class="logo-text">Cam<b>Arcade</b></span></a>
+  <a class="logo" href="#/menu"><span class="logo-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.5 2.5 8.6 7a9.4 9.4 0 0 1 6.8 0l5.1-4.5V13a8.5 8.5 0 0 1-17 0z"/><circle cx="9" cy="13" r="1.5" fill="#14151c"/><circle cx="15" cy="13" r="1.5" fill="#14151c"/></svg></span><span class="logo-text">Cam<b>Arcade</b></span></a>
   <nav class="topnav">
     <a href="#/menu" data-nav="menu">🏠 Home</a>
     <a href="#/leaders" data-nav="leaders">🏆 Leaderboard</a>
@@ -135,111 +135,107 @@
   <section class="menu-hello">
     <div class="menu-cat" id="menuCat"></div>
     <div class="menu-hello-text">
-      <h1>Hi, <span id="menuName"></span>!</h1>
+      <h1><span id="menuName"></span></h1>
       <div class="hero-stats">
-        <span class="stat-chip">🔥 <b id="menuStreak">0</b>&nbsp;streak</span>
-        <span class="stat-chip">🏆 <b id="menuBest">0</b>&nbsp;best</span>
-        <span class="stat-chip fish">🐟 <b id="menuFish">0</b>&nbsp;fish</span>
-        <span class="stat-chip">🎟️ Tier <b id="menuTier">0</b></span>
+        <span class="stat-chip"><b id="menuStreak">0</b> win streak</span>
+        <span class="stat-chip"><b id="menuBest">0</b> best</span>
+        <span class="stat-chip fish"><b id="menuFish">0</b> fish</span>
+        <span class="stat-chip">tier <b id="menuTier">0</b></span>
       </div>
       <p class="muted menu-mic" id="menuMic"></p>
       <p class="online-note hidden" id="menuOnline"></p>
     </div>
   </section>
 
-  <a class="prize-banner hidden" id="prizeBanner" href="#/leaders">
-    <span class="pb-icon">🏆</span>
-    <span class="pb-text"><b id="prizeTitle"></b><small id="prizeSub"></small></span>
-    <span class="pb-go">See the leaderboard →</span>
-  </a>
-
-  <p class="guest-note">👤 You're playing as a guest. Nothing is saved when you close this tab. <button class="linkish" id="guestSignup">Sign up to keep your cat, fish and XP</button></p>
+  <p class="guest-note">You're playing as a guest, so nothing is saved when you close this tab. <button class="linkish" id="guestSignup">Sign up to keep your cat, fish and XP</button></p>
   <div class="mode-grid">
     <a class="mode-card classic" href="#/solos">
-      <span class="tag">⚡ Solos</span>
       <h2>Classic Games</h2>
-      <p>Meet a random player face to face and play one of 29 games. Every win grows your 🔥 streak and catches 🐟 fish.</p>
-      <div class="mc-icons"><span>🛢️</span><span>🏀</span><span>🧗</span><span>⚽</span><span>🧠</span><span>♟️</span><span>🌍</span></div>
-      <span class="btn solos-btn big">⚡ Find a match</span>
+      <p>You get a random player and one of 29 games. Win and your streak keeps going.</p>
+      <span class="btn solos-btn big">Find a match</span>
+      <span class="mc-shots">
+        <span><img src="img/home-turf.jpg" alt="Turf War" width="480" height="270" loading="lazy"><i>Turf War</i></span>
+        <span><img src="img/home-heist.jpg" alt="Cheese Heist" width="480" height="270" loading="lazy"><i>Cheese Heist</i></span>
+        <span><img src="img/home-pond.jpg" alt="Pond War" width="480" height="270" loading="lazy"><i>Pond War</i></span>
+        <span><img src="img/home-chess.jpg" alt="Panic Chess" width="480" height="270" loading="lazy"><i>Panic Chess</i></span>
+      </span>
     </a>
     <a class="mode-card today-card hidden" id="todayCard" href="#/leaders">
       <h2 id="todayTitle"></h2>
       <p id="todayNote"></p>
       <ol class="today-list" id="todayList"></ol>
-      <span class="today-more">See the full leaderboard →</span>
+      <span class="today-more">Full leaderboard</span>
     </a>
   </div>
 
-  <section class="card practice-card">
+  <a class="prize-banner hidden" id="prizeBanner" href="#/leaders">
+    <span class="pb-text"><b id="prizeTitle"></b><small id="prizeSub"></small></span>
+  </a><section class="card practice-card">
     <div class="pc-head">
       <div>
-        <h2>🎯 Practice mode</h2>
-        <p class="muted">Play against a bot. Practice games don't change your streak or fish.</p>
+        <h2>Practice</h2>
+        <p class="muted">Against bots. Nothing here touches your streak or fish.</p>
       </div>
       <div class="seg" id="practiceLevel" role="group" aria-label="Bot difficulty">
-        <button data-level="easy">😺 Easy</button>
-        <button data-level="medium">😼 Medium</button>
-        <button data-level="hard">😾 Hard</button>
+        <button data-level="easy">Easy</button>
+        <button data-level="medium">Medium</button>
+        <button data-level="hard">Hard</button>
       </div>
     </div>
     <a class="pc-mix" href="#/practice?game=mix">
-      <span class="pc-mix-icon">🎲</span>
-      <span class="pc-mix-text"><b>Classic mode vs bots</b><small>Random games one after another, just like Classic Games, but against bots.</small></span>
-      <span class="btn solos-btn">▶ Play</span>
+      <span class="pc-mix-text"><b>Random games</b><small>One after another, like Classic Games, but against bots.</small></span>
+      <span class="btn solos-btn">Play</span>
     </a>
-    <p class="pc-sub">Or practice one game:</p>
-    <h3 class="pc-group">⚡ Action</h3>
+    <p class="pc-sub">Or pick one:</p>
+    <h3 class="pc-group">Action</h3>
     <div class="pc-games">
-      <a class="pc-game" href="#/practice?game=draw"><span>⚡</span><b>Quick Draw</b></a>
-      <a class="pc-game" href="#/practice?game=aim"><span>🎯</span><b>Aim Targets</b></a>
-      <a class="pc-game" href="#/practice?game=dodge"><span>☄️</span><b>Dodge</b></a>
-      <a class="pc-game" href="#/practice?game=barrel"><span>🛢️</span><b>Barrel Brawl</b></a>
-      <a class="pc-game" href="#/practice?game=hoops"><span>🏀</span><b>Cat Hoops</b></a>
-      <a class="pc-game" href="#/practice?game=walls"><span>🚧</span><b>Wall Duel</b></a>
-      <a class="pc-game" href="#/practice?game=climb"><span>🧗</span><b>Claw Climb</b></a>
-      <a class="pc-game" href="#/practice?game=simon"><span>🗣️</span><b>Simon Says</b><small>needs your camera</small></a>
+      <a class="pc-game" href="#/practice?game=draw"><b>Quick Draw</b></a>
+      <a class="pc-game" href="#/practice?game=aim"><b>Aim Targets</b></a>
+      <a class="pc-game" href="#/practice?game=dodge"><b>Dodge</b></a>
+      <a class="pc-game" href="#/practice?game=barrel"><b>Barrel Brawl</b></a>
+      <a class="pc-game" href="#/practice?game=hoops"><b>Cat Hoops</b></a>
+      <a class="pc-game" href="#/practice?game=walls"><b>Wall Duel</b></a>
+      <a class="pc-game" href="#/practice?game=climb"><b>Claw Climb</b></a>
+      <a class="pc-game" href="#/practice?game=simon"><b>Simon Says</b><small>needs your camera</small></a>
     </div>
-    <h3 class="pc-group">🎮 Arcade duels</h3>
+    <h3 class="pc-group">Arcade duels</h3>
     <div class="pc-games">
-      <a class="pc-game" href="#/practice?game=trails"><span>🏍️</span><b>Light Trails</b></a>
-      <a class="pc-game" href="#/practice?game=box"><span>📦</span><b>Box King</b></a>
-      <a class="pc-game" href="#/practice?game=sumo"><span>🤼</span><b>Sumo Cats</b></a>
-      <a class="pc-game" href="#/practice?game=pond"><span>🎣</span><b>Pond War</b></a>
-      <a class="pc-game" href="#/practice?game=hockey"><span>🏒</span><b>Cat Air Hockey</b></a>
-      <a class="pc-game" href="#/practice?game=paint"><span>🎨</span><b>Turf War</b></a>
-      <a class="pc-game" href="#/practice?game=cannons"><span>💥</span><b>Cat Cannons</b></a>
-      <a class="pc-game" href="#/practice?game=golf"><span>⛳</span><b>Mini Golf Duel</b></a>
-      <a class="pc-game" href="#/practice?game=mouse"><span>🐭</span><b>Cheese Heist</b></a>
-      <a class="pc-game" href="#/practice?game=kart"><span>🏎️</span><b>Kart Dash</b></a>
-      <a class="pc-game" href="#/practice?game=swords"><span>🤺</span><b>Floppy Sword Cats</b></a>
-      <a class="pc-game" href="#/practice?game=stare"><span>😐</span><b>Staring Contest</b><small>needs your camera</small></a>
-      <a class="pc-game" href="#/practice?game=boxing"><span>🥊</span><b>Shadow Boxing</b><small>camera or keyboard</small></a>
-      <a class="pc-game" href="#/practice?game=parkour"><span>🏃</span><b>Parkour Race</b></a>
-      <a class="pc-game" href="#/practice?game=poop"><span>💩</span><b>Poop Showdown</b></a>
+      <a class="pc-game" href="#/practice?game=trails"><b>Light Trails</b></a>
+      <a class="pc-game" href="#/practice?game=box"><b>Box King</b></a>
+      <a class="pc-game" href="#/practice?game=sumo"><b>Sumo Cats</b></a>
+      <a class="pc-game" href="#/practice?game=pond"><b>Pond War</b></a>
+      <a class="pc-game" href="#/practice?game=hockey"><b>Cat Air Hockey</b></a>
+      <a class="pc-game" href="#/practice?game=paint"><b>Turf War</b></a>
+      <a class="pc-game" href="#/practice?game=cannons"><b>Cat Cannons</b></a>
+      <a class="pc-game" href="#/practice?game=golf"><b>Mini Golf Duel</b></a>
+      <a class="pc-game" href="#/practice?game=mouse"><b>Cheese Heist</b></a>
+      <a class="pc-game" href="#/practice?game=kart"><b>Kart Dash</b></a>
+      <a class="pc-game" href="#/practice?game=swords"><b>Floppy Sword Cats</b></a>
+      <a class="pc-game" href="#/practice?game=stare"><b>Staring Contest</b><small>needs your camera</small></a>
+      <a class="pc-game" href="#/practice?game=boxing"><b>Shadow Boxing</b><small>camera or keyboard</small></a>
+      <a class="pc-game" href="#/practice?game=parkour"><b>Parkour Race</b></a>
+      <a class="pc-game" href="#/practice?game=poop"><b>Poop Showdown</b></a>
     </div>
-    <h3 class="pc-group">🧠 Brain &amp; board</h3>
+    <h3 class="pc-group">Brain &amp; board</h3>
     <div class="pc-games">
-      <a class="pc-game" href="#/practice?game=memory"><span>🧠</span><b>Memory Match</b></a>
-      <a class="pc-game" href="#/practice?game=sequence"><span>🔁</span><b>Remember the Sequence</b></a>
-      <a class="pc-game" href="#/practice?game=speedchess"><span>♟️</span><b>Panic Chess</b></a>
-      <a class="pc-game" href="#/chess?bot=1"><span>♞</span><b>Chess vs Computer</b></a>
+      <a class="pc-game" href="#/practice?game=memory"><b>Memory Match</b></a>
+      <a class="pc-game" href="#/practice?game=sequence"><b>Remember the Sequence</b></a>
+      <a class="pc-game" href="#/practice?game=speedchess"><b>Panic Chess</b></a>
+      <a class="pc-game" href="#/chess?bot=1"><b>Chess vs Computer</b></a>
     </div>
-    <h3 class="pc-group">🌍 Quiz</h3>
+    <h3 class="pc-group">Words</h3>
     <div class="pc-games">
-    </div>
-    <h3 class="pc-group">🔤 Words &amp; minds</h3>
-    <div class="pc-games">
-      <a class="pc-game" href="#/practice?game=scramble"><span>🔤</span><b>Word Scramble</b></a>
-      <a class="pc-game" href="#/practice?game=type"><span>📝</span><b>Type Race</b></a>
+      <a class="pc-game" href="#/practice?game=scramble"><b>Word Scramble</b></a>
+      <a class="pc-game" href="#/practice?game=type"><b>Type Race</b></a>
     </div>
   </section>
 
   <div class="menu-links">
-    <a class="link-card" href="#/leaders"><span>🏆</span><b>Leaderboard</b><small id="menuRankNote">Who has the longest win streak?</small></a>
-    <a class="link-card" href="#/cat"><span>🐱</span><b>My Cat &amp; Shop</b><small>Spend your fish on hats, glasses and more</small></a>
-    <a class="link-card" href="#/pass"><span>🎟️</span><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
+    <a class="link-card" href="#/leaders"><b>Leaderboard</b><small id="menuRankNote">Who has the longest win streak?</small></a>
+    <a class="link-card" href="#/cat"><b>My Cat &amp; Shop</b><small>Spend your fish on hats, glasses and more</small></a>
+    <a class="link-card" href="#/pass"><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
   </div>
-  <p class="menu-foot"><a href="#/stats">📊 How many people play CamArcade</a> · <a href="#/privacy">🔒 Privacy</a> · <a href="#/terms">📜 Terms</a></p>
+  <p class="menu-foot"><a href="#/stats">How many people play</a> · <a href="#/privacy">Privacy</a> · <a href="#/terms">Terms</a></p>
 </main>
 
 <!-- ================= CLASSIC GAMES (Solos + practice matches) ================= -->
@@ -760,48 +756,48 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=97"></script>
-<script src="server.js?v=97"></script>
-<script src="common.js?v=97"></script>
-<script src="solos.js?v=97"></script>
-<script src="games-quick.js?v=97"></script>
-<script src="games-words.js?v=97"></script>
-<script src="games-board.js?v=97"></script>
-<script src="games-world.js?v=97"></script>
+<script src="config.js?v=100"></script>
+<script src="server.js?v=100"></script>
+<script src="common.js?v=100"></script>
+<script src="solos.js?v=100"></script>
+<script src="games-quick.js?v=100"></script>
+<script src="games-words.js?v=100"></script>
+<script src="games-board.js?v=100"></script>
+<script src="games-world.js?v=100"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=97"></script>
-<script src="games-quiz.js?v=97"></script>
-<script src="games-mind.js?v=97"></script>
-<script src="games-tracker.js?v=97"></script>
-<script src="games-pose.js?v=97"></script>
-<script src="cam-walls.js?v=97"></script>
-<script src="games-floppy.js?v=97"></script>
-<script src="games-barrel.js?v=97"></script>
-<script src="games-walls.js?v=97"></script>
-<script src="games-duel.js?v=97"></script>
-<script src="games-trails.js?v=97"></script>
-<script src="games-box.js?v=97"></script>
-<script src="games-sumo.js?v=97"></script>
-<script src="games-pond.js?v=97"></script>
-<script src="games-hockey.js?v=97"></script>
-<script src="games-paint.js?v=97"></script>
-<script src="games-cannons.js?v=97"></script>
-<script src="games-golf.js?v=97"></script>
-<script src="games-mouse.js?v=97"></script>
-<script src="games-kart.js?v=97"></script>
-<script src="games-swords.js?v=97"></script>
-<script src="games-stare.js?v=97"></script>
-<script src="games-boxing.js?v=97"></script>
-<script src="games-dodge.js?v=97"></script>
-<script src="games-parkour.js?v=97"></script>
-<script src="games-poop.js?v=97"></script>
-<script src="games-hoops.js?v=97"></script>
-<script src="games-simon.js?v=97"></script>
-<script src="games-climb.js?v=97"></script>
-<script src="chess.js?v=97"></script>
-<script src="pass.js?v=97"></script>
-<script src="character.js?v=97"></script>
-<script src="leaders.js?v=97"></script>
-<script src="app.js?v=97"></script>
+<script src="games-action.js?v=100"></script>
+<script src="games-quiz.js?v=100"></script>
+<script src="games-mind.js?v=100"></script>
+<script src="games-tracker.js?v=100"></script>
+<script src="games-pose.js?v=100"></script>
+<script src="cam-walls.js?v=100"></script>
+<script src="games-floppy.js?v=100"></script>
+<script src="games-barrel.js?v=100"></script>
+<script src="games-walls.js?v=100"></script>
+<script src="games-duel.js?v=100"></script>
+<script src="games-trails.js?v=100"></script>
+<script src="games-box.js?v=100"></script>
+<script src="games-sumo.js?v=100"></script>
+<script src="games-pond.js?v=100"></script>
+<script src="games-hockey.js?v=100"></script>
+<script src="games-paint.js?v=100"></script>
+<script src="games-cannons.js?v=100"></script>
+<script src="games-golf.js?v=100"></script>
+<script src="games-mouse.js?v=100"></script>
+<script src="games-kart.js?v=100"></script>
+<script src="games-swords.js?v=100"></script>
+<script src="games-stare.js?v=100"></script>
+<script src="games-boxing.js?v=100"></script>
+<script src="games-dodge.js?v=100"></script>
+<script src="games-parkour.js?v=100"></script>
+<script src="games-poop.js?v=100"></script>
+<script src="games-hoops.js?v=100"></script>
+<script src="games-simon.js?v=100"></script>
+<script src="games-climb.js?v=100"></script>
+<script src="chess.js?v=100"></script>
+<script src="pass.js?v=100"></script>
+<script src="character.js?v=100"></script>
+<script src="leaders.js?v=100"></script>
+<script src="app.js?v=100"></script>
 </body>
 </html>
