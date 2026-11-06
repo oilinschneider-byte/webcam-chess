@@ -1,11 +1,10 @@
-/* Classic Games: Gator Bars. Two cats race across the same monkey bars over a pit of alligators. Each cat hangs from
-   a jungle vine by one super long, dangly arm and swings. Pump the swing with the mouse (the cat pulls toward the pointer:
-   move it back and forth with the swing; on a phone, the stick),
-   let go at the right moment (Space or click), and your free paw grabs the next bar it can reach. Miss, and the
-   alligators get you: you start again from the last bar you held.
+/* Classic Games: Gator Bars. Two cats race across the same jungle vines over a pit of alligators. Both start standing on
+   a ledge: A and D walk, W or Space jumps, and a click grabs a vine your super long arm can reach. Hanging, A and D
+   pump the swing higher (push the way you're swinging); click (or Space) to let go and fly, then click again to grab
+   the next vine. Miss, and the alligators get you: you start again from the last vine you held.
    The cats swing right through each other, but a cat swinging fast into the other one bonks it: a hanging cat is
-   knocked off its bar (and probably into the gators), a flying one is knocked off course. First to the golden bar wins
-   (after 2 minutes, whoever got further). Each screen follows its own cat. (The host's app runs it: see games-duel.js.) */
+   knocked off its vine (and probably into the gators), a flying one is knocked off course. First to the golden vine
+   wins (after 2 minutes, whoever got further). Each screen follows its own cat. (The host's app runs it: see games-duel.js.) */
 (() => {
 'use strict';
 
@@ -15,6 +14,7 @@ const RMAX = 250, RMIN = 110, REST = 205; // the super long arms: how far they r
 const PUMP = 4.6, DAMP = 0.1;
 const WATER = 470;            // fall below this and the alligators get you
 const N_BARS = 16, LIMIT = 120, CHOMP = 1.3;
+const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start ledge (its right edge and top); walking and jumping on it
 const BONK_R = 58, BONK_SPEED = 330, BONK_WAIT = 0.7; // how close, how fast a swing has to be to knock the other cat
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const F = CA.floppy;  // (the cats' pictures without arms: see games-floppy.js)
@@ -22,16 +22,16 @@ let looks = null;
 
 CA.games.add('gator', {
   name: 'Gator Bars', icon: '🐊',
-  blurb: 'Race the other cat across the jungle vines over a pit of alligators, swinging on super long arms! Move the mouse back and forth with your swing to swing higher, and click (or Space) to let go and fly to the next vine. Swing into the other cat fast to knock them off! First to the golden vine wins.',
+  blurb: 'Race the other cat across the jungle vines over a pit of alligators! You both start on the ledge: A/D walk, W or Space jumps, and a click grabs a vine with your super long arm. Swing higher with A/D, then click again to let go and fly to the next vine (click to grab it). Swing into the other cat fast to knock them off! First to the golden vine wins.',
   start(ctx) {
     looks = [];
     looks[ctx.isHost ? 0 : 1] = { pics: F.pictures(CA.profile.equip), fur: F.fur(CA.profile.equip) };
     looks[ctx.isHost ? 1 : 0] = { pics: F.pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) };
     CA.duel.run(ctx, {
       id: 'gator', mouse: true,
-      help: 'Move the mouse back and forth to swing higher · click or Space: let go and grab the next vine · swing into the other cat to knock them off!',
-      helpTouch: 'Move the stick (or drag on the jungle) the way you\'re swinging · tap Let go to fly to the next vine',
-      pad: { stick: true, buttons: [{ k: 'a', label: '🙌 Let go', main: true }] },
+      help: 'A/D walk and swing · W or Space jump · click to grab a vine, click again to let go · swing into the other cat to knock them off!',
+      helpTouch: 'Stick walks and swings · Jump · Grab / Let go',
+      pad: { stick: true, buttons: [{ k: 'u', label: '⤒ Jump' }, { k: 'fire', label: '🙌 Grab · Let go', main: true }] },
       note: 'First to the golden vine',
       init, step, snap, bot, draw, event,
       lerp: (a, b, f) => ({ bars: b.bars, t: b.t, c: b.c.map((q, i) => { const o = a.c[i]; if (!o || o.d !== q.d || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q; const m = k => o[k] + (q[k] - o[k]) * f; return Object.assign({}, q, { x: m('x'), y: m('y'), hx: m('hx'), hy: m('hy') }); }) }),
@@ -40,18 +40,22 @@ CA.games.add('gator', {
 });
 
 function init(api) {
-  const bars = [{ x: 200, y: 110 }];
+  const bars = [{ x: 260, y: 110 }];
   for (let k = 1; k < N_BARS; k++) {
     const p = bars[k - 1];
     bars.push({ x: p.x + 250 + api.rng() * 130 + k * 3, y: clamp(p.y + (api.rng() - 0.5) * 70, 80, 170) });
   }
-  // both start on the first bar, one swinging a little ahead of the other
-  return { t: 0, bars, cats: [0, 1].map(i => hang(bars, 0, i ? -0.25 : 0.25)) };
+  // both start standing on the ledge
+  return { t: 0, bars, cats: [0, 1].map(i => onLedge(i)) };
+}
+
+// A cat standing on the start ledge (c.y is where its body is: its feet are 40 below).
+function onLedge(i) {
+  return { bar: 0, last: -1, R: REST, th: 0, w: 0, fly: false, ground: true, x: i ? 30 : 80, y: LEDGE_Y - 40, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0 };
 }
 
 function hang(bars, k, th) {
-  const b = bars[k];
-  const c = { bar: k, last: k, R: REST, th: th || 0, w: 0, fly: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0 };
+  const c = { bar: k, last: k, R: REST, th: th || 0, w: 0, fly: false, ground: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0 };
   place(c, bars);
   return c;
 }
@@ -69,77 +73,105 @@ function place(c, bars) {
 }
 
 // how fast a cat is moving (hanging: along its swing)
-const vel = c => (c.fly ? [c.vx, c.vy] : [c.R * c.w * Math.cos(c.th), -c.R * c.w * Math.sin(c.th)]);
+const vel = c => (c.fly || c.ground ? [c.vx, c.vy] : [c.R * c.w * Math.cos(c.th), -c.R * c.w * Math.sin(c.th)]);
 
 function letGo(c, api, i) {
   [c.vx, c.vy] = vel(c);
   c.fly = true;
+  c.ground = false;
   c.from = c.bar;
   c.fromT = 0.35;
   if (api) api.ev('let', { i });
 }
 
+// The vine your paw can reach (the nearest one above you), or -1.
+function reachable(s, c) {
+  let best = -1, bd = 1e9;
+  s.bars.forEach((b, k) => {
+    if (k === c.from && c.fromT > 0) return;
+    const d = Math.hypot(c.x - b.x, c.y - b.y);
+    if (d <= RMAX && b.y < c.y - 40 && d < bd) { bd = d; best = k; }
+  });
+  return best;
+}
+
+function grab(s, c, k, i, api) {
+  const b = s.bars[k], d = Math.hypot(c.x - b.x, c.y - b.y);
+  c.fly = false;
+  c.ground = false;
+  c.bar = k;
+  c.R = clamp(d, RMIN, RMAX);
+  c.th = Math.atan2(c.x - b.x, c.y - b.y);
+  c.w = (c.vx * Math.cos(c.th) - c.vy * Math.sin(c.th)) / c.R;
+  if (k > c.last) c.last = k;
+  place(c, s.bars);
+  api.ev('grab', { i, k });
+  if (k === N_BARS - 1) { c.done = true; api.end(i, 'Made it across!'); return true; }
+  return false;
+}
+
 function step(s, inp, dt, api) {
   s.t += dt;
   for (let i = 0; i < 2; i++) {
-    const c = s.cats[i], ip = inp[i];
+    const c = s.cats[i], ip = inp[i], hit = ip.hit || {};
     c.bonk = Math.max(0, c.bonk - dt);
     if (c.done) continue;
     if (c.dead > 0) {
       c.dead -= dt;
-      if (c.dead <= 0) { const last = c.last; Object.assign(c, hang(s.bars, last)); c.last = last; c.bonk = 1.5; } // (safe from bonks for a moment)
+      if (c.dead <= 0) { // back to the last vine you held (or the ledge, if you never got one)
+        const last = c.last;
+        Object.assign(c, last < 0 ? onLedge(i) : hang(s.bars, last));
+        c.last = last;
+        c.bonk = 1.5; // (safe from bonks for a moment)
+      }
+      continue;
+    }
+    const mx = clamp(ip.mx || 0, -1, 1); // A / D
+    const click = hit.fire;              // the mouse button
+    const jump = hit.u || hit.a;         // W or Space
+    if (c.ground) {
+      // on the ledge: A and D walk, W or Space jumps, a click grabs a vine if one is in reach
+      c.vx = mx * WALK;
+      c.x = Math.max(-110, c.x + c.vx * dt);
+      if (jump) { c.ground = false; c.fly = true; c.vy = -JUMP; c.from = -1; api.ev('jump', { i }); }
+      else if (c.x > LEDGE_X) { c.ground = false; c.fly = true; c.vy = 0; } // (walked off the edge)
+      if (click) { const k = reachable(s, c); if (k >= 0 && grab(s, c, k, i, api)) return; }
       continue;
     }
     if (!c.fly) {
-      // a pendulum: gravity pulls it back down, and pulling the way it swings pumps it higher. You swing with the mouse:
-      // the cat pulls toward the mouse pointer (move it back and forth with the swing). On a phone, the stick does it.
-      const pump = Math.abs(ip.mx || 0) > 0.1 ? clamp(ip.mx, -1, 1) : clamp(((ip.ax == null ? c.x - camOf(s, c) : ip.ax) + camOf(s, c) - c.x) / 160, -1, 1); // (the pointer is on the screen, which follows the cat: see draw)
-      c.w += (-(G / c.R) * Math.sin(c.th) + pump * PUMP - DAMP * c.w) * dt;
+      // hanging: a pendulum. Gravity pulls it back down, and A / D (pushing the way it swings) pump it higher.
+      c.w += (-(G / c.R) * Math.sin(c.th) + mx * PUMP - DAMP * c.w) * dt;
       c.th += c.w * dt;
       if (c.th > 2.3) { c.th = 2.3; c.w = Math.min(0, c.w); }
       if (c.th < -2.3) { c.th = -2.3; c.w = Math.max(0, c.w); }
       c.R += (REST - c.R) * Math.min(1, dt * 1.5); // (the arm slowly settles to its hanging length)
       place(c, s.bars);
-      if (ip.hit && (ip.hit.a || ip.hit.fire)) letGo(c, api, i);
-    } else {
-      c.fromT -= dt;
-      c.stun = Math.max(0, c.stun - dt);
-      c.vy += G * dt;
-      c.x += c.vx * dt;
-      c.y += c.vy * dt;
-      // the free paw grabs the nearest bar it can reach above the cat (not the one it just let go of, for a moment)
-      let best = -1, bd = 1e9;
-      s.bars.forEach((b, k) => {
-        if (k === c.from && c.fromT > 0) return;
-        const d = Math.hypot(c.x - b.x, c.y - b.y);
-        if (d <= RMAX && b.y < c.y - 40 && d < bd) { bd = d; best = k; }
-      });
-      if (best >= 0 && c.stun <= 0) {
-        const b = s.bars[best];
-        c.fly = false;
-        c.bar = best;
-        c.R = clamp(bd, RMIN, RMAX);
-        c.th = Math.atan2(c.x - b.x, c.y - b.y);
-        c.w = (c.vx * Math.cos(c.th) - c.vy * Math.sin(c.th)) / c.R;
-        if (best > c.last) c.last = best;
-        place(c, s.bars);
-        api.ev('grab', { i, k: best });
-        if (best === N_BARS - 1) {
-          c.done = true;
-          api.end(i, 'Made it across!');
-          return;
-        }
-      }
-      if (c.y > WATER || c.x < 0) {
-        c.dead = CHOMP;
-        c.fly = false;
-        api.ev('chomp', { i, x: Math.round(c.x) });
-      }
+      if (click || hit.a) letGo(c, api, i); // a click (or Space) lets go
+      continue;
+    }
+    // flying: a click grabs the nearest vine in reach (not the one you just let go of, for a moment)
+    c.fromT -= dt;
+    c.stun = Math.max(0, c.stun - dt);
+    c.vy += G * dt;
+    c.vx += mx * 160 * dt; // (A / D steer a little in the air)
+    c.x += c.vx * dt;
+    c.y += c.vy * dt;
+    if (click && c.stun <= 0) {
+      const k = reachable(s, c);
+      if (k >= 0) { if (grab(s, c, k, i, api)) return; continue; }
+      api.ev('miss', { i });
+    }
+    // landing back on the ledge
+    if (c.vy > 0 && c.x <= LEDGE_X && c.y + 40 >= LEDGE_Y) { c.y = LEDGE_Y - 40; c.vy = 0; c.vx = 0; c.fly = false; c.ground = true; continue; }
+    if (c.y > WATER || c.x < -140) {
+      c.dead = CHOMP;
+      c.fly = false;
+      api.ev('chomp', { i, x: Math.round(c.x) });
     }
   }
   // bonk: a cat swinging fast into the other knocks it (they pass through each other otherwise)
   const [a, b] = s.cats;
-  if (s.t > 2.5 && !a.dead && !b.dead && !a.done && !b.done && a.bonk <= 0 && b.bonk <= 0 && Math.hypot(a.x - b.x, a.y - b.y) < BONK_R) {
+  if (!a.ground && !b.ground && !a.dead && !b.dead && !a.done && !b.done && a.bonk <= 0 && b.bonk <= 0 && Math.hypot(a.x - b.x, a.y - b.y) < BONK_R) {
     const va = vel(a), vb = vel(b), sa = Math.hypot(va[0], va[1]), sb = Math.hypot(vb[0], vb[1]);
     if (Math.max(sa, sb) > BONK_SPEED) {
       const hi = sa >= sb ? 0 : 1, hit = s.cats[hi], vic = s.cats[1 - hi], hv = hi ? vb : va;
@@ -164,37 +196,53 @@ function snap(s) {
     t: Math.max(0, Math.ceil(LIMIT - s.t)),
     c: s.cats.map(c => {
       const b = s.bars[c.bar];
-      const hand = c.fly ? { x: c.x + c.vx * 0.05, y: c.y - REST * 0.8 } : b;
-      return { x: Math.round(c.x), y: Math.round(c.y), hx: Math.round(hand.x), hy: Math.round(hand.y), f: c.fly ? 1 : 0, d: c.dead > 0 ? 1 : 0, l: c.last, w: Math.round(c.w * 10) / 10 };
+      const hand = c.ground ? { x: c.x + 24, y: c.y + 70 } : c.fly ? { x: c.x + c.vx * 0.05, y: c.y - REST * 0.8 } : b;
+      return { x: Math.round(c.x), y: Math.round(c.y), hx: Math.round(hand.x), hy: Math.round(hand.y), f: c.fly ? 1 : c.ground ? 2 : 0, d: c.dead > 0 ? 1 : 0, l: c.last, w: Math.round(c.w * 10) / 10 };
     }),
   };
 }
 
-// The bot pumps the way it swings and lets go on the forward swing once it's going fast enough (a worse bot judges it
-// worse, and sometimes ends up with the gators). When the other cat is hanging close by, it tries to swing into it.
+// The bot plays with the same controls. On the ledge it walks to the edge and jumps, and clicks a vine once it's in
+// reach. Hanging, it pumps the way it swings (A / D) and lets go on the forward swing once it's going fast enough (a
+// worse bot judges it worse, and sometimes ends up with the gators). Flying, it grabs the next vine in reach. When the
+// other cat is hanging on the next vine, it tries to swing into it.
 function bot(s, i, dt, api) {
   const c = s.cats[i], o = s.cats[1 - i];
   const st = s.bs || (s.bs = {});
-  const me = st[i] || (st[i] = { rel: 0.5 + (Math.random() - 0.5) * 0.3 });
-  const sx = c.x - camOf(s, c); // (where the bot's cat is on its screen)
-  if (c.fly || c.dead > 0 || c.done) return { mx: 0, ax: sx, ay: c.y };
+  const me = st[i] || (st[i] = { rel: 0.5 + (Math.random() - 0.5) * 0.3, wait: 0 });
+  const hit = {};
+  if (c.dead > 0 || c.done) return { mx: 0, hit };
+  me.wait = Math.max(0, me.wait - dt);
+  if (c.ground) {
+    if (c.x < LEDGE_X - 40) return { mx: 1, hit };
+    if (me.wait <= 0) { hit.u = true; me.wait = 0.6 + (1 - api.skill) * 0.6; }
+    return { mx: 0.3, hit };
+  }
+  if (c.fly) {
+    const k = reachable(s, c);
+    // grab the furthest-forward vine it can (a worse bot is a little late, and sometimes misses its chance)
+    if (k >= 0 && k >= c.last && c.vy > -100 && me.wait <= 0 && Math.random() < 0.25 + 0.6 * api.skill) { hit.fire = true; me.wait = 0.15; }
+    return { mx: 0.4, hit };
+  }
   const next = s.bars[c.bar + 1];
   const gap = next ? next.x - s.bars[c.bar].x : 300;
   const needW = 1.5 + gap / 260 + (Math.random() - 0.5) * 0.3 * (1 - api.skill);
-  const hit = {};
-  const target = !o.dead && !o.fly && o.bar === c.bar + 1 && api.skill > 0.3 && Math.random() < 0.5; // (the other cat is on the next bar: crash into it)
+  const target = !o.dead && !o.fly && !o.ground && o.bar === c.bar + 1 && api.skill > 0.3 && Math.random() < 0.5; // (the other cat is on the next vine: crash into it)
   if (c.w > needW && c.th > me.rel && c.th < me.rel + 0.3 && (me.go || (me.go = Math.random() < 0.3 + 0.6 * api.skill ? 1 : -1)) > 0) {
-    hit.a = true;
+    hit.fire = true;
     me.rel = (target ? 0.35 : 0.5) + (Math.random() - 0.5) * 0.4 * (1.2 - api.skill);
     me.go = 0;
+    me.wait = 0.25;
   }
   if (c.th < 0) me.go = 0; // (a new chance to let go on every forward swing)
-  return { ax: sx + (c.w >= 0 ? 400 : -400), ay: c.y, hit, held: {} }; // (it swings with the "mouse", like you)
+  return { mx: c.w >= 0 ? 1 : -1, hit };
 }
 
 function event(v, e) {
   if (e.type === 'grab') v.sound(e.i === v.me ? [[520, 0, 0.04], [780, 0.04, 0.05]] : [[300, 0, 0.03]]);
   if (e.type === 'let') { if (e.i === v.me) v.sound([[340, 0, 0.04]]); }
+  if (e.type === 'jump') { if (e.i === v.me) v.sound([[500, 0, 0.04]]); }
+  if (e.type === 'miss') { if (e.i === v.me) v.sound([[200, 0, 0.05]]); }
   if (e.type === 'bonk') {
     v.burst(e.x, e.y, '#fff3b0', 18, 300);
     v.ring(e.x, e.y, v.team[e.i].main, 24);
@@ -323,7 +371,8 @@ function draw(v, s) {
   }
   // the start ledge, the leafy canopy, and the vines hanging from it (the last one golden, with a flower)
   g.fillStyle = '#5b4632';
-  g.fillRect(-140, 400, 250, H - 400);
+  g.fillRect(-180, LEDGE_Y, LEDGE_X + 180, H - LEDGE_Y);
+  g.fillStyle = '#3f8f3a'; g.fillRect(-180, LEDGE_Y - 6, LEDGE_X + 180, 10); // (grass on top)
   g.fillStyle = '#1f5a2c';
   g.fillRect(cam, 0, W, 22);
   for (let x = Math.floor(cam / 46) * 46; x < cam + W + 46; x += 46) { // leaves along the canopy
@@ -365,6 +414,8 @@ function draw(v, s) {
   v.dot(W / 2 + 160, 41, 6);
   v.label('⏱ ' + s.t, W / 2, 66, 16, '#ffffff');
   if (mine.d) v.msg('CHOMP! 🐊 The gators got you…', true);
+  else if (mine.f === 2) v.msg('Walk to the edge (D), jump (W or Space), then click to grab a vine!');
+  else if (mine.f === 1) v.msg('Click to grab a vine!');
 }
 
 })();
