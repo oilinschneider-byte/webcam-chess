@@ -364,6 +364,13 @@ function renderMenu() {
   $('menuTier').textContent = CA.tierOf(p.xp);
   const ready = CA.PASS.filter(t => t.tier <= CA.tierOf(p.xp) && !p.claimed.includes(t.tier)).length;
   $('menuPassNote').textContent = ready ? '🎁 ' + ready + ' reward' + (ready > 1 ? 's' : '') + ' ready to claim!' : 'Tier ' + CA.tierOf(p.xp) + ' of 20 · win to unlock more';
+  const tier = CA.tierOf(p.xp);
+  $('lobbyPassText').textContent = 'Tier ' + tier + ' / 20';
+  $('lobbyPassFill').style.width = Math.min(100, tier / 20 * 100) + '%';
+  if (p.guest) $('menuPassNote').textContent = 'Sign up to unlock it';
+}
+
+function renderPracticeLevel() {
   const lvl = practiceLevel();
   document.querySelectorAll('#practiceLevel [data-level]').forEach(b => b.classList.toggle('active', b.dataset.level === lvl));
 }
@@ -442,6 +449,21 @@ CA.register('menu', {
   },
 });
 
+CA.register('games', {
+  enter() {
+    CA.showScreen('scr-games');
+    renderPracticeLevel();
+  },
+});
+
+// Guests have no Streak Pass: the card on the home screen asks them to sign up instead.
+$('lobbyPass').addEventListener('click', e => {
+  if (!CA.profile || !CA.profile.guest) return;
+  e.preventDefault();
+  CA.logOut();
+  CA.go('auth', { mode: 'signup' });
+});
+
 $('practiceLevel').addEventListener('click', e => {
   const b = e.target.closest('[data-level]');
   if (!b) return;
@@ -505,12 +527,9 @@ $('soundBtn').addEventListener('click', () => {
 });
 $('soundBtn').textContent = CA.soundOn ? '🔊' : '🔇';
 
-// Dark mode: the 🌙 button. Saved in this browser (index.html reads it before the page draws).
+// Dark mode: the switch at the bottom of the home page. Saved in this browser (index.html reads it before the page draws).
 const darkOn = () => document.documentElement.dataset.theme === 'dark';
 function showTheme() {
-  $('themeBtn').textContent = darkOn() ? '☀️' : '🌙';
-  $('themeBtn').title = darkOn() ? 'Light mode' : 'Dark mode';
-  $('themeBtn').setAttribute('aria-label', $('themeBtn').title);
   $('themeToggle').setAttribute('aria-checked', darkOn() ? 'true' : 'false');
 }
 function flipTheme() {
@@ -519,7 +538,6 @@ function flipTheme() {
   try { localStorage.setItem('camarcade-theme', darkOn() ? 'dark' : 'light'); } catch (e) { /* just for now, then */ }
   showTheme();
 }
-$('themeBtn').addEventListener('click', flipTheme);
 $('themeToggle').addEventListener('click', flipTheme);
 showTheme();
 $('userBtn').addEventListener('click', e => { e.stopPropagation(); $('userPop').classList.toggle('hidden'); });
