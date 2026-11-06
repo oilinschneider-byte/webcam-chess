@@ -179,7 +179,8 @@ async function main() {
       if (q.get('page') === 'cat' || q.get('page') === 'pass') CA.profile.guest = false; // (guests can't open these)
       location.hash = '#/' + q.get('page');
       await sleep(2500);
-      if (q.get('scroll')) { window.scrollTo(0, Number(q.get('scroll'))); await sleep(400); } // (scrolled down the page)
+      if (q.get('dbg')) { const sc = document.querySelector('.lobby-scene'); const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:70px;z-index:99;background:#fff;color:#000;font:14px monospace;padding:6px'; d.textContent = 'h=' + getComputedStyle(sc).height + ' inline=' + sc.style.height + ' vb=' + sc.querySelector('svg').getAttribute('viewBox') + ' main=' + Math.round(document.getElementById('scr-menu').getBoundingClientRect().bottom) + ' route=' + CA.route; document.body.appendChild(d); }
+      if (q.get('scroll')) { document.body.style.transform = 'translateY(-' + Number(q.get('scroll')) + 'px)'; await sleep(400); } // (as if scrolled down: a headless screenshot doesn't scroll)
       return;
     }
     if (q.get('spin')) { $('spinCat').style.transform = 'rotateY(' + q.get('spin') + 'deg)'; return; } // (a picture of it turned)

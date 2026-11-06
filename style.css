@@ -1892,3 +1892,4 @@ body.guest { --lobby-top: 58px; }
   .lobby-scene { position: absolute; top: 0; left: 0; right: 0; bottom: auto; height: max(564px, 100dvh); }
   body:has(#scr-menu:not(.hidden)) { background: var(--sc-floor-bot); }
 }
+.sc-floorx { fill: var(--sc-floor-bot); }

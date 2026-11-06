@@ -443,11 +443,35 @@ function showShots() {
 CA.register('menu', {
   enter() {
     CA.showScreen('scr-menu');
+    fitScene();
     showShots();
     renderMenu();
     showOnline();
   },
 });
+
+// The temple behind the home screen. On a computer it covers the whole page: the top part fills the first screen exactly
+// as before (the drawing is 1600 x 900, cropped to fit), and the floor keeps going under the rest of the page.
+const sceneBox = document.querySelector('.lobby-scene:not(.lobby-front)');
+function fitScene() {
+  const svg = sceneBox.querySelector('svg');
+  if (CA.route !== 'menu' || innerWidth < 761) {
+    sceneBox.style.height = '';
+    svg.setAttribute('viewBox', '0 0 1600 900');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMax slice');
+    return;
+  }
+  const W = document.documentElement.clientWidth;
+  const S = Math.max(564, innerHeight); // (the first screen: see .lobby-scene in style.css)
+  sceneBox.style.height = S + 'px'; // (so the page's own height can be measured without the scene in it)
+  const D = Math.max(S, document.documentElement.scrollHeight);
+  const k = Math.max(W / 1600, S / 900);
+  svg.setAttribute('viewBox', (800 - W / 2 / k) + ' ' + (900 - S / k) + ' ' + W / k + ' ' + D / k);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  sceneBox.style.height = D + 'px';
+}
+addEventListener('resize', fitScene);
+if (window.ResizeObserver) { const ro = new ResizeObserver(() => fitScene()); ro.observe($('scr-menu')); ro.observe($('prizeBanner')); }
 
 CA.register('games', {
   enter() {
