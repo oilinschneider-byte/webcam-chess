@@ -3,17 +3,18 @@
    it). The arms just flop about (the hands drag along the floor) until you hold the mouse button: then they lift up
    and the sword hand reaches for the mouse pointer (springy, and only so fast, so you really swing). Only a direct
    hit counts: the outer part of the blade moving fast, straight into them (a slow or sliding touch just glances off).
-   A direct hit to the head takes 34 of your 100 health, one to the body 20, and one to the sword arm knocks the sword
-   out of the hand. Swords that meet clank and knock both cats back. Out of health is a K.O. First to 2 rounds. Now
+   How much a direct hit does depends on the hitter's power level (see below): in base form only a little (11 to the
+   head, 6 to the body, and a hit on the sword arm rarely knocks the sword out), at level 2 a lot (36, 22, and always). Swords that meet clank and knock both cats back. Out of health is a K.O. First to 2 rounds. Now
    and then, a direct hit on a cat with very little health left is a critical hit: its head pops right off (cartoon
    style, no blood) and bounces away, and that's the round.
 
    Moving is quick: A and D run, W or Space jumps, and Shift (or A or D twice, fast) dashes, once in the air too.
    E blocks for a moment (then it needs a short rest): a blocked blade bounces back, flinging the arm holding it back
-   (it goes floppy for a moment) and pushing that cat back. Keep holding E and it charges up a grab (then 6 seconds
-   to cool down): you drop your sword and your arm shoots out a long way towards the mouse pointer. If it catches the
-   other cat, they're stuck (and so are you), and you carry them through the air with the mouse; let go of E and they
-   fly off the way you were moving them. A hard landing hurts and knocks their sword out of their hand (but doesn't leave them dizzy).
+   (it goes floppy for a moment) and pushing that cat back. Keep holding E and the cat powers up, standing still, in
+   flames: a few seconds to level 1 (gold flames), a few more to level 2 (blue and purple, crackling). A hit while
+   powering up stops it. Each level hits much harder, and at level 2, Q (or right-click) fires a plasma cannon toward
+   the mouse pointer (then 20 seconds to recharge): a hit takes 75 of their 100 health, and if that finishes them,
+   they turn to dust. Levels last for the round.
 
    The arms (chains of points) and the swords swing with gravity and springs (Verlet physics). A hit is checked along
    the whole path a blade swept since the last step, so a fast swing can't pass through. The host's app runs all of
@@ -35,10 +36,14 @@ const HIT_SPEED = 480, SWEET = 0.3, CLASH_SPEED = 150; // a direct hit: the blad
 const HP = 100, HEAD_DMG = 34, BODY_DMG = 20, SPLAT_DMG = 15;
 const CRIT_HP = 30, CRIT_HEAD = 0.4, CRIT_BODY = 0.2; // a critical hit: only on a cat this low on health, this often (head, body)
 const NECK = -36, HEAD_Y = -56;                    // where the head meets the body, and the head's middle (from the feet)
-const BLOCK_MIN = 0.35, BLOCK_WAIT = 1, CHARGE = 0.9; // a tap of E blocks this long; then a rest; hold E this long to grab
+const BLOCK_MIN = 0.35, BLOCK_WAIT = 1, CHARGE = 0.9; // a tap of E blocks this long; then a rest; hold E this long to start powering up
 const RECOIL = 0.45;                               // how long a blocked (or clashed) cat's arms stay floppy after bouncing back
-const GRAB_RANGE = 470, GRAB_SPEED = 2100, GRAB_WAIT = 6; // how far the grabbing arm stretches, how fast; its cooldown after
-const GRIP_MAX = 2.2, CARRY = 1000, THROW_MAX = 1500; // the longest you can hold them; how fast you can carry and throw them
+// Powering up (hold E): base form, level 1 and level 2. Each level hits harder and knocks swords out of hands more often.
+const POWER_T = [2.6, 3.4];                        // how long you hold E (standing still) to reach level 1, then level 2
+const LV_DMG = [[11, 6], [24, 14], [36, 22]];      // [head, body] damage in each form
+const LV_DISARM = [0.15, 0.6, 1];                  // how often a direct hit on the sword arm knocks the sword out
+const LV_SPEED = [1, 1.08, 1.16];                  // a powered-up cat moves a little faster
+const PLASMA_SPEED = 820, PLASMA_R = 24, PLASMA_DMG = 75, PLASMA_WAIT = 20; // level 2's plasma cannon (Q or right-click)
 const PICK_WAIT = 0.6, SPLAT = 650;                // a dropped sword can't be picked up at once; a landing this fast (px/s) is a splat
 const WIN = 2, ROUND = 60;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -47,17 +52,17 @@ let looks = null;                                  // each player's cat picture 
 
 CA.games.add('swords', {
   name: 'Floppy Sword Cats', icon: '🤺',
-  blurb: 'Long floppy arms and a sword each! Hold the mouse button to lift your sword and swing at the mouse pointer. Only direct hits count: fast, with the outer part of the blade. Swords clash, E blocks (and bounces their sword back), and holding E grabs the other cat from far away so you can throw them! Shift dashes.',
+  blurb: 'Long floppy arms and a sword each! Hold the mouse button to lift your sword and swing at the mouse pointer. Only direct hits count. Tap E to block. HOLD E to power up: level 1, then level 2, each hitting much harder (flames and all). At level 2, Q (or right-click) fires a plasma cannon that takes 3/4 of their health! Shift dashes.',
   start(ctx) {
     looks = [];
     looks[ctx.isHost ? 0 : 1] = { pics: F.pictures(CA.profile.equip), fur: F.fur(CA.profile.equip) };
     looks[ctx.isHost ? 1 : 0] = { pics: F.pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) };
     CA.duel.run(ctx, {
-      id: 'swords', mouse: true, doubleTap: true, keys: { KeyE: 'e', ShiftLeft: 'sh', ShiftRight: 'sh' }, letters: { e: 'e' },
+      id: 'swords', mouse: true, doubleTap: true, keys: { KeyE: 'e', KeyQ: 'q', ShiftLeft: 'sh', ShiftRight: 'sh' }, letters: { e: 'e', q: 'q' },
       jump: 120, angles: ['tilt'],
-      pad: { stick: true, buttons: [{ k: 'e', label: '🛡️ Block · hold: Grab' }, { k: 'sh', label: '💨 Dash' }, { k: 'a', label: '⤒ Jump', main: true }] },
-      help: 'A/D run · W or Space jump · Shift dash · hold the mouse to lift your sword and swing · E block (hold: grab and throw)',
-      helpTouch: 'Stick runs · drag on the arena to swing · Block (hold: grab and throw) · Dash · Jump',
+      pad: { stick: true, buttons: [{ k: 'e', label: '🛡️ Block · hold: Power up' }, { k: 'q', label: '💥 Plasma' }, { k: 'sh', label: '💨 Dash' }, { k: 'a', label: '⤒ Jump', main: true }] },
+      help: 'A/D run · W or Space jump · Shift dash · hold the mouse to swing · tap E block · HOLD E to power up · level 2: Q or right-click fires plasma',
+      helpTouch: 'Stick runs · drag on the arena to swing · Block (hold: power up) · Plasma at level 2 · Dash · Jump',
       note: 'First to ' + WIN + ' rounds',
       init, step, snap, bot, draw, event,
     });
@@ -79,8 +84,9 @@ function newCat(x, face) {
     hp: HP, ko: false, koDir: 1, stun: 0, cool: 0, knockT: -9, // health; knocked silly for a moment after a hit; can't be hit again yet
     hold: -1, up: false, swingT: 0, pickWait: 0, recoil: 0,     // the sword; arms up (mouse button down), a swing still counts a moment after
     dashT: 0, dashDir: 1, dashWait: 0, airDash: false, jumpBuf: 0,
-    eOn: false, eT: 0, eWait: 0, grabWait: 0,     // E: down (blocking, charging a grab) and for how long; its rest; the grab's cooldown
-    reach: null, caught: -1, fly: false, flyT: 0, dizzy: 0, // the grab this cat is doing; who's carrying this cat; thrown; dizzy
+    eOn: false, eT: 0, eWait: 0,                  // E: down (blocking) and for how long; its rest
+    lv: 0, pow: false, powT: 0, plasmaWait: 0, dust: false, // power level (0 base, 1, 2); powering up now (holding E), for how long; the cannon's cooldown; turned to dust
+    reach: null, caught: -1, fly: false, flyT: 0, dizzy: 0, // (the old long grab: no longer used); who's carrying this cat; flying; dizzy
     head: null,                                   // after a critical hit: the head, bouncing away on its own
     sta: 1, tired: false,                         // stamina: raising the sword, dashing and blocking use it up; resting fills it
   };
@@ -95,7 +101,7 @@ function newCat(x, face) {
 }
 
 function init(api) {
-  const s = { wins: [0, 0], round: 0, t: 0, phase: 'fight', pause: 0, rw: -1, cats: [], swords: [], clashAt: 0 };
+  const s = { wins: [0, 0], round: 0, t: 0, phase: 'fight', pause: 0, rw: -1, cats: [], swords: [], clashAt: 0, shots: [] };
   newRound(s, api);
   return s;
 }
@@ -107,6 +113,7 @@ function newRound(s, api) {
   s.phase = 'fight';
   s.rw = -1;
   s.cats = [newCat(200, 1), newCat(W - 200, -1)];
+  s.shots = [];
   s.swords = s.cats.map((c, i) => { // each cat starts with a sword in its front hand, the blade on the floor
     const hand = c.arms[1][ARM_N], bx = hand.x + c.face * SWORD;
     c.hold = i;
@@ -116,7 +123,7 @@ function newRound(s, api) {
 }
 
 // (a cat that's grabbing, being carried, flying through the air, dizzy or knocked out can't do anything else)
-const busy = c => c.ko || !!c.reach || c.caught >= 0 || c.fly || c.dizzy > 0;
+const busy = c => c.ko || c.pow || !!c.reach || c.caught >= 0 || c.fly || c.dizzy > 0;
 const canAct = c => !busy(c) && c.stun <= 0;
 
 function verlet(p, h) {
@@ -139,7 +146,7 @@ function bound(p, r) {
 
 // The body: running, jumping and dashing like the Cat Hoops cats. A thrown cat spins through the air until it lands.
 function stepBody(s, c, i, n, h, api) {
-  if (c.caught >= 0) return; // (being carried: see stepReach)
+  if (c.caught >= 0) return;
   const free = canAct(c);
   if (c.dashT > 0) {
     c.dashT -= h;
@@ -147,7 +154,7 @@ function stepBody(s, c, i, n, h, api) {
     if (!c.ground) c.vy = Math.min(c.vy, 0);
     if (c.dashT <= 0) c.vx = c.dashDir * 300; // (it stops sharply)
   } else if (!c.fly) {
-    const want = free && !c.reach ? n.mx * WALK * (c.eOn ? 0.5 : 1) : 0;
+    const want = free && !c.reach ? n.mx * WALK * LV_SPEED[c.lv] * (c.eOn ? 0.5 : 1) : 0;
     c.vx = approach(c.vx, want, (c.ground ? (free ? ACCEL : 1300) : AIR_ACCEL) * h);
   }
   if (!(c.dashT > 0 && !c.ground)) c.vy += G * h;
@@ -387,8 +394,13 @@ function cutWith(s, sw, dt, api) {
     if (s.t - v.knockT > 0.3) { v.knockT = s.t; v.vx += dir * 200; api.ev('glance', { x: hit.x, y: hit.y }); } // (even a glance pushes them back)
     return;
   }
-  if (hit.part === 'arm') { dropSword(s, v, dir); v.cool = 0.3; api.ev('disarm', { x: hit.x, y: hit.y }); return; }
-  if (v.hp <= CRIT_HP && Math.random() < (hit.part === 'head' ? CRIT_HEAD : CRIT_BODY)) { // a critical hit: off comes the head
+  if (v.pow) { v.pow = false; v.powT = 0; api.ev('fizzle', { x: v.x, y: v.y - 60 }); } // (a hit stops a power-up)
+  if (hit.part === 'arm') {
+    if (Math.random() < LV_DISARM[me.lv]) { dropSword(s, v, dir); v.cool = 0.3; api.ev('disarm', { x: hit.x, y: hit.y }); }
+    else { v.cool = 0.25; v.vx += dir * 160; api.ev('glance', { x: hit.x, y: hit.y }); }
+    return;
+  }
+  if (me.lv > 0 && v.hp <= CRIT_HP && Math.random() < (hit.part === 'head' ? CRIT_HEAD : CRIT_BODY)) { // a critical hit (powered up only): off comes the head
     const [hx, hy] = headAt(v);
     v.hp = 0;
     v.head = { x: hx, y: hy, vx: dir * (220 + Math.random() * 140), vy: -560, a: v.tilt, va: dir * 11 };
@@ -396,16 +408,17 @@ function cutWith(s, sw, dt, api) {
     koCat(s, vi, api, dir);
     return;
   }
-  const dmg = hit.part === 'head' ? HEAD_DMG : BODY_DMG;
+  const dmg = LV_DMG[me.lv][hit.part === 'head' ? 0 : 1];
+  const kick = 0.6 + 0.3 * me.lv; // (a base-form hit barely moves them; a level 2 hit sends them flying)
   v.hp = Math.max(0, v.hp - dmg);
   v.cool = 0.45;
-  v.stun = 0.3;
+  v.stun = 0.15 + 0.12 * me.lv;
   v.eOn = false;
   v.dashT = 0;
-  v.vx = dir * (hit.part === 'head' ? 380 : 300);
-  v.vy = -280;
+  v.vx = dir * (hit.part === 'head' ? 380 : 300) * kick;
+  v.vy = -280 * kick;
   v.ground = false;
-  api.ev('hit', { x: hit.x, y: hit.y, part: hit.part, dmg });
+  api.ev('hit', { x: hit.x, y: hit.y, part: hit.part, dmg, lv: me.lv });
   if (v.hp <= 0) koCat(s, vi, api, dir);
 }
 
@@ -426,6 +439,7 @@ function koCat(s, i, api, dir) {
   c.ko = true;
   c.koDir = dir || 1;
   c.eOn = false;
+  c.pow = false;
   dropSword(s, c, dir);
   if (c.caught < 0) { c.vx = c.koDir * 220; c.vy = -320; c.ground = false; }
   const w = 1 - i;
@@ -452,7 +466,7 @@ function step(s, inp, dt, api) {
   if (s.phase === 'pause') {
     s.pause -= dt;
     const still = inp.map(n => Object.assign({}, n, { mx: 0, held: {}, hit: {} }));
-    s.cats.forEach((c, i) => { tick(c, dt); if (c.reach) stepReach(s, c, i, still[i], dt, api); });
+    s.cats.forEach(c => tick(c, dt));
     physics(s, still, dt, api);
     if (s.pause <= 0) {
       if (s.over != null) { api.end(s.over, 'K.O.!'); return; }
@@ -484,7 +498,20 @@ function step(s, inp, dt, api) {
     tick(c, dt);
     c.swingT = n.held.fire && canAct(c) && !c.eOn && c.recoil <= 0 ? 0.3 : Math.max(0, c.swingT - dt);
     if (c.ko) return;
-    if (c.reach) { stepReach(s, c, i, n, dt, api); return; }
+    // holding E (after a moment): powering up, standing still. Keep holding to reach level 1, then level 2. Let go to stop.
+    if (c.pow) {
+      if (!n.held.e) { c.pow = false; c.powT = 0; c.eWait = BLOCK_WAIT * 0.5; }
+      else {
+        c.powT += dt;
+        if (c.powT >= POWER_T[c.lv]) {
+          c.lv++;
+          c.powT = 0;
+          if (c.lv >= 2) c.pow = false;
+          api.ev('super', { x: c.x, y: c.y - 50, lv: c.lv });
+        }
+      }
+      return;
+    }
     if (!canAct(c)) { c.eOn = false; return; }
     c.face = n.ax >= c.x ? 1 : -1;
     // W or Space jumps (a press just before landing still counts)
@@ -499,17 +526,20 @@ function step(s, inp, dt, api) {
       c.airDash = !c.ground;
       api.ev('dash', { x: c.x, y: c.y - 30 });
     }
-    // E: a tap blocks for a moment (then it needs a rest); keep holding it and it charges up the long grab
+    // E: a tap blocks for a moment (then it needs a rest); keep holding it and the cat starts powering up
     if (n.hit.e && !c.eOn && c.eWait <= 0) { c.eOn = true; c.eT = 0; }
     if (c.eOn) {
       c.eT += dt;
-      if (n.held.e && c.eT >= CHARGE) { c.eOn = false; if (c.grabWait <= 0) launchGrab(s, c, i, n, api); else c.eWait = BLOCK_WAIT; } // (grab still cooling down: just a block)
+      if (n.held.e && c.eT >= CHARGE) { c.eOn = false; if (c.lv < 2) { c.pow = true; c.powT = 0; api.ev('charge', { x: c.x, y: c.y - 50 }); } else c.eWait = BLOCK_WAIT; } // (at level 2 already: just a block)
       else if (!n.held.e && c.eT >= BLOCK_MIN) { c.eOn = false; c.eWait = BLOCK_WAIT; }
     }
+    // level 2: Q (or right-click) fires the plasma cannon
+    if ((n.hit.q || n.hit.alt) && c.lv >= 2 && c.plasmaWait <= 0) firePlasma(s, c, i, n, api);
     if (c.hold < 0 && c.pickWait <= 0 && !c.reach) pickUp(s, c, i, api);
   });
   physics(s, inp, dt, api);
   checkHits(s, dt, api);
+  stepShots(s, dt, api);
   if (s.t >= ROUND && s.phase === 'fight') { // time: whoever has more health left wins the round
     const [a, b] = s.cats;
     if (a.hp !== b.hp) koCat(s, a.hp < b.hp ? 0 : 1, api, a.hp < b.hp ? -1 : 1);
@@ -518,7 +548,7 @@ function step(s, inp, dt, api) {
 }
 
 function tick(c, dt) {
-  for (const k of ['cool', 'stun', 'dashWait', 'pickWait', 'eWait', 'grabWait', 'recoil', 'dizzy']) c[k] = Math.max(0, c[k] - dt);
+  for (const k of ['cool', 'stun', 'dashWait', 'pickWait', 'eWait', 'plasmaWait', 'recoil', 'dizzy']) c[k] = Math.max(0, c[k] - dt);
 }
 
 // Walking over a free sword (or touching it with the front paw) picks it up.
@@ -538,89 +568,63 @@ function pickUp(s, c, i, api) {
   api.ev('pick', { x: hand.x, y: hand.y });
 }
 
-/* ---------- the long grab ---------- */
+/* ---------- level 2's plasma cannon ---------- */
 
-// The cat lets go of its sword and the front arm shoots out towards the mouse pointer.
-function launchGrab(s, c, i, n, api) {
-  dropSword(s, c);
-  const sh = shoulder(c, 1), hand = c.arms[1][ARM_N];
-  let dx = n.ax - sh[0], dy = n.ay - sh[1];
+// A big ball of plasma flies from the chest towards the mouse pointer (and kicks the cat back a little).
+function firePlasma(s, c, i, n, api) {
+  const [x, y] = at(c, 14, -46);
+  let dx = n.ax - x, dy = n.ay - y;
   const l = Math.hypot(dx, dy);
   if (l < 1) { dx = c.face; dy = 0; } else { dx /= l; dy /= l; }
   c.face = dx >= 0 ? 1 : -1;
-  c.dashT = 0;
-  c.reach = { ph: 'out', d: Math.min(Math.hypot(hand.x - sh[0], hand.y - sh[1]), ARM_N * ARM_SEG), dx, dy, x: hand.x, y: hand.y, t: 0, vx: 0, vy: 0 };
-  api.ev('reach', { x: sh[0], y: sh[1] });
+  s.shots.push({ x, y, vx: dx * PLASMA_SPEED, vy: dy * PLASMA_SPEED, o: i, t: 0 });
+  c.plasmaWait = PLASMA_WAIT;
+  c.vx -= dx * 260;
+  api.ev('plasma', { x, y });
 }
 
-// The grab, each step: the hand flies out until it catches the other cat (or goes as far as it can and comes back).
-// Caught, they're carried towards the mouse pointer until E is let go (or GRIP_MAX), then they fly off the way they
-// were going (a throw).
-function stepReach(s, c, i, n, dt, api) {
-  const r = c.reach, o = s.cats[1 - i], sh = shoulder(c, 1);
-  if (c.ko) { if (r.ph === 'hold') throwCat(s, c, i, api, true); c.reach = null; c.grabWait = GRAB_WAIT; return; }
-  if (r.ph === 'out') {
-    const x0 = r.x, y0 = r.y;
-    r.d += GRAB_SPEED * dt;
-    r.x = sh[0] + r.dx * r.d;
-    r.y = sh[1] + r.dy * r.d;
-    const got = s.phase === 'fight' && !o.ko && o.caught < 0 &&
-      zones(o).some(z => z.part !== 'arm' && segDist(x0, y0, r.x, r.y, z.a[0], z.a[1], z.b[0], z.b[1]) < z.r + 14);
-    if (got) {
-      if (o.reach) { o.reach = null; o.grabWait = GRAB_WAIT; } // (their own grab is cut short)
-      Object.assign(o, { caught: i, eOn: false, fly: false, dizzy: 0, dashT: 0, vx: 0, vy: 0, tilt: 0 });
-      r.ph = 'hold';
-      r.x = o.x;
-      r.y = o.y - 40;
-      api.ev('catch', { x: r.x, y: r.y });
-    } else if (r.d >= GRAB_RANGE || r.y > GROUND - 4 || r.y < 6 || r.x < 8 || r.x > W - 8 || CA.camWalls.inWall(r.x, r.y, 4)) r.ph = 'back';
-    return;
+// The plasma balls: a hit takes 3/4 of their health (blocking doesn't help); one that finishes them off turns them to dust.
+function stepShots(s, dt, api) {
+  for (let k = s.shots.length - 1; k >= 0; k--) {
+    const p = s.shots[k], vi = 1 - p.o, v = s.cats[vi];
+    p.t += dt;
+    const x0 = p.x, y0 = p.y;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    let hit = false;
+    if (!v.ko && s.phase === 'fight') {
+      for (const z of zones(v)) {
+        if (z.part === 'arm') continue;
+        if (segDist(x0, y0, p.x, p.y, z.a[0], z.a[1], z.b[0], z.b[1]) < z.r + PLASMA_R) { hit = true; break; }
+      }
+    }
+    if (hit) {
+      const dir = Math.sign(p.vx) || 1;
+      s.shots.splice(k, 1);
+      v.pow = false;
+      v.hp = Math.max(0, v.hp - PLASMA_DMG);
+      api.ev('blast', { x: p.x, y: p.y, dmg: PLASMA_DMG });
+      if (v.hp <= 0) {
+        v.dust = true;
+        dropSword(s, v, dir);
+        api.ev('dust', { x: v.x, y: v.y - 45 });
+        koCat(s, vi, api, dir);
+        v.vx = v.vy = 0;
+      } else {
+        v.stun = 0.6;
+        v.cool = 0.6;
+        v.vx = dir * 700;
+        v.vy = -420;
+        v.ground = false;
+        dropSword(s, v, dir);
+      }
+      continue;
+    }
+    if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > GROUND - 6 || CA.camWalls.inWall(p.x, p.y, 10) || p.t > 3) {
+      s.shots.splice(k, 1);
+      api.ev('pop', { x: clamp(p.x, 0, W), y: Math.min(p.y, GROUND - 10) });
+    }
   }
-  if (r.ph === 'hold') {
-    r.t += dt;
-    // towards the mouse pointer: no further than the arm stretches, and with the carried cat inside the arena
-    let tx = n.ax - sh[0], ty = n.ay - sh[1];
-    const tl = Math.hypot(tx, ty) || 1;
-    if (tl > GRAB_RANGE) { tx *= GRAB_RANGE / tl; ty *= GRAB_RANGE / tl; }
-    tx = clamp(sh[0] + tx, EDGE, W - EDGE);
-    ty = clamp(sh[1] + ty, TOP - 40, GROUND - 40);
-    const dx = tx - r.x, dy = ty - r.y, dl = Math.hypot(dx, dy), mv = Math.min(dl * 0.4, CARRY * dt);
-    let nx = dl > 0.01 ? r.x + dx / dl * mv : r.x, ny = dl > 0.01 ? r.y + dy / dl * mv : r.y;
-    const q = CA.camWalls.push(nx, ny, 50); // (a carried cat can't go into a camera wall either)
-    if (q) { nx = q.x; ny = q.y; }
-    r.vx += ((nx - r.x) / dt - r.vx) * 0.4;
-    r.vy += ((ny - r.y) / dt - r.vy) * 0.4;
-    r.x = nx;
-    r.y = ny;
-    o.x = r.x;
-    o.y = r.y + 40;
-    if ((!n.held.e && r.t > 0.35) || r.t > GRIP_MAX) throwCat(s, c, i, api);
-    return;
-  }
-  r.d -= GRAB_SPEED * 1.2 * dt; // coming back
-  if (r.d <= ARM_N * ARM_SEG - 8) { c.reach = null; c.grabWait = GRAB_WAIT; return; }
-  r.x = sh[0] + r.dx * r.d;
-  r.y = sh[1] + r.dy * r.d;
-}
-
-// How fast a carried cat flies off if they're let go now (a throw always pops them up a bit).
-function throwSpeed(r) {
-  let vx = r.vx * 1.25, vy = r.vy * 1.25 - 160;
-  const sp = Math.hypot(vx, vy);
-  if (sp > THROW_MAX) { vx *= THROW_MAX / sp; vy *= THROW_MAX / sp; }
-  return [vx, vy];
-}
-
-function throwCat(s, c, i, api, drop) {
-  const r = c.reach, o = s.cats[1 - i], sh = shoulder(c, 1);
-  [o.vx, o.vy] = drop ? [0, 0] : throwSpeed(r);
-  Object.assign(o, { caught: -1, fly: true, flyT: 0, ground: false, spin: clamp(o.vx * 0.012, -9, 9) });
-  const l = Math.hypot(r.x - sh[0], r.y - sh[1]) || 1;
-  r.ph = 'back';
-  r.dx = (r.x - sh[0]) / l;
-  r.dy = (r.y - sh[1]) / l;
-  r.d = l;
-  if (!drop) api.ev('throw', { x: r.x, y: r.y });
 }
 
 /* ---------- online ---------- */
@@ -633,46 +637,44 @@ function snap(s) {
       x: r(c.x), y: r(c.y), face: c.face, tilt: Math.round(Math.atan2(Math.sin(c.tilt), Math.cos(c.tilt)) * 100) / 100,
       sq: c.ground && Math.abs(c.vx) > 40 && !c.ko ? Math.round(Math.abs(Math.sin(c.phase)) * 35) / 100 : 0,
       ar: c.arms.map(a => a.flatMap(p => [r(p.x), r(p.y)])), hp: Math.round(c.hp), h: c.hold,
-      ko: c.ko ? 1 : 0, cl: c.cool > 0 ? 1 : 0, b: c.eOn ? 1 : 0, g: c.eOn && c.grabWait <= 0 ? Math.round(Math.min(1, c.eT / CHARGE) * 20) / 20 : 0,
-      sa: Math.round(c.sta * 20) / 20, td: c.tired ? 1 : 0, w: Math.round(c.eWait * 10) / 10, gw: Math.round(c.grabWait * 10) / 10, z: c.dizzy > 0 ? 1 : 0, sh: c.caught >= 0 ? 1 : 0, ds: c.dashT > 0 ? c.dashDir : 0,
+      ko: c.ko ? 1 : 0, cl: c.cool > 0 ? 1 : 0, b: c.eOn ? 1 : 0, g: c.eOn && c.lv < 2 ? Math.round(Math.min(1, c.eT / CHARGE) * 20) / 20 : 0,
+      sa: Math.round(c.sta * 20) / 20, td: c.tired ? 1 : 0, w: Math.round(c.eWait * 10) / 10, pl: Math.round(c.plasmaWait * 10) / 10, lv: c.lv, pw: c.pow ? Math.round(c.powT / POWER_T[c.lv] * 20) / 20 : -1, du: c.dust ? 1 : 0, z: c.dizzy > 0 ? 1 : 0, sh: c.caught >= 0 ? 1 : 0, ds: c.dashT > 0 ? c.dashDir : 0,
       hd: c.head ? [r(c.head.x), r(c.head.y), Math.round(c.head.a * 100) / 100] : 0,
-      rp: c.reach ? (c.reach.ph === 'hold' ? 2 : 1) : 0, tv: c.reach && c.reach.ph === 'hold' ? throwSpeed(c.reach).map(Math.round) : [0, 0],
     })),
     s: s.swords.map(sw => [r(sw.a.x), r(sw.a.y), r(sw.b.x), r(sw.b.y), sw.holder]),
+    p: s.shots.map(p => [r(p.x), r(p.y), Math.round(Math.atan2(p.vy, p.vx) * 100) / 100]),
   };
 }
 
 /* ---------- the bot ---------- */
 
 // The bot keeps its sword (or runs for a dropped one), closes in with its arms up, swinging in fast arcs at the other
-// cat's head, and dashes in and out. It blocks some fast swings coming its way, and now and then grabs the other cat
-// from afar and throws them high.
+// cat's head, and dashes in and out. It blocks some fast swings coming its way. When the other cat is far away it
+// sometimes powers up (holding E), and at level 2 it fires the plasma cannon now and then.
 function bot(s, i, dt, api) {
   const c = s.cats[i], o = s.cats[1 - i];
-  const st = s.bs || (s.bs = { t: 0, think: 0, mx: 0, back: 0, block: 0, grab: false });
+  const st = s.bs || (s.bs = { t: 0, think: 0, mx: 0, back: 0, block: 0, power: false });
   st.t += dt;
   if (s.phase !== 'fight' || c.ko) return { ax: c.x + c.face * 40, ay: c.y - 40 };
   const sh = shoulder(c, 1), om = at(o, 0, -40), oh = headAt(o);
   const out = { hit: {}, held: {}, swing: 0.75 + 0.35 * api.skill, ax: om[0], ay: om[1] };
-  if (c.reach) { // carrying them: up and over towards the far side, then let go
-    const r = c.reach;
-    if (r.ph === 'hold') {
-      const dir = r.x < W / 2 ? 1 : -1;
-      out.ax = r.x + dir * 160;
-      out.ay = r.y - 260;
-      out.held.e = r.t < 0.5;
-    }
+  // powering up: keep holding E (until the level goes up, or the other cat comes close)
+  if (c.pow) {
+    if (Math.abs(o.x - c.x) > 170 && !busy(o) || o.ko) out.held.e = true;
     return out;
   }
-  if (!canAct(c)) { st.grab = false; return out; }
-  if (st.grab) { // charging a grab: keep E down, aim a little ahead of the other cat
-    if (c.eOn) {
-      out.held.e = true;
-      out.ax = om[0] + o.vx * 0.15 * api.skill;
-      out.ay = om[1] + o.vy * 0.15 * api.skill;
-      return out;
-    }
-    st.grab = false;
+  if (st.power) {
+    if (c.eOn) { out.held.e = true; return out; }
+    st.power = false;
+  }
+  if (!canAct(c)) return out;
+  // level 2: fire the plasma cannon at them now and then (a better bot leads its shot)
+  if (c.lv >= 2 && c.plasmaWait <= 0 && !o.ko && Math.random() < 0.02 + 0.03 * api.skill) {
+    const t = at(o, 0, -40);
+    out.ax = t[0] + o.vx * 0.25 * api.skill;
+    out.ay = t[1];
+    out.hit.q = true;
+    return out;
   }
   if (st.block > 0) { st.block -= dt; out.held.e = true; }
   else if (!c.eOn && c.eWait <= 0 && o.hold >= 0 && o.swingT > 0 && !busy(o)) { // a fast swing coming: block it
@@ -702,8 +704,7 @@ function bot(s, i, dt, api) {
       else if (dist < 90) out.hit[dx > 0 ? 'dl' : 'dr'] = true;                            // (dash out)
     }
     if (Math.random() < 0.05) out.hit.a = true;
-    const ready = c.eWait <= 0 && c.grabWait <= 0 && !c.eOn && !busy(o);
-    if (ready && dist > 180 && dist < GRAB_RANGE - 60 && Math.random() < 0.06 + 0.1 * api.skill) { st.grab = true; out.hit.e = true; out.held.e = true; }
+    if (c.lv < 2 && c.eWait <= 0 && !c.eOn && dist > 300 && Math.random() < 0.08 + 0.12 * api.skill) { st.power = true; out.hit.e = true; out.held.e = true; }
   }
   st.back = Math.max(0, st.back - dt);
   if (o.cool > 0.4) st.back = 0.35 * api.skill; // (after a hit: step back a moment)
@@ -723,15 +724,29 @@ function bot(s, i, dt, api) {
 
 function event(v, e) {
   if (e.type === 'tired') { v.pop(e.x, e.y, 'Out of breath!', '#ff9a9a'); v.sound('miss'); }
-  if (e.type === 'hit') { v.burst(e.x, e.y, '#fff3b0', 14, 260); v.pop(e.x, e.y - 20, (e.part === 'head' ? 'BONK! −' : 'WHACK! −') + e.dmg, '#ffd23f'); v.shake(e.part === 'head' ? 10 : 7); v.sound([[1400, 0, 0.03], [800, 0.02, 0.06], [300, 0.06, 0.1]]); }
+  if (e.type === 'hit') { v.burst(e.x, e.y, '#fff3b0', 14, 260); v.pop(e.x, e.y - 20, (e.part === 'head' ? 'BONK! −' : 'WHACK! −') + e.dmg, '#ffd23f'); v.shake((e.part === 'head' ? 10 : 7) * (0.5 + 0.35 * (e.lv || 0))); v.sound([[1400, 0, 0.03], [800, 0.02, 0.06], [300, 0.06, 0.1]]); }
   if (e.type === 'glance') { v.burst(e.x, e.y, '#ffffff', 4, 120); v.pop(e.x, e.y - 16, 'glance', '#cfd6e6'); v.sound([[1800, 0, 0.02], [1200, 0.02, 0.04]]); }
   if (e.type === 'clash') { v.burst(e.x, e.y, '#fff7c2', 18, 320); v.ring(e.x, e.y, '#ffe14d', 16); v.pop(e.x, e.y - 24, 'CLANG!', '#ffe14d'); v.shake(6); v.sound([[2600, 0, 0.03], [1900, 0.02, 0.05], [1300, 0.06, 0.08]]); }
   if (e.type === 'block') { v.burst(e.x, e.y, '#bfe3ff', 14, 280); v.ring(e.x, e.y, '#bfe3ff', 18); v.pop(e.x, e.y - 24, 'BLOCKED!', '#bfe3ff'); v.shake(6); v.sound([[2200, 0, 0.03], [1600, 0.03, 0.05], [900, 0.07, 0.06]]); }
   if (e.type === 'disarm') { v.burst(e.x, e.y, '#ffffff', 10, 220); v.pop(e.x, e.y - 20, 'DISARMED!', '#ff9f43'); v.sound([[1500, 0, 0.03], [700, 0.03, 0.08]]); }
   if (e.type === 'pick') v.sound([[900, 0, 0.04], [1300, 0.04, 0.06]]);
-  if (e.type === 'reach') v.sound([[260, 0, 0.05], [520, 0.04, 0.08]]);
-  if (e.type === 'catch') { v.ring(e.x, e.y, '#3ddc84', 26); v.pop(e.x, e.y - 40, 'GOTCHA!', '#3ddc84'); v.sound([[600, 0, 0.05], [900, 0.05, 0.08]]); }
-  if (e.type === 'throw') { v.pop(e.x, e.y - 30, 'THROW!', '#3ddc84'); v.sound([[400, 0, 0.04], [800, 0.04, 0.08], [1200, 0.1, 0.06]]); }
+  if (e.type === 'charge') v.sound([[180, 0, 0.12], [240, 0.1, 0.12]]);
+  if (e.type === 'super') { // a level up: a burst of flames, a ring and a big word
+    const col = e.lv === 2 ? '#5ad1ff' : '#ffd23f';
+    v.burst(e.x, e.y, col, 40, 420); v.ring(e.x, e.y, col, 40); v.ring(e.x, e.y, '#ffffff', 24);
+    v.pop(e.x, e.y - 70, e.lv === 2 ? '⚡ LEVEL 2! ⚡' : '🔥 LEVEL 1! 🔥', col);
+    v.shake(e.lv === 2 ? 16 : 10);
+    v.sound(e.lv === 2 ? [[220, 0, 0.1], [440, 0.08, 0.1], [880, 0.16, 0.12], [1320, 0.26, 0.2]] : [[260, 0, 0.1], [520, 0.08, 0.1], [780, 0.16, 0.18]]);
+  }
+  if (e.type === 'fizzle') { v.pop(e.x, e.y, 'Power-up stopped!', '#ff9a9a'); v.sound([[300, 0, 0.06], [180, 0.05, 0.1]]); }
+  if (e.type === 'plasma') { v.burst(e.x, e.y, '#5ad1ff', 18, 300); v.shake(8); v.sound([[120, 0, 0.18], [900, 0.02, 0.1], [600, 0.1, 0.2]]); }
+  if (e.type === 'blast') { v.burst(e.x, e.y, '#5ad1ff', 40, 460); v.burst(e.x, e.y, '#ffffff', 20, 300); v.ring(e.x, e.y, '#a35bff', 50); v.pop(e.x, e.y - 40, 'PLASMA! −' + e.dmg, '#5ad1ff'); v.shake(22); v.sound('boom'); }
+  if (e.type === 'pop') { v.burst(e.x, e.y, '#5ad1ff', 16, 240); v.sound([[300, 0, 0.08]]); }
+  if (e.type === 'dust') { // turned to dust: lots of grey bits drifting away
+    v.burst(e.x, e.y, '#a8a29a', 60, 260); v.burst(e.x, e.y - 30, '#7d776f', 40, 180); v.burst(e.x, e.y + 20, '#d8d2c8', 30, 140);
+    v.pop(e.x, e.y - 60, 'TURNED TO DUST!', '#d8d2c8');
+    v.sound([[200, 0, 0.3], [140, 0.2, 0.4]]);
+  }
   if (e.type === 'splat') { v.burst(e.x, e.y + 20, '#c9a77a', 16, 240); v.pop(e.x, e.y - 30, 'SPLAT! −' + e.dmg, '#ff9f43'); v.shake(12); v.sound('boom'); }
   if (e.type === 'land') v.sound([[220, 0, 0.06]]);
   if (e.type === 'jump') v.sound([[500, 0, 0.04]]);
@@ -851,11 +866,11 @@ function drawCat(v, s, c, i) {
     g.fillStyle = '#ffe14d';
     for (let k = 0; k < 3; k++) { const a = v.now / 200 + k * 2.1; v.star(hd[0] + Math.cos(a) * 24, hd[1] + Math.sin(a) * 7, 6); }
   }
-  if (c.g > 0.38) { // charging a grab: a ring filling up
-    g.strokeStyle = '#3ddc84'; g.lineWidth = 4;
-    g.beginPath(); g.arc(bx, by, 74, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * c.g); g.stroke();
-    v.label('✋', bx, by - 90, 16, '#3ddc84');
+  if (c.pw >= 0) { // powering up: a ring filling up toward the next level
+    g.strokeStyle = c.lv ? '#5ad1ff' : '#ffd23f'; g.lineWidth = 5;
+    g.beginPath(); g.arc(bx, by, 76, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * c.pw); g.stroke();
   }
+  if (c.lv) v.label(c.lv === 2 ? '⚡ LEVEL 2' : '🔥 LEVEL 1', c.x, Math.min(c.y - 112, hd[1] - 14) - 30, 12, c.lv === 2 ? '#5ad1ff' : '#ffd23f');
   // the health bar and the name, above the head
   const hx = c.x, hy = Math.min(c.y - 112, hd[1] - 14);
   g.fillStyle = 'rgba(20, 10, 30, .7)'; v.roundRect(hx - 32, hy - 6, 64, 12, 6); g.fill();
@@ -875,19 +890,77 @@ function neckCap(g, x, y) {
   g.beginPath(); g.ellipse(x, y, 10, 4, 0, 0, Math.PI * 2); g.fill(); g.stroke();
 }
 
-// The dotted path a carried cat would fly along if they were let go now.
-function drawThrowPath(v, c, tv) {
-  const g = v.g, h = 1 / 120;
-  let [x, y] = at(c, 0, -40), vx = tv[0], vy = tv[1];
-  g.fillStyle = '#3ddc84';
-  for (let k = 1; k <= 200; k++) {
-    vy += G * h;
-    x += vx * h;
-    y += vy * h;
-    if (y < TOP - 40) { y = TOP - 40; vy = 0; } // (the top of the screen)
-    if (y > GROUND - 40 || x < EDGE || x > W - EDGE || CA.camWalls.inWall(x, y, 40)) break;
-    if (k % 6 === 0) v.dot(x, y, 3);
+// The flame aura around a powered-up cat: gold at level 1, blue and purple at level 2. While powering up, it flickers
+// white and grows as the next level comes closer.
+const AURA = [null, ['#fff3a0', '#ffd23f', '#ff8a1f'], ['#e6f6ff', '#5ad1ff', '#a35bff']];
+function drawAura(v, c) {
+  const g = v.g, charging = c.pw >= 0;
+  if (!c.lv && !charging) return;
+  const lvl = charging ? Math.min(2, c.lv + 1) : c.lv;
+  const cols = AURA[lvl], k = charging ? 0.45 + 0.55 * c.pw : 1, t = v.now / 1000;
+  const [cx, cy] = at(c, 0, -46);
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  // a glow, then flames licking upward around the body
+  g.globalAlpha = (charging ? 0.25 + 0.2 * Math.random() : 0.3) * k;
+  g.fillStyle = cols[1];
+  v.dot(cx, cy, 70 * k + (lvl === 2 ? 10 : 0));
+  g.globalCompositeOperation = 'source-over'; // (the flames keep their colors, even on the bright sky)
+  const n = lvl === 2 ? 14 : 10;
+  for (let f = 0; f < n; f++) {
+    const a = (f / n) * Math.PI * 2, wob = Math.sin(t * 9 + f * 1.7), r = 46 + 10 * Math.sin(t * 5 + f);
+    const bx = cx + Math.cos(a) * r, by = cy + Math.sin(a) * r * 0.8 + 30;
+    const hgt = (70 + 40 * Math.abs(Math.sin(t * 7 + f * 2.3))) * k * (lvl === 2 ? 1.3 : 1);
+    g.globalAlpha = 0.7 * k;
+    g.fillStyle = cols[f % 3 === 0 ? 0 : f % 3 === 1 ? 1 : 2];
+    g.beginPath();
+    g.moveTo(bx - 14, by);
+    g.quadraticCurveTo(bx - 16 + wob * 8, by - hgt * 0.5, bx + wob * 12, by - hgt);
+    g.quadraticCurveTo(bx + 16 + wob * 8, by - hgt * 0.5, bx + 14, by);
+    g.closePath();
+    g.fill();
   }
+  if (lvl === 2 && !charging) { // level 2: crackling sparks
+    g.strokeStyle = '#d6f4ff';
+    g.lineWidth = 2;
+    g.globalAlpha = 0.9;
+    for (let z = 0; z < 2; z++) {
+      if (Math.random() < 0.5) continue;
+      let x = cx + (Math.random() - 0.5) * 80, y = cy - 50 + Math.random() * 30;
+      g.beginPath(); g.moveTo(x, y);
+      for (let q = 0; q < 4; q++) { x += (Math.random() - 0.5) * 22; y += 12 + Math.random() * 10; g.lineTo(x, y); }
+      g.stroke();
+    }
+  }
+  g.restore();
+}
+
+// A ball of plasma, with a tail behind it.
+function drawPlasma(v, p) {
+  const g = v.g, [x, y, a] = p;
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  for (let k = 5; k >= 1; k--) {
+    g.globalAlpha = 0.12 * k;
+    g.fillStyle = k > 3 ? '#a35bff' : '#5ad1ff';
+    v.dot(x - Math.cos(a) * k * 14, y - Math.sin(a) * k * 14, PLASMA_R * (0.5 + k * 0.12));
+  }
+  g.globalAlpha = 0.5 + Math.random() * 0.3;
+  g.fillStyle = '#5ad1ff';
+  v.dot(x, y, PLASMA_R + 6);
+  g.globalAlpha = 1;
+  g.fillStyle = '#ffffff';
+  v.dot(x, y, PLASMA_R * 0.55);
+  g.restore();
+}
+
+// A cat that was turned to dust: a little grey pile where it stood.
+function drawDust(v, c) {
+  const g = v.g;
+  g.fillStyle = '#9a948c';
+  g.beginPath(); g.ellipse(c.x, GROUND - 3, 34, 9, 0, Math.PI, 0); g.fill();
+  g.fillStyle = '#7d776f';
+  for (let k = 0; k < 7; k++) v.dot(c.x - 28 + k * 9, GROUND - 4 - (k % 3) * 2, 3);
 }
 
 function draw(v, s) {
@@ -895,24 +968,28 @@ function draw(v, s) {
   if (!bg) bg = makeBg();
   g.drawImage(bg, 0, 0, W, H);
   s.s.forEach(sw => { if (sw[4] < 0) drawSword(v, sw); });
-  s.c.forEach((c, i) => { if (c.rp === 2 && s.c[1 - i]) drawThrowPath(v, s.c[1 - i], c.tv); });
-  s.c.forEach((c, i) => drawCat(v, s, c, i));
+  s.c.forEach(c => { if (!c.du) drawAura(v, c); });
+  s.c.forEach((c, i) => (c.du ? drawDust(v, c) : drawCat(v, s, c, i)));
+  (s.p || []).forEach(p => drawPlasma(v, p));
   v.label('🤺 ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd + '  ·  ⏱ ' + Math.max(0, ROUND - s.t), W / 2, 22, 15, '#ffffff');
   if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Time! A draw' : s.rw === v.me ? 'You win the round!' : v.names[s.rw] + ' wins the round!', 110, 34, '#ffd23f', 1);
   const mine = s.c[v.me];
   if (!mine || s.ph !== 'fight') return;
-  // under your cat: is the block ready (🛡️), and the grab (✋)? Each fills up while it cools down.
-  [[-16, '🛡️', mine.w, BLOCK_WAIT], [16, '✋', mine.gw, GRAB_WAIT]].forEach(([dx, icon, wait, full]) => {
-    const ex = mine.x + dx, ey = GROUND + 30, ready = wait <= 0 && !mine.rp;
+  // under your cat: is the block ready (🛡️), and at level 2 the plasma cannon (💥)? Each fills up while it cools down.
+  const icons = [[-16, '🛡️', mine.w, BLOCK_WAIT]];
+  if (mine.lv >= 2) icons.push([16, '💥', mine.pl, PLASMA_WAIT]);
+  icons.forEach(([dx, icon, wait, full]) => {
+    const ex = mine.x + dx, ey = GROUND + 30, ready = wait <= 0;
     g.fillStyle = 'rgba(20, 10, 30, .55)'; v.dot(ex, ey, 13);
     g.fillStyle = ready ? '#3ddc84' : '#8a8aa0';
     g.beginPath(); g.moveTo(ex, ey); g.arc(ex, ey, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (ready ? 1 : 1 - Math.min(1, wait / full))); g.closePath(); g.fill();
     v.label(icon, ex, ey + 1, 12, '#ffffff');
   });
-  if (mine.sh) v.msg("You've been grabbed! Hang on…", true);
-  else if (mine.rp === 2) v.msg('Move the mouse to swing them through the air · let go of E to throw!');
+  if (mine.pw >= 0) v.msg('POWERING UP… keep holding E! (' + Math.round(mine.pw * 100) + '%)');
   else if (mine.z) v.msg('Dizzy!', true);
-  else if (mine.h < 0 && !mine.rp) v.msg('Walk over your sword to pick it back up!');
+  else if (mine.h < 0) v.msg('Walk over your sword to pick it back up!');
+  else if (mine.lv >= 2 && mine.pl <= 0) v.msg('LEVEL 2! Press Q (or right-click) to fire your plasma cannon!');
+  else if (mine.lv < 2) v.msg('Hold E to power up (level ' + (mine.lv + 1) + ')');
 }
 
 })();
