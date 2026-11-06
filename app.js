@@ -287,7 +287,8 @@ const spin = { angle: 0, vel: 0, drag: null, raf: 0, last: 0 };
 
 function renderSpinCat(p) {
   const fur = CA.ITEM[p.equip && p.equip.skin] || CA.ITEM['skin-orange'];
-  let h = '<svg class="spin-fill" aria-hidden="true"><filter id="spinFill"><feFlood flood-color="' + fur.c[2] + '"/><feComposite in2="SourceAlpha" operator="in"/></filter></svg>';
+  let h = '';
+  $('spinCat').style.setProperty('--spin-side', fur.c[2]); // (the color of the slices in between: see .spin-cat > span.fill)
   const inside = CA.catSVG(p.equip, { bg: false, anim: false, label: p.name });
   for (let k = 0; k < SLICES; k++) {
     const outside = k === 0 || k === SLICES - 1;
@@ -361,10 +362,6 @@ function renderMenu() {
   if (!p) return;
   renderSpinCat(p);
   $('menuName').textContent = p.name;
-  $('menuStreak').textContent = p.streak;
-  $('menuBest').textContent = p.best;
-  $('menuFish').textContent = p.fish;
-  $('menuTier').textContent = CA.tierOf(p.xp);
   const ready = CA.PASS.filter(t => t.tier <= CA.tierOf(p.xp) && !p.claimed.includes(t.tier)).length;
   $('menuPassNote').textContent = ready ? '🎁 ' + ready + ' reward' + (ready > 1 ? 's' : '') + ' ready to claim!' : 'Tier ' + CA.tierOf(p.xp) + ' of 20 · win to unlock more';
   const tier = CA.tierOf(p.xp);
@@ -489,13 +486,14 @@ function renderBar() {
   const inApp = !!p && route !== 'auth' && route !== 'perm';
   $('appBar').classList.toggle('hidden', !inApp);
   if (!inApp) return;
-  document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === route));
   $('userName').textContent = p.name;
-  $('caStats').innerHTML =
-    (p.guest ? '' : '<a class="stat-chip" href="#/pass" title="Streak Pass tier">🎟️ <b>' + CA.tierOf(p.xp) + '</b></a>') +
-    '<a class="stat-chip" href="#/menu" title="Your streak">🔥 <b>' + p.streak + '</b></a>' +
-    (p.guest ? '' : '<a class="stat-chip fish" href="#/cat" title="Fish">🐟 <b>' + p.fish + '</b></a>' +
-    '<a class="me-avatar" href="#/cat" title="My cat">' + CA.catSVG(p.equip, { bg: false, anim: false, talker: 'me', label: p.name }) + '</a>');
+  // (your stats sit in the bar, on every page)
+  $('menuStreak').textContent = p.streak;
+  $('menuBest').textContent = p.best;
+  $('menuFish').textContent = p.fish;
+  $('menuTier').textContent = CA.tierOf(p.xp);
+  $('caStats').innerHTML = p.guest ? '' :
+    '<a class="me-avatar" href="#/cat" title="My cat">' + CA.catSVG(p.equip, { bg: false, anim: false, talker: 'me', label: p.name }) + '</a>';
   renderMicBtn();
 }
 
@@ -602,3 +600,7 @@ CA.restoring.then(() => {
 });
 
 })();
+
+// The focus ring around your cat only shows when you use the keyboard (tapping it shouldn't draw a box).
+document.addEventListener('keydown', e => { if (e.key === 'Tab') document.body.classList.add('kbd'); });
+document.addEventListener('pointerdown', () => document.body.classList.remove('kbd'));

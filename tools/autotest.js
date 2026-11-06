@@ -371,7 +371,7 @@ async function glingus() {
     location.hash = '#/pass';
     await sleep(600);
     await check('a guest has no Streak Pass', CA.route === 'menu', CA.route);
-    await check('the shop and Streak Pass links are hidden', getComputedStyle(document.querySelector('[data-nav="cat"]')).display === 'none' && getComputedStyle(document.querySelector('[data-nav="pass"]')).display === 'none');
+    await check('the My Cat button is hidden', getComputedStyle(document.querySelector('.side-btn[href="#/cat"]')).display === 'none');
     const before = { xp: CA.profile.xp, fish: CA.profile.fish };
     CA.applyResult('win');
     await check('a guest earns no XP or fish', CA.profile.xp === before.xp && CA.profile.fish === before.fish, { xp: CA.profile.xp, fish: CA.profile.fish });
