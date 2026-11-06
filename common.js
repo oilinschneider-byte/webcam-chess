@@ -368,6 +368,36 @@ const ITEMS = [
   { id: 'skin-toxic', slot: 'skin', name: 'Toxic Sewer', tier: 19, c: ['#c8ff7a', '#7be03c', '#3c9a1c'], ear: '#e2ffb0', sparkle: true,
     marks: '<path d="M54 44 Q60 52 56 62 Q50 70 58 76 M142 42 Q136 52 144 60" fill="none" stroke="#2f7a12" stroke-width="5" stroke-linecap="round" opacity=".55"/>' +
       '<circle cx="128" cy="62" r="5" fill="#2f7a12" opacity=".45"/><circle cx="74" cy="34" r="4" fill="#2f7a12" opacity=".45"/>' },
+  // The season's final reward: your cat in a rat costume (a dark suit with a pink tail, and a mask with rat ears, angry red eyes and buck teeth).
+  { id: 'skin-ratcostume', slot: 'skin', name: 'Rat Costume', tier: 20, c: ['#ffb066', '#f0913c', '#d9762a'], ear: '#f2a07a', noWhiskers: true,
+    tail: () => '<path d="M128 196 C156 204 172 184 168 160 C166 148 170 138 180 134" fill="none" stroke="#c9707a" stroke-width="10" stroke-linecap="round"/>' +
+      '<path d="M128 196 C156 204 172 184 168 160 C166 148 170 138 180 134" fill="none" stroke="#e79aa0" stroke-width="6" stroke-linecap="round"/>' +
+      '<path d="M150 197 l1 -6 M162 186 l-5 -3 M167 172 l-6 0 M167 158 l-6 1" stroke="#c9707a" stroke-width="1.5" stroke-linecap="round"/>',
+    suit: (fill, arms) =>
+      '<rect x="73" y="184" width="18" height="36" rx="9" fill="#3a2a30"/><rect x="109" y="184" width="18" height="36" rx="9" fill="#3a2a30"/>' +
+      '<ellipse cx="82" cy="225" rx="11" ry="7.5" fill="' + fill + '"/><ellipse cx="118" cy="225" rx="11" ry="7.5" fill="' + fill + '"/>' +
+      '<path d="' + BODY + '" fill="#3a2a30"/>' +
+      '<ellipse cx="100" cy="178" rx="20" ry="25" fill="#6e4b55"/>' +
+      (arms ? '<path d="' + ARMS + '" fill="none" stroke="#3a2a30" stroke-width="15" stroke-linecap="round"/>' +
+        '<circle cx="56" cy="188" r="11" fill="' + fill + '"/><circle cx="144" cy="188" r="11" fill="' + fill + '"/>' : ''),
+    face: () =>
+      // big round rat ears
+      '<circle cx="50" cy="52" r="25" fill="#3a2a30"/><circle cx="52" cy="54" r="16" fill="#b25866"/>' +
+      '<circle cx="150" cy="52" r="25" fill="#3a2a30"/><circle cx="148" cy="54" r="16" fill="#b25866"/>' +
+      // the hood over the top of the head and the mask over the eyes
+      '<path d="M38 88 Q36 52 70 40 Q100 30 130 40 Q164 52 162 88 Q162 108 140 112 Q120 114 108 106 Q100 102 92 106 Q80 114 60 112 Q38 108 38 88 Z" fill="#3a2a30"/>' +
+      '<path d="M50 60 Q100 34 150 60" fill="none" stroke="#4d3a42" stroke-width="5" stroke-linecap="round" opacity=".7"/>' +
+      // straps with rivets
+      '<rect x="28" y="84" width="14" height="11" rx="2" fill="#1c1418"/><circle cx="35" cy="89.5" r="2.6" fill="#b9b2b6"/>' +
+      '<rect x="158" y="84" width="14" height="11" rx="2" fill="#1c1418"/><circle cx="165" cy="89.5" r="2.6" fill="#b9b2b6"/>' +
+      // angry glowing red eyes
+      '<ellipse cx="72" cy="91" rx="15" ry="11" fill="#1a0f13"/><ellipse cx="128" cy="91" rx="15" ry="11" fill="#1a0f13"/>' +
+      '<circle cx="73" cy="93" r="9" fill="#ff2a2a" opacity=".3"/><circle cx="127" cy="93" r="9" fill="#ff2a2a" opacity=".3"/>' +
+      '<ellipse cx="73" cy="93" rx="6" ry="5.5" fill="#e00000"/><ellipse cx="127" cy="93" rx="6" ry="5.5" fill="#e00000"/>' +
+      '<path d="M54 80 L90 92 L90 78 Z M146 80 L110 92 L110 78 Z" fill="#3a2a30"/>' +
+      // pink nose and buck teeth
+      '<ellipse cx="100" cy="104" rx="7.5" ry="5.5" fill="#d9707a"/><ellipse cx="98" cy="102.5" rx="2.5" ry="1.6" fill="#fff" opacity=".45"/>' +
+      '<path d="M92.5 109 h7 v14 q0 2 -2 2 h-3 q-2 0 -2 -2 Z M100.5 109 h7 v14 q0 2 -2 2 h-3 q-2 0 -2 -2 Z" fill="#f4e6d2" stroke="#6b4a3a" stroke-width="1.2"/>' },
   { id: 'neck-cheese', slot: 'neck', name: 'Cheese Charm', tier: 11, art: () =>
     '<path d="M80 140 Q100 162 120 140" fill="none" stroke="#6b4a1f" stroke-width="3"/>' +
     '<path d="M86 160 L118 152 L114 178 Z" fill="#ffcf3d" ' + EDGE + '/>' +
@@ -385,7 +415,7 @@ const ITEMS = [
     '<path d="M137 152 h18 l-3 8 h-12 z" fill="#3b3f48" ' + EDGE + '/>' +
     '<path d="M146 112 C160 128 158 146 146 152 C134 146 132 128 146 112 Z" fill="#ff8a2a"/>' +
     '<path d="M146 128 C153 138 152 147 146 150 C140 147 139 138 146 128 Z" fill="#ffd84a"/></g>' },
-  { id: 'hat-ratking', slot: 'hat', name: 'Rat King Crown', tier: 20, art: () =>
+  { id: 'hat-ratking', slot: 'hat', name: 'Rat King Crown', tier: 13, art: () =>
     '<circle cx="62" cy="26" r="16" fill="#9aa1ae" ' + EDGE + '/><circle cx="62" cy="27" r="9" fill="#ffb3c4"/>' +
     '<circle cx="138" cy="26" r="16" fill="#9aa1ae" ' + EDGE + '/><circle cx="138" cy="27" r="9" fill="#ffb3c4"/>' +
     '<path d="M70 46 L68 14 L84 28 L100 4 L116 28 L132 14 L130 46 Z" fill="#3b3f48" ' + EDGE + '/>' +
@@ -399,8 +429,8 @@ for (const it of ITEMS) ITEM[it.id] = it;
 const PASS = [
   { fish: 25 }, { item: 'hat-ratears' }, { fish: 40 }, { item: 'eyes-ratglow' }, { fish: 60 },
   { item: 'bg-temple' }, { fish: 80 }, { item: 'skin-labrat' }, { fish: 100 }, { item: 'skin-rat' },
-  { item: 'neck-cheese' }, { item: 'skin-stone' }, { fish: 150 }, { item: 'shirt-rathunter' }, { item: 'skin-torchlight' },
-  { item: 'hand-torch' }, { item: 'skin-cheese' }, { item: 'skin-shadow' }, { item: 'skin-toxic' }, { item: 'hat-ratking' },
+  { item: 'neck-cheese' }, { item: 'skin-stone' }, { item: 'hat-ratking' }, { item: 'shirt-rathunter' }, { item: 'skin-torchlight' },
+  { item: 'hand-torch' }, { item: 'skin-cheese' }, { item: 'skin-shadow' }, { item: 'skin-toxic' }, { item: 'skin-ratcostume' },
 ].map((r, i) => Object.assign({ tier: i + 1 }, r));
 const TIER_XP = 300;
 
@@ -447,7 +477,7 @@ function catSVG(equip, opts) {
     p.push('<ellipse cx="100" cy="233" rx="42" ry="5" fill="#000" opacity=".25"/>');
   }
   if (shirt && shirt.back) p.push(shirt.back(c));
-  p.push('<g class="cat-tail"><path d="M132 188 C150 190 166 178 162 156" fill="none" stroke="' + shadow + '" stroke-width="12" stroke-linecap="round"/></g>');
+  p.push('<g class="cat-tail">' + (fur.tail ? fur.tail() : '<path d="M132 188 C150 190 166 178 162 156" fill="none" stroke="' + shadow + '" stroke-width="12" stroke-linecap="round"/>') + '</g>');
   if (jacked) { // very skinny legs, tiny feet
     p.push('<rect x="81.5" y="196" width="5" height="30" rx="2.5" fill="' + mid + '"/><rect x="113.5" y="196" width="5" height="30" rx="2.5" fill="' + mid + '"/>');
     if (shirt.shoes) p.push(shirt.shoes(c));
@@ -472,6 +502,7 @@ function catSVG(equip, opts) {
     p.push('<circle cx="56" cy="188" r="11" fill="' + fill + '"/><circle cx="144" cy="188" r="11" fill="' + fill + '"/>');
   }
 
+  if (fur.suit && !jacked) p.push(fur.suit(fill, arms)); // (a costume over the body: see the Rat Costume skin)
   p.push('<g class="cat-head">');
   p.push('<path d="M36 70 C30 45 30 22 38 12 C50 14 68 24 80 36 Z" fill="' + fill + '"/>');
   p.push('<path d="M42 58 C38 42 38 28 42 20 C52 24 62 31 70 40 Z" fill="' + fur.ear + '"/>');
@@ -491,13 +522,14 @@ function catSVG(equip, opts) {
   p.push('<g class="cat-eye"><ellipse cx="71" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="73.5" cy="85" r="2.8" fill="#fff"/></g>');
   p.push('<g class="cat-eye"><ellipse cx="129" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="131.5" cy="85" r="2.8" fill="#fff"/></g>');
   if (o.look) p.push('</g>');
-  p.push('<path d="M41 103 Q49 103 56.5 105 M43.5 116 Q50 113 56.5 111 M159 103 Q151 103 143.5 105 M156.5 116 Q150 113 143.5 111" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>');
+  if (!fur.noWhiskers) p.push('<path d="M41 103 Q49 103 56.5 105 M43.5 116 Q50 113 56.5 111 M159 103 Q151 103 143.5 105 M156.5 116 Q150 113 143.5 111" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>');
   if (o.mouth !== 'closed') {
     p.push('<g class="cat-mouth-open"><ellipse cx="100" cy="117" rx="8.5" ry="8" fill="#3d1810"/>' +
       '<ellipse cx="100" cy="122" rx="5.5" ry="3.4" fill="#ff8a9a" clip-path="url(#' + uid + '-mouth)"/></g>');
   }
   if (o.mouth !== 'open') p.push('<path class="cat-mouth-closed" d="M100 108.3 L100 111.5 M86 110.5 Q93 118.5 100 111.5 Q107 118.5 114 110.5" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
   p.push('<path d="M94.5 101.5 Q100 99.3 105.5 101.5 Q103 107 100 108.3 Q97 107 94.5 101.5 Z" fill="#4a2418"/>');
+  if (fur.face) p.push(fur.face()); // (the costume's mask, over the eyes and nose)
   if (shirt && shirt.face) p.push(shirt.face(c));
   if (eyes) p.push(eyes.art(c));
   if (hat) p.push(hat.art(c));

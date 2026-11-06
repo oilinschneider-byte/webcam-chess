@@ -173,6 +173,7 @@ async function main() {
   if (wallTest) { await wallDuel(); return; }
   if (lookTest) {
     if (q.get('theme') === 'dark') $('themeToggle').click();
+    if (q.get('skin')) { CA.profile.owned.push(q.get('skin')); CA.profile.equip.skin = q.get('skin'); CA.render(); await sleep(300); } // (wearing a skin)
     if (q.get('acct')) { CA.profile.guest = false; document.body.classList.remove('guest'); CA.render(); await sleep(300); } // (as a player with an account)
     if (q.get('page')) { // (a picture of another screen)
       if (q.get('page') === 'auth') await leave();
