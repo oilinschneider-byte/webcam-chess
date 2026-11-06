@@ -1874,4 +1874,4 @@ body:not(.guest) #scr-menu .lobby-top { display: none; }
 /* the rat is solid black, apart from its eye: body, arms, claws and teeth (its open mouth shows the wall behind) */
 .lobby-rat .sc-rat-body, .lobby-rat .sc-teeth, .lobby-rat .sc-arms { fill: #06080c; opacity: 1; }
 .lobby-rat .sc-arm { fill: none; stroke: #06080c; stroke-width: 46; stroke-linecap: round; }
-.lobby-rat { left: 110%; }
+.lobby-rat { left: 104%; }
