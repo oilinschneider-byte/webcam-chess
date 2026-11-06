@@ -280,16 +280,19 @@ function practiceLevel() {
 }
 
 // Your cat, next to Classic Games: grab it and spin it. (The drawing is flat, so it's stacked in slices to have some
-// thickness side on. Flick it hard and it spins for a while, then settles facing you again.)
-const SLICES = 9, SLICE_GAP = 3, SPIN_MAX = 3600, SPIN_FLICK = 2.5, SPIN_DRAG = 0.9, SPIN_TAP = 1800, SPIN_FRICTION = 0.8;
+// thickness side on: a full picture on the front and back, and solid fur-colored cut-outs packed tight in between so it
+// looks solid from the side too. Flick it hard and it spins for a while, then settles facing you again.)
+const SLICES = 23, SLICE_GAP = 24 / 22, SPIN_MAX = 3600, SPIN_FLICK = 2.5, SPIN_DRAG = 0.9, SPIN_TAP = 1800, SPIN_FRICTION = 0.8;
 const spin = { angle: 0, vel: 0, drag: null, raf: 0, last: 0 };
 
 function renderSpinCat(p) {
-  let h = '';
+  const fur = CA.ITEM[p.equip && p.equip.skin] || CA.ITEM['skin-orange'];
+  let h = '<svg class="spin-fill" aria-hidden="true"><filter id="spinFill"><feFlood flood-color="' + fur.c[2] + '"/><feComposite in2="SourceAlpha" operator="in"/></filter></svg>';
+  const inside = CA.catSVG(p.equip, { bg: false, anim: false, label: p.name });
   for (let k = 0; k < SLICES; k++) {
     const outside = k === 0 || k === SLICES - 1;
-    h += '<span style="transform: translateZ(' + (k - (SLICES - 1) / 2) * SLICE_GAP + 'px)">' +
-      CA.catSVG(p.equip, { bg: false, anim: false, label: p.name, talker: outside ? 'me' : undefined }) + '</span>';
+    h += '<span' + (outside ? '' : ' class="fill"') + ' style="transform: translateZ(' + ((k - (SLICES - 1) / 2) * SLICE_GAP).toFixed(2) + 'px)">' +
+      (outside ? CA.catSVG(p.equip, { bg: false, anim: false, label: p.name, talker: 'me' }) : inside) + '</span>';
   }
   $('spinCat').innerHTML = h;
 }
