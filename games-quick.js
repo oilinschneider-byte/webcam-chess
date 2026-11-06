@@ -114,19 +114,13 @@ CA.games.add('memory', {
 /* ================= AIM TARGETS ================= */
 
 CA.games.add('aim', {
-  name: 'Aim Targets', icon: '🎯', blurb: 'Click the targets as fast as you can for 20 seconds. They shrink and vanish faster as time goes on. Gold stars are worth 3, bombs cost 2, and hitting several in a row builds a combo multiplier. Most points wins!',
+  name: 'Aim Targets', icon: '🎯', blurb: 'Click the targets as fast as you can for 20 seconds. They shrink and vanish faster as time goes on. Each target is 1 point: the fastest clicker wins!',
   start(ctx) {
     const LEN = 20000;
-    // Both players get the same targets, in the same order, and the bad and good ones come in even numbers: every
-    // 12 targets have exactly 2 bombs and 2 gold stars (in a shuffled order), so nobody gets a run of bad luck.
+    // Both players get the same targets, in the same order. Every target is worth 1: it's purely about speed.
     const spots = [];
-    for (let b = 0; b < 17; b++) {
-      const kinds = ['bomb', 'bomb', 'gold', 'gold'];
-      while (kinds.length < 12) kinds.push('norm');
-      for (let k = kinds.length - 1; k > 0; k--) { const j = Math.floor(ctx.rng() * (k + 1)); [kinds[k], kinds[j]] = [kinds[j], kinds[k]]; }
-      kinds.forEach(kind => spots.push([0.07 + ctx.rng() * 0.86, 0.1 + ctx.rng() * 0.8, kind]));
-    }
-    const bars = raceBars(ctx, 35);
+    for (let i = 0; i < 200; i++) spots.push([0.07 + ctx.rng() * 0.86, 0.1 + ctx.rng() * 0.8]);
+    const bars = raceBars(ctx, 30);
     ctx.stage.innerHTML =
       '<div class="g-aim">' + bars.html +
       '<div class="aim-arena" id="aimArena"><button class="aim-target hidden" id="aimTarget" aria-label="Target"></button>' +
@@ -138,20 +132,16 @@ CA.games.add('aim', {
     let hits = 0;
     let running = false;
     let t0 = 0;
-    let idx = 0, combo = 0, cur = 'norm', expiry = null; // (hits is now your points: gold stars 3, bombs -2, a combo multiplies)
+    let idx = 0, expiry = null;
 
     function place() {
-      const [x, y, kind] = spots[idx % spots.length];
-      cur = kind;
+      const [x, y] = spots[idx % spots.length];
       const k = Math.min(1, (performance.now() - t0) / LEN); // (as the game goes on: smaller targets that stay for less time)
       target.style.left = x * 100 + '%';
       target.style.top = y * 100 + '%';
       target.style.width = (11 * (1 - 0.45 * k)) + '%';
-      target.style.background = cur === 'gold' ? 'radial-gradient(circle, #fff 0 16%, #ffcc33 17% 38%, #fff 39% 58%, #ffb300 59%)' : cur === 'bomb' ? 'radial-gradient(circle, #5a5a6e 0 30%, #23232e 31%)' : '';
-      target.textContent = cur === 'bomb' ? '💣' : cur === 'gold' ? '⭐' : '';
-      target.style.fontSize = 'clamp(14px, 3vw, 30px)';
       if (expiry) ctx.cancel(expiry);
-      expiry = ctx.later(() => { if (running) { if (cur !== 'bomb') combo = 0; idx++; place(); } }, Math.max(850, 2300 - 1450 * k));
+      expiry = ctx.later(() => { if (running) { idx++; place(); } }, Math.max(850, 2300 - 1450 * k));
       target.classList.remove('pop');
       void target.offsetWidth;
       target.classList.add('pop');
@@ -160,18 +150,8 @@ CA.games.add('aim', {
       e.preventDefault();
       e.stopPropagation();
       if (!running) return;
-      if (cur === 'bomb') {
-        hits = Math.max(0, hits - 2);
-        combo = 0;
-        sound('miss');
-        setMsg('aimMsg', '💣 Bomb! −2');
-      } else {
-        combo++;
-        const mult = Math.min(4, 1 + Math.floor((combo - 1) / 3));
-        hits += (cur === 'gold' ? 3 : 1) * mult;
-        sound('tick');
-        setMsg('aimMsg', combo >= 4 ? '🔥 x' + mult + ' combo!' : 'Hit the targets! Gold stars are worth 3, bombs cost 2');
-      }
+      hits++;
+      sound('tick');
       bars.set('me', hits);
       ctx.send({ t: 'live', n: hits });
       idx++;
@@ -179,7 +159,6 @@ CA.games.add('aim', {
     });
     ctx.listen(arena, 'pointerdown', e => {
       if (!running || e.target !== arena) return;
-      combo = 0; // (a miss breaks the combo)
       const r = arena.getBoundingClientRect();
       const m = document.createElement('span');
       m.className = 'aim-miss';
@@ -196,7 +175,7 @@ CA.games.add('aim', {
       maxRounds: 1,
       revealMs: 2600,
       play(r, submit) {
-        ctx.note('20 seconds · most points wins');
+        ctx.note('20 seconds · most targets wins');
         ['3', '2', '1'].forEach((s, i) => ctx.later(() => { setMsg('aimBig', s); sound('tick'); }, i * 700));
         ctx.later(() => {
           running = true;
@@ -206,13 +185,13 @@ CA.games.add('aim', {
           place();
           sound('go');
           startTimer('aimTimer', LEN);
-          if (ctx.bot) ctx.every(() => { if (running) bars.set('them', Math.floor(rate * 1.5 * (performance.now() - t0) / 1000)); }, 250);
+          if (ctx.bot) ctx.every(() => { if (running) bars.set('them', Math.floor(rate * (performance.now() - t0) / 1000)); }, 250);
           ctx.later(() => {
             running = false;
             target.classList.add('hidden');
             setMsg('aimBig', "Time's up!");
             $('aimBig').classList.remove('hidden');
-            setMsg('aimMsg', 'You scored ' + hits + '. Waiting for ' + ctx.oppName + '…');
+            setMsg('aimMsg', 'You hit ' + hits + ' targets. Waiting for ' + ctx.oppName + '…');
             submit({ hits });
           }, LEN);
         }, 2100);
@@ -225,9 +204,9 @@ CA.games.add('aim', {
         bars.set('me', hitsOf(a));
         bars.set('them', hitsOf(b));
         setMsg('aimBig', w > 0 ? 'You win! 🎯' : w < 0 ? ctx.oppName + ' wins' : "It's a tie!");
-        setMsg('aimMsg', 'You: ' + hitsOf(a) + ' points · ' + ctx.oppName + ': ' + hitsOf(b) + ' points');
+        setMsg('aimMsg', 'You: ' + hitsOf(a) + ' targets · ' + ctx.oppName + ': ' + hitsOf(b) + ' targets');
       },
-      botValue() { return { hits: Math.round(rate * 1.5 * LEN / 1000) }; },
+      botValue() { return { hits: Math.round(rate * LEN / 1000) }; },
       botDelay() { return 2100 + LEN + 200; },
     });
   },
