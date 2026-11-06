@@ -1886,3 +1886,9 @@ body.guest { --lobby-top: 58px; }
   .lobby { height: auto; }
   .lobby-cat .spin-stage { width: min(80%, 300px); }
 }
+/* On a computer the temple scrolls with the page, so your cat and the rat stay standing on its floor
+   (it covers the first screen, the same height as the lobby; below it is the floor's color) */
+@media (min-width: 761px) {
+  .lobby-scene { position: absolute; top: 0; left: 0; right: 0; bottom: auto; height: max(564px, 100dvh); }
+  body:has(#scr-menu:not(.hidden)) { background: var(--sc-floor-bot); }
+}

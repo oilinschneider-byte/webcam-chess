@@ -179,6 +179,7 @@ async function main() {
       if (q.get('page') === 'cat' || q.get('page') === 'pass') CA.profile.guest = false; // (guests can't open these)
       location.hash = '#/' + q.get('page');
       await sleep(2500);
+      if (q.get('scroll')) { window.scrollTo(0, Number(q.get('scroll'))); await sleep(400); } // (scrolled down the page)
       return;
     }
     if (q.get('spin')) { $('spinCat').style.transform = 'rotateY(' + q.get('spin') + 'deg)'; return; } // (a picture of it turned)
