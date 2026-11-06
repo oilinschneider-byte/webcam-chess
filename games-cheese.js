@@ -54,21 +54,35 @@ function bigScores(v, a, b, fmt) {
 }
 
 /* ================= CHEESE GRAB ================= */
+// Cheese drops from a hole in the ceiling onto one spot in the middle of the kitchen. Your cat walks where you point.
+// Hold the mouse button: your cat reaches out its arms and grabs the nearest cheese in reach, and keeps holding it while
+// you hold the button. Carry it back to your pot (yours is on your side) and let go over the pot to score. Let go
+// anywhere else and it drops on the floor. Grab a cat that's carrying cheese and you steal it! Golden cheese is worth 5.
 
-const CHEESE_LEN = 30, CR = 15, GOLD_P = 0.06;
+const CHEESE_LEN = 45, CR = 14, GOLD_P = 0.1, REACH = 62, POT_R = 58, MAX_FLOOR = 7;
+const SPOT = { x: W / 2, y: 330 };                      // where the cheese lands
+const POTS = [{ x: 110, y: 430 }, { x: W - 110, y: 430 }];
+const WALK = 430, WALK_CARRY = 360;
 
 CA.games.add('cheese', {
   name: 'Cheese Grab', icon: '🧀',
-  blurb: 'Cheese is raining into the kitchen! Move the mouse to move your paw and grab as many pieces as you can. Golden cheese is worth 5. 30 seconds, most cheese wins!',
+  blurb: 'Cheese drops from the ceiling into the middle of the kitchen! Walk over, hold the mouse button to reach out and grab a piece, carry it back and let go over your pot. Steal cheese from the other cat by grabbing them! Golden cheese is worth 5. Most cheese in 45 seconds wins.',
   start(ctx) {
     CA.duel.run(ctx, {
       id: 'cheese', mouse: true,
-      help: 'Move the mouse to move your paw · touch cheese to grab it · golden cheese is worth 5',
-      helpTouch: 'Drag your finger to move your paw · grab the cheese!',
-      note: '30 seconds · most cheese wins',
-      init: () => ({ t: 0, sc: [0, 0], drop: 0.3, id: 0, ch: [], paws: [{ x: 300, y: 380, vx: 0, vy: 0 }, { x: 660, y: 380, vx: 0, vy: 0 }] }),
+      help: 'Move the mouse to walk · hold the mouse button to grab cheese · carry it to your pot and let go · grab the other cat to steal!',
+      helpTouch: 'Drag your finger to walk and grab · lift your finger over your pot to drop the cheese in',
+      note: '45 seconds · most cheese in your pot wins',
+      init: () => ({
+        t: 0, sc: [0, 0], drop: 0.5, id: 0, ch: [],
+        cats: [0, 1].map(i => ({ x: POTS[i].x + (i ? -70 : 70), y: 400, vx: 0, vy: 0, held: false, carry: null, reach: 0, safe: 0 })),
+      }),
       step: cheeseStep,
-      snap: s => ({ sc: s.sc, r: Math.max(0, Math.ceil(CHEESE_LEN - s.t)), p: s.paws.map(p => [Math.round(p.x), Math.round(p.y)]), c: s.ch.map(c => [c.id, Math.round(c.x), Math.round(c.y), c.g, Math.round(c.a * 10)]) }),
+      snap: s => ({
+        sc: s.sc, r: Math.max(0, Math.ceil(CHEESE_LEN - s.t)),
+        p: s.cats.map(c => [Math.round(c.x), Math.round(c.y), c.held ? 1 : 0, c.carry ? (c.carry.g ? 2 : 1) : 0, Math.round(c.reach * 10)]),
+        c: s.ch.map(c => [c.id, Math.round(c.x), Math.round(c.y), c.g, Math.round(c.a * 10)]),
+      }),
       lerp: cheeseLerp,
       bot: cheeseBot,
       draw: cheeseDraw,
@@ -79,77 +93,119 @@ CA.games.add('cheese', {
 
 function cheeseStep(s, inp, dt, api) {
   s.t += dt;
-  for (let i = 0; i < 2; i++) movePaw(s.paws[i], inp[i].ax, inp[i].ay, dt, inp[i].top || 1500, 11000);
-  // a new shower of cheese every second or so, more of it as the time runs out
+  // a new piece falls from the ceiling now and then (but the pile doesn't grow forever)
   s.drop -= dt;
-  if (s.drop <= 0 && s.t < CHEESE_LEN - 0.5) {
-    s.drop = 0.75 + api.rng() * 0.6;
-    const n = 3 + Math.floor(api.rng() * 3) + (s.t > 20 ? 2 : 0);
-    for (let k = 0; k < n; k++) {
-      const a = -Math.PI / 2 + (api.rng() - 0.5) * 2.4, sp = 260 + api.rng() * 420;
-      s.ch.push({ id: s.id++, x: W / 2 + (api.rng() - 0.5) * 60, y: 150, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120, g: api.rng() < GOLD_P ? 1 : 0, life: 7, a: (api.rng() - 0.5) * 6 });
+  if (s.drop <= 0 && s.t < CHEESE_LEN - 1) {
+    s.drop = 0.7 + api.rng() * 0.5;
+    if (s.ch.length < MAX_FLOOR) {
+      s.ch.push({ id: s.id++, x: SPOT.x + (api.rng() - 0.5) * 30, y: 70, vx: (api.rng() - 0.5) * 140, vy: 0, g: api.rng() < GOLD_P ? 1 : 0, a: (api.rng() - 0.5) * 6, land: 0 });
+      api.ev('drop', {});
     }
-    api.ev('drop', {});
   }
-  for (let k = s.ch.length - 1; k >= 0; k--) {
-    const c = s.ch[k];
-    c.vy += 900 * dt;
+  for (const c of s.ch) {
+    if (c.land) continue;
+    c.vy += 1100 * dt;
     c.x += c.vx * dt;
     c.y += c.vy * dt;
-    if (c.y > H - 30 - CR) { c.y = H - 30 - CR; c.vy = -Math.abs(c.vy) * 0.45; c.vx *= 0.8; if (!c.landed) { c.landed = 1; c.life = Math.min(c.life, 1.6); } } // (cheese on the floor only lasts a moment)
-    if (c.x < CR + 10) { c.x = CR + 10; c.vx = Math.abs(c.vx) * 0.6; }
-    if (c.x > W - CR - 10) { c.x = W - CR - 10; c.vx = -Math.abs(c.vx) * 0.6; }
-    CA.camWalls.bounce(c, CR, 0.5);
-    c.a += c.vx * dt * 0.02;
-    c.life -= dt;
-    let got = -1;
-    for (let i = 0; i < 2; i++) if (Math.hypot(s.paws[i].x - c.x, s.paws[i].y - c.y) < 26 + CR) { got = i; break; }
-    if (got >= 0) {
-      s.sc[got] += c.g ? 5 : 1;
-      api.score(s.sc[0], s.sc[1]);
-      api.ev('grab', { i: got, x: Math.round(c.x), y: Math.round(c.y), g: c.g });
-      s.ch.splice(k, 1);
-    } else if (c.life <= 0) s.ch.splice(k, 1);
+    c.a += dt * 6;
+    if (c.y >= SPOT.y + (c.id % 3) * 14 - 10) { c.land = 1; c.vx = c.vy = 0; api.ev('land', { x: Math.round(c.x), y: Math.round(c.y), g: c.g }); }
+  }
+  for (let i = 0; i < 2; i++) {
+    const p = s.cats[i], ip = inp[i], o = s.cats[1 - i];
+    const top = (ip.top || 1) * (p.carry ? WALK_CARRY : WALK);
+    movePaw(p, ip.ax, ip.ay, dt, top, 5200);
+    p.y = Math.max(p.y, 225); // (cats stay on the floor)
+    p.safe = Math.max(0, p.safe - dt);
+    const held = !!(ip.held && ip.held.fire);
+    p.reach = held ? Math.min(1, p.reach + dt * 7) : Math.max(0, p.reach - dt * 7);
+    if (held && !p.carry && p.reach > 0.5) {
+      // steal from the other cat first, if it's carrying and in reach
+      if (o.carry && o.safe <= 0 && Math.hypot(o.x - p.x, o.y - p.y) < REACH + 20) {
+        p.carry = o.carry;
+        o.carry = null;
+        p.safe = 0.8;
+        api.ev('steal', { i, x: Math.round(o.x), y: Math.round(o.y) });
+      } else {
+        let best = -1, bd = REACH;
+        s.ch.forEach((c, k) => { const d = Math.hypot(c.x - p.x, c.y - p.y); if (c.land && d < bd) { bd = d; best = k; } });
+        if (best >= 0) {
+          p.carry = { g: s.ch[best].g };
+          s.ch.splice(best, 1);
+          p.safe = 0.5;
+          api.ev('grab', { i, x: Math.round(p.x), y: Math.round(p.y) });
+        }
+      }
+    }
+    if (!held && p.carry) {
+      if (Math.hypot(p.x - POTS[i].x, p.y - POTS[i].y) < POT_R + 10) {
+        s.sc[i] += p.carry.g ? 5 : 1;
+        api.score(s.sc[0], s.sc[1]);
+        api.ev('score', { i, g: p.carry.g });
+      } else {
+        s.ch.push({ id: s.id++, x: p.x, y: p.y + 10, vx: 0, vy: 0, g: p.carry.g, a: 0, land: 1 });
+        api.ev('dropped', { i });
+      }
+      p.carry = null;
+    }
+    p.held = held;
   }
   if (s.t >= CHEESE_LEN) api.end(s.sc[0] === s.sc[1] ? -1 : s.sc[0] > s.sc[1] ? 0 : 1, "Time's up!");
 }
 
-// Smooth the paws, and each piece of cheese that was there in both snaps (new ones just appear).
+// Smooth the cats, and each piece of cheese that was there in both snaps (new ones just appear).
 function cheeseLerp(a, b, f) {
   const m = (p, q) => p + (q - p) * f;
   const old = {};
   a.c.forEach(c => { old[c[0]] = c; });
   return {
     sc: b.sc, r: b.r,
-    p: b.p.map((q, i) => (a.p[i] ? [m(a.p[i][0], q[0]), m(a.p[i][1], q[1])] : q)),
+    p: b.p.map((q, i) => (a.p[i] ? [m(a.p[i][0], q[0]), m(a.p[i][1], q[1]), q[2], q[3], q[4]] : q)),
     c: b.c.map(c => { const o = old[c[0]]; return o ? [c[0], m(o[1], c[1]), m(o[2], c[2]), c[3], c[4]] : c; }),
   };
 }
 
+// The bot walks to the nearest cheese (golden first), grabs it, carries it home and drops it in. A better bot also
+// steals when you walk past it carrying cheese.
 function cheeseBot(s, i, dt, api) {
-  const st = s.bs || (s.bs = { think: 0, tx: s.paws[i].x, ty: s.paws[i].y });
-  st.think -= dt;
-  if (st.think <= 0) {
-    st.think = 0.07 + (1 - api.skill) * 0.25;
-    const p = s.paws[i];
-    let best = null, bd = 1e9;
-    for (const c of s.ch) {
-      const d = Math.hypot(c.x - p.x, c.y - p.y) - (c.g ? 260 : 0);
-      if (d < bd) { bd = d; best = c; }
+  const st = s.bs || (s.bs = {});
+  const me = st[i] || (st[i] = { think: 0, tx: s.cats[i].x, ty: s.cats[i].y, hold: false, wait: 0 });
+  const p = s.cats[i], o = s.cats[1 - i];
+  me.think -= dt;
+  if (me.think <= 0) {
+    me.think = 0.08 + (1 - api.skill) * 0.25;
+    if (p.carry) {
+      me.tx = POTS[i].x; me.ty = POTS[i].y;
+      me.hold = Math.hypot(p.x - POTS[i].x, p.y - POTS[i].y) > POT_R - 10;
+    } else if (o.carry && api.skill > 0.3 && Math.hypot(o.x - p.x, o.y - p.y) < 160) {
+      me.tx = o.x; me.ty = o.y;
+      me.hold = Math.hypot(o.x - p.x, o.y - p.y) < REACH + 10;
+    } else {
+      let best = null, bd = 1e9;
+      for (const c of s.ch) { if (!c.land) continue; const d = Math.hypot(c.x - p.x, c.y - p.y) - (c.g ? 150 : 0); if (d < bd) { bd = d; best = c; } }
+      if (best) { me.tx = best.x; me.ty = best.y; me.hold = Math.hypot(best.x - p.x, best.y - p.y) < REACH; } else { me.tx = SPOT.x + (i ? 90 : -90); me.ty = SPOT.y; me.hold = false; }
     }
-    if (best) { st.tx = best.x + best.vx * 0.12 + (Math.random() - 0.5) * 60 * (1 - api.skill); st.ty = best.y + best.vy * 0.12; }
   }
-  return { ax: st.tx, ay: st.ty, top: 600 + 600 * api.skill };
+  return { ax: me.tx, ay: me.ty, held: me.hold ? { fire: true } : {}, top: 0.7 + 0.3 * api.skill };
 }
 
 function cheeseEvent(v, e) {
-  if (e.type === 'grab') {
-    v.burst(e.x, e.y, e.g ? '#fff3a0' : '#ffcf3d', e.g ? 26 : 8, e.g ? 320 : 180);
-    if (e.g || e.i === v.me) v.pop(e.x, e.y - 20, e.g ? '+5!' : '+1', e.g ? '#fff3a0' : v.team[e.i].light);
-    if (e.g) v.shake(6);
-    v.sound(e.i === v.me ? (e.g ? [[880, 0, 0.06], [1175, 0.06, 0.06], [1568, 0.12, 0.1]] : [[660 + Math.random() * 200, 0, 0.05]]) : [[300, 0, 0.03]]);
+  if (e.type === 'drop') v.sound([[700, 0, 0.03], [500, 0.04, 0.04]]);
+  if (e.type === 'land') { v.burst(e.x, e.y, e.g ? '#fff3a0' : '#ffcf3d', e.g ? 14 : 5, 120); if (e.g) v.pop(e.x, e.y - 24, 'GOLDEN!', '#fff3a0'); }
+  if (e.type === 'grab') v.sound(e.i === v.me ? [[520, 0, 0.04], [700, 0.04, 0.04]] : [[300, 0, 0.03]]);
+  if (e.type === 'steal') {
+    v.burst(e.x, e.y, v.team[e.i].main, 18, 260);
+    v.pop(e.x, e.y - 40, e.i === v.me ? 'STOLEN! 😼' : 'THIEF!', e.i === v.me ? '#7dffb0' : '#ff6b6b');
+    v.shake(e.i === v.me ? 4 : 8);
+    v.sound(e.i === v.me ? [[600, 0, 0.05], [900, 0.05, 0.08]] : [[220, 0, 0.1], [160, 0.08, 0.14]]);
   }
-  if (e.type === 'drop') v.sound([[200, 0, 0.04]]);
+  if (e.type === 'score') {
+    const pot = POTS[e.i];
+    v.burst(pot.x, pot.y - 20, e.g ? '#fff3a0' : '#ffcf3d', e.g ? 30 : 14, e.g ? 320 : 200);
+    v.pop(pot.x, pot.y - 70, e.g ? '+5!' : '+1', e.g ? '#fff3a0' : v.team[e.i].light);
+    if (e.g) v.shake(6);
+    v.sound(e.i === v.me ? (e.g ? [[880, 0, 0.06], [1175, 0.06, 0.06], [1568, 0.12, 0.12]] : [[784, 0, 0.05], [1046, 0.05, 0.08]]) : [[330, 0, 0.05]]);
+  }
+  if (e.type === 'dropped') v.sound([[260, 0, 0.05]]);
 }
 
 let kitchen = null;
@@ -158,47 +214,90 @@ function makeKitchen() {
   c.width = W;
   c.height = H;
   const b = c.getContext('2d');
-  const sky = b.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#2b2238');
-  sky.addColorStop(1, '#1b1526');
-  b.fillStyle = sky;
+  const wall = b.createLinearGradient(0, 0, 0, H);
+  wall.addColorStop(0, '#2b2238');
+  wall.addColorStop(1, '#1b1526');
+  b.fillStyle = wall;
   b.fillRect(0, 0, W, H);
-  for (let x = 0; x < W; x += 60) for (let y = H - 140; y < H; y += 60) { // checkered kitchen floor
+  for (let x = 0; x < W; x += 60) for (let y = 200; y < H; y += 60) { // checkered kitchen floor
     b.fillStyle = ((x + y) / 60) % 2 ? '#e9e2f0' : '#cfc3dc';
     b.fillRect(x, y, 60, 60);
   }
   b.fillStyle = 'rgba(0, 0, 0, .25)';
-  b.fillRect(0, H - 140, W, 6);
-  // a big cheese wheel hanging over the middle, where the cheese comes from
-  b.fillStyle = '#ffcf3d';
-  b.beginPath(); b.moveTo(W / 2 - 70, 140); b.lineTo(W / 2 + 70, 140); b.lineTo(W / 2 + 50, 96); b.lineTo(W / 2 - 50, 96); b.closePath(); b.fill();
-  b.fillStyle = '#e0a800';
-  [[-30, 120, 9], [10, 112, 6], [40, 126, 7], [-48, 106, 5]].forEach(([dx, y, r]) => { b.beginPath(); b.arc(W / 2 + dx, y, r, 0, Math.PI * 2); b.fill(); });
+  b.fillRect(0, 200, W, 6);
+  // the hole in the ceiling the cheese falls from, with a beam of light under it
+  const beam = b.createLinearGradient(0, 0, 0, SPOT.y + 20);
+  beam.addColorStop(0, 'rgba(255, 230, 140, .35)');
+  beam.addColorStop(1, 'rgba(255, 230, 140, 0)');
+  b.fillStyle = beam;
+  b.beginPath(); b.moveTo(W / 2 - 34, 40); b.lineTo(W / 2 + 34, 40); b.lineTo(W / 2 + 90, SPOT.y + 30); b.lineTo(W / 2 - 90, SPOT.y + 30); b.closePath(); b.fill();
+  b.fillStyle = '#0d0a12';
+  b.beginPath(); b.ellipse(W / 2, 40, 40, 12, 0, 0, Math.PI * 2); b.fill();
+  // the spot where the cheese lands
+  b.fillStyle = 'rgba(255, 207, 61, .18)';
+  b.beginPath(); b.ellipse(SPOT.x, SPOT.y + 16, 90, 30, 0, 0, Math.PI * 2); b.fill();
   return c;
 }
 
-function drawCheese(v, x, y, gold, rot) {
+function drawCheese(v, x, y, gold, rot, k) {
   const g = v.g;
   g.save();
   g.translate(x, y);
   g.rotate(rot);
+  g.scale(k || 1, k || 1);
   if (gold) { g.globalAlpha = 0.4; g.fillStyle = '#fff3a0'; v.dot(0, 0, 26); g.globalAlpha = 1; }
   g.fillStyle = gold ? '#ffe066' : '#ffcf3d';
   g.strokeStyle = gold ? '#fff8d0' : '#c98f00';
   g.lineWidth = 2;
-  g.beginPath(); g.moveTo(-15, 10); g.lineTo(15, 10); g.lineTo(-11, -13); g.closePath(); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(-16, 11); g.lineTo(16, 11); g.lineTo(-12, -14); g.closePath(); g.fill(); g.stroke();
   g.fillStyle = gold ? '#f2b500' : '#d99a00';
   v.dot(-4, 4, 3);
   v.dot(-9, -4, 2);
   g.restore();
 }
 
+function drawPot(v, i, n) {
+  const g = v.g, p = POTS[i];
+  g.fillStyle = 'rgba(0, 0, 0, .25)';
+  g.beginPath(); g.ellipse(p.x, p.y + 44, 64, 14, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = v.team[i].dark;
+  g.beginPath(); g.moveTo(p.x - 58, p.y - 20); g.lineTo(p.x + 58, p.y - 20); g.lineTo(p.x + 46, p.y + 44); g.lineTo(p.x - 46, p.y + 44); g.closePath(); g.fill();
+  g.fillStyle = v.team[i].main;
+  g.beginPath(); g.ellipse(p.x, p.y - 20, 60, 16, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = n ? '#ffcf3d' : '#1a1422';
+  g.beginPath(); g.ellipse(p.x, p.y - 20, 50, 11, 0, 0, Math.PI * 2); g.fill();
+  v.label(String(n), p.x, p.y + 14, 30, '#ffffff');
+  v.label(i === v.me ? 'Your pot' : v.names[i] + '\'s pot', p.x, p.y + 64, 13, i === v.me ? '#ffd23f' : v.team[i].light);
+}
+
 function cheeseDraw(v, s) {
   const g = v.g;
   if (!kitchen) kitchen = makeKitchen();
   g.drawImage(kitchen, 0, 0, W, H);
+  drawPot(v, 0, s.sc[0]);
+  drawPot(v, 1, s.sc[1]);
   s.c.forEach(([id, x, y, gold, a]) => drawCheese(v, x, y, gold, a / 10));
-  s.p.forEach(([x, y], i) => { const q = pawAt(v, i, { x, y }); drawPaw(v, i, q.x, q.y); });
+  s.p.forEach(([x, y, held, carry, reach], i) => {
+    const q = i === v.me && !v.host && v.aim.seen ? { x, y } : { x, y };
+    const r = reach / 10;
+    // the arms: they reach out (toward where you're pointing) while you hold the button
+    const goal = carry ? POTS[i] : SPOT; // (the other cat reaches the way it's going: to the cheese, or home to its pot)
+    const ax = i === v.me && v.aim.seen ? v.aim.x : goal.x, ay = i === v.me && v.aim.seen ? v.aim.y : goal.y;
+    const d = Math.hypot(ax - q.x, ay - q.y) || 1, ux = (ax - q.x) / d, uy = (ay - q.y) / d;
+    const len = 26 + r * (REACH - 14);
+    g.strokeStyle = v.team[i].main;
+    g.lineCap = 'round';
+    g.lineWidth = 11;
+    [-1, 1].forEach(side => {
+      const sx = q.x - uy * 16 * side, sy = q.y + 4 + ux * 16 * side;
+      const hx = q.x + ux * len - uy * 7 * side * (1 - r * 0.6), hy = q.y + 4 + uy * len + ux * 7 * side * (1 - r * 0.6);
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(hx, hy); g.stroke();
+      g.fillStyle = v.team[i].light;
+      v.dot(hx, hy, held ? 6 : 7);
+    });
+    v.catTop(i, q.x, q.y - 10, 1.5, { lookRight: ux >= 0 });
+    if (carry) drawCheese(v, q.x + ux * (len + 4), q.y + 4 + uy * (len + 4), carry === 2, 0, 0.9);
+  });
   bigScores(v, s.sc[0], s.sc[1]);
   v.label(String(s.r), W / 2, 44, 30, s.r <= 5 ? '#ff6b6b' : '#ffffff');
 }
