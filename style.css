@@ -19,11 +19,40 @@
   --fish: #1b7fbd;
   --top: #f7fbff;
   --logo: #1b6fd6;
+  --name: #155fbb;
+  --brick: #5ba4e0;
   --sq-light: #ebecd0;
   --sq-dark: #739552;
   --shadow: 0 10px 26px rgba(20, 50, 80, .16);
   --font: 'Nunito', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
   color-scheme: light;
+}
+/* Dark mode (the 🌙 button in the top bar): the same blues, at night. */
+:root[data-theme="dark"] {
+  --bg: #0d1824;
+  --bg-2: #111f2e;
+  --surface: #152536;
+  --surface-2: #1b2e42;
+  --surface-3: #23384f;
+  --border: #2c4560;
+  --text: #e8f2fb;
+  --muted: #93abc2;
+  --accent: #3d8ff0;
+  --accent-hover: #5aa2f5;
+  --accent-soft: rgba(61, 143, 240, .16);
+  --go: #1ed49b;
+  --go-soft: rgba(30, 212, 155, .13);
+  --warn: #ffb938;
+  --warn-soft: rgba(255, 185, 56, .13);
+  --danger: #ff5a78;
+  --danger-soft: rgba(255, 90, 120, .13);
+  --fish: #6cc8ff;
+  --top: #0f1c2a;
+  --logo: #4fa3ff;
+  --name: #6cb4ff;
+  --brick: #1f4f80;
+  --shadow: 0 12px 32px rgba(0, 0, 0, .4);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -1458,7 +1487,7 @@ body:has(#scr-play:not(.hidden)) #appBar { display: none; }
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: var(--top) minmax(0, 1fr);
   grid-template-areas: "score safety controls" "stage stage stage";
   gap: 0 12px; max-width: none; height: auto; margin: 0; padding: 0 var(--frame) var(--frame);
-  background: #5ba4e0 var(--bricks);
+  background: var(--brick) var(--bricks);
 }
 #scr-play .m-top { display: contents; }
 /* the top of the wall: the score on the left, the buttons on the right, any safety note between them */
@@ -1480,7 +1509,7 @@ body:has(#scr-play:not(.hidden)) #appBar { display: none; }
 /* the cameras: blocks of the wall sticking out of each side, near the top */
 #scr-play .m-player {
   position: absolute; z-index: 3; top: calc(var(--top) - 4px); width: calc(var(--cam-w) + var(--frame)); padding: 8px;
-  background: #5ba4e0 var(--bricks); border: 3px solid var(--wall); box-shadow: 0 10px 26px rgba(0, 0, 0, .5);
+  background: var(--brick) var(--bricks); border: 3px solid var(--wall); box-shadow: 0 10px 26px rgba(0, 0, 0, .5);
 }
 #scr-play .m-player.me { left: 0; padding-left: var(--frame); border-left: 0; border-radius: 0 18px 18px 0; }
 #scr-play .m-player.them { right: 0; padding-right: var(--frame); border-right: 0; border-radius: 18px 0 0 18px; }
@@ -1592,7 +1621,7 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 
 #scr-menu .menu-hello { margin-bottom: 10px; }
 #scr-menu .menu-hello-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; width: 100%; }
-#scr-menu .spin-name { margin: 0; color: #155fbb; text-align: center; font-size: clamp(18px, 2vw, 22px); line-height: 1.05; overflow-wrap: anywhere; }
+#scr-menu .spin-name { margin: 0; color: var(--name); text-align: center; font-size: clamp(18px, 2vw, 22px); line-height: 1.05; overflow-wrap: anywhere; }
 #scr-menu .hero-stats { gap: 4px 16px; }
 #scr-menu .stat-chip { padding: 0; border: 0; border-radius: 0; background: none; color: var(--muted); font-weight: 700; }
 #scr-menu .stat-chip b { color: var(--text); font-weight: 900; }
@@ -1620,7 +1649,7 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 .mc-slide i { display: block; padding: 5px 10px 6px; color: var(--muted); font-size: 13px; font-style: normal; font-weight: 800; }
 #scr-menu .spin-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
 .spin-stage { position: relative; width: min(100%, 340px); perspective: 1100px; }
-.spin-stage::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 1%; height: 16px; border-radius: 50%; background: rgba(20, 50, 80, .25); filter: blur(5px); z-index: -1; }
+.spin-stage::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 1%; height: 16px; border-radius: 50%; background: rgba(0, 0, 0, .3); filter: blur(5px); z-index: -1; }
 .spin-cat { position: relative; aspect-ratio: 5 / 6; transform-style: preserve-3d; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .spin-cat:active { cursor: grabbing; }
 .spin-cat:focus-visible { outline: 2px solid var(--home); outline-offset: 4px; }

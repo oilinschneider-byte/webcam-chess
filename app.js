@@ -504,6 +504,21 @@ $('soundBtn').addEventListener('click', () => {
   if (CA.soundOn) CA.sound('tick');
 });
 $('soundBtn').textContent = CA.soundOn ? '🔊' : '🔇';
+
+// Dark mode: the 🌙 button. Saved in this browser (index.html reads it before the page draws).
+const darkOn = () => document.documentElement.dataset.theme === 'dark';
+function showTheme() {
+  $('themeBtn').textContent = darkOn() ? '☀️' : '🌙';
+  $('themeBtn').title = darkOn() ? 'Light mode' : 'Dark mode';
+  $('themeBtn').setAttribute('aria-label', $('themeBtn').title);
+}
+$('themeBtn').addEventListener('click', () => {
+  if (darkOn()) delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = 'dark';
+  try { localStorage.setItem('camarcade-theme', darkOn() ? 'dark' : 'light'); } catch (e) { /* just for now, then */ }
+  showTheme();
+});
+showTheme();
 $('userBtn').addEventListener('click', e => { e.stopPropagation(); $('userPop').classList.toggle('hidden'); });
 document.addEventListener('click', () => $('userPop').classList.add('hidden'));
 $('logoutBtn').addEventListener('click', () => {

@@ -3,6 +3,10 @@
 <head>
 <!-- Google tag (gtag.js), with Consent Mode. If you've chosen, your choice is used. If not: off in Europe, the UK and Switzerland
      until you accept, and on elsewhere until you decline. When it's off, Google gets no ad cookies. (See "ads consent" in app.js.) -->
+<script>
+  // Dark mode, if you turned it on (the 🌙 button: see "dark mode" in app.js). Before the page draws, so it never flashes light.
+  try { if (localStorage.getItem('camarcade-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) { /* light */ }
+</script>
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18554902125"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -32,8 +36,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=117">
-<link rel="stylesheet" href="pieces.css?v=117">
+<link rel="stylesheet" href="style.css?v=118">
+<link rel="stylesheet" href="pieces.css?v=118">
 </head>
 <body>
 
@@ -49,6 +53,7 @@
     <button class="icon-btn" id="topMicBtn" title="Microphone">🎤</button>
     <button class="icon-btn" id="topCamBtn" title="Camera in games">📷</button>
     <button class="icon-btn" id="soundBtn" title="Sound effects">🔊</button>
+    <button class="icon-btn" id="themeBtn" title="Dark mode" aria-label="Dark mode">🌙</button>
     <div class="stats" id="caStats"></div>
     <div class="user-menu">
       <button class="user-btn" id="userBtn"><span id="userName"></span> ▾</button>
@@ -746,48 +751,48 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=117"></script>
-<script src="server.js?v=117"></script>
-<script src="common.js?v=117"></script>
-<script src="solos.js?v=117"></script>
-<script src="games-quick.js?v=117"></script>
-<script src="games-words.js?v=117"></script>
-<script src="games-board.js?v=117"></script>
-<script src="games-world.js?v=117"></script>
+<script src="config.js?v=118"></script>
+<script src="server.js?v=118"></script>
+<script src="common.js?v=118"></script>
+<script src="solos.js?v=118"></script>
+<script src="games-quick.js?v=118"></script>
+<script src="games-words.js?v=118"></script>
+<script src="games-board.js?v=118"></script>
+<script src="games-world.js?v=118"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=117"></script>
-<script src="games-quiz.js?v=117"></script>
-<script src="games-mind.js?v=117"></script>
-<script src="games-tracker.js?v=117"></script>
-<script src="games-pose.js?v=117"></script>
-<script src="cam-walls.js?v=117"></script>
-<script src="games-floppy.js?v=117"></script>
-<script src="games-barrel.js?v=117"></script>
-<script src="games-walls.js?v=117"></script>
-<script src="games-duel.js?v=117"></script>
-<script src="games-trails.js?v=117"></script>
-<script src="games-box.js?v=117"></script>
-<script src="games-sumo.js?v=117"></script>
-<script src="games-pond.js?v=117"></script>
-<script src="games-hockey.js?v=117"></script>
-<script src="games-paint.js?v=117"></script>
-<script src="games-cannons.js?v=117"></script>
-<script src="games-golf.js?v=117"></script>
-<script src="games-mouse.js?v=117"></script>
-<script src="games-kart.js?v=117"></script>
-<script src="games-swords.js?v=117"></script>
-<script src="games-stare.js?v=117"></script>
-<script src="games-boxing.js?v=117"></script>
-<script src="games-dodge.js?v=117"></script>
-<script src="games-parkour.js?v=117"></script>
-<script src="games-poop.js?v=117"></script>
-<script src="games-hoops.js?v=117"></script>
-<script src="games-simon.js?v=117"></script>
-<script src="games-climb.js?v=117"></script>
-<script src="chess.js?v=117"></script>
-<script src="pass.js?v=117"></script>
-<script src="character.js?v=117"></script>
-<script src="leaders.js?v=117"></script>
-<script src="app.js?v=117"></script>
+<script src="games-action.js?v=118"></script>
+<script src="games-quiz.js?v=118"></script>
+<script src="games-mind.js?v=118"></script>
+<script src="games-tracker.js?v=118"></script>
+<script src="games-pose.js?v=118"></script>
+<script src="cam-walls.js?v=118"></script>
+<script src="games-floppy.js?v=118"></script>
+<script src="games-barrel.js?v=118"></script>
+<script src="games-walls.js?v=118"></script>
+<script src="games-duel.js?v=118"></script>
+<script src="games-trails.js?v=118"></script>
+<script src="games-box.js?v=118"></script>
+<script src="games-sumo.js?v=118"></script>
+<script src="games-pond.js?v=118"></script>
+<script src="games-hockey.js?v=118"></script>
+<script src="games-paint.js?v=118"></script>
+<script src="games-cannons.js?v=118"></script>
+<script src="games-golf.js?v=118"></script>
+<script src="games-mouse.js?v=118"></script>
+<script src="games-kart.js?v=118"></script>
+<script src="games-swords.js?v=118"></script>
+<script src="games-stare.js?v=118"></script>
+<script src="games-boxing.js?v=118"></script>
+<script src="games-dodge.js?v=118"></script>
+<script src="games-parkour.js?v=118"></script>
+<script src="games-poop.js?v=118"></script>
+<script src="games-hoops.js?v=118"></script>
+<script src="games-simon.js?v=118"></script>
+<script src="games-climb.js?v=118"></script>
+<script src="chess.js?v=118"></script>
+<script src="pass.js?v=118"></script>
+<script src="character.js?v=118"></script>
+<script src="leaders.js?v=118"></script>
+<script src="app.js?v=118"></script>
 </body>
 </html>

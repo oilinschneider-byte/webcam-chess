@@ -57,7 +57,7 @@ function draw(g) {
     const left = b.x === 0, rx = left ? [0, 18, 18, 0] : [18, 0, 0, 18];
     g.beginPath();
     g.roundRect(b.x, b.y - 20, b.w, b.h + 20, rx);
-    g.fillStyle = '#5ba4e0';
+    g.fillStyle = document.documentElement.dataset.theme === 'dark' ? '#1f4f80' : '#5ba4e0'; // (the frame's bricks: --brick in style.css)
     g.fill();
     g.save();
     g.clip();
