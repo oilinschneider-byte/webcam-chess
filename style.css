@@ -1875,3 +1875,14 @@ body:not(.guest) #scr-menu .lobby-top { display: none; }
 .lobby-rat .sc-rat-body, .lobby-rat .sc-teeth, .lobby-rat .sc-arms { fill: #06080c; opacity: 1; }
 .lobby-rat .sc-arm { fill: none; stroke: #06080c; stroke-width: 46; stroke-linecap: round; }
 .lobby-rat { left: 104%; }
+/* The lobby always fits the window's height: the cat shrinks on short screens so the Streak Pass and Play
+   cards stay on screen (60px bar + 28px space above, 16px below; guests also have the sign-up line on top) */
+:root { --lobby-top: 0px; }
+body.guest { --lobby-top: 58px; }
+.lobby { height: max(460px, calc(100dvh - 104px)); min-height: 0; margin-bottom: 16px; }
+.lobby-cat { min-height: 0; }
+.lobby-cat .spin-stage { width: min(100%, 400px, calc((100dvh - 230px - var(--lobby-top)) / 1.2)); }
+@media (max-width: 760px) {
+  .lobby { height: auto; }
+  .lobby-cat .spin-stage { width: min(80%, 300px); }
+}
