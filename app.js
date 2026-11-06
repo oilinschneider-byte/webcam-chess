@@ -511,13 +511,16 @@ function showTheme() {
   $('themeBtn').textContent = darkOn() ? '☀️' : '🌙';
   $('themeBtn').title = darkOn() ? 'Light mode' : 'Dark mode';
   $('themeBtn').setAttribute('aria-label', $('themeBtn').title);
+  $('themeToggle').setAttribute('aria-checked', darkOn() ? 'true' : 'false');
 }
-$('themeBtn').addEventListener('click', () => {
+function flipTheme() {
   if (darkOn()) delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = 'dark';
   try { localStorage.setItem('camarcade-theme', darkOn() ? 'dark' : 'light'); } catch (e) { /* just for now, then */ }
   showTheme();
-});
+}
+$('themeBtn').addEventListener('click', flipTheme);
+$('themeToggle').addEventListener('click', flipTheme);
 showTheme();
 $('userBtn').addEventListener('click', e => { e.stopPropagation(); $('userPop').classList.toggle('hidden'); });
 document.addEventListener('click', () => $('userPop').classList.add('hidden'));

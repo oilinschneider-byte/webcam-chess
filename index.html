@@ -36,18 +36,18 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=118">
-<link rel="stylesheet" href="pieces.css?v=118">
+<link rel="stylesheet" href="style.css?v=119">
+<link rel="stylesheet" href="pieces.css?v=119">
 </head>
 <body>
 
 <header class="topbar hidden" id="appBar">
   <a class="logo" href="#/menu"><span class="logo-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.5 2.5 8.6 7a9.4 9.4 0 0 1 6.8 0l5.1-4.5V13a8.5 8.5 0 0 1-17 0z"/><circle cx="9" cy="13" r="1.5" fill="#14151c"/><circle cx="15" cy="13" r="1.5" fill="#14151c"/></svg></span><span class="logo-text">Cam<b>Arcade</b></span></a>
   <nav class="topnav">
-    <a href="#/menu" data-nav="menu">🏠 Home</a>
-    <a href="#/leaders" data-nav="leaders">🏆 Leaderboard</a>
-    <a href="#/pass" data-nav="pass">🎟️ Streak Pass</a>
-    <a href="#/cat" data-nav="cat">🐱 My Cat</a>
+    <a href="#/menu" data-nav="menu" class="nav-btn">Home</a>
+    <a href="#/leaders" data-nav="leaders" class="nav-btn">Leaderboard</a>
+    <a href="#/pass" data-nav="pass" class="nav-btn">Streak Pass</a>
+    <a href="#/cat" data-nav="cat" class="nav-btn">My Cat</a>
   </nav>
   <div class="topbar-actions">
     <button class="icon-btn" id="topMicBtn" title="Microphone">🎤</button>
@@ -231,6 +231,7 @@
     <a class="link-card" href="#/pass"><b>Streak Pass</b><small id="menuPassNote">Win to unlock 20 tiers of rewards</small></a>
   </div>
   <p class="menu-foot"><a href="#/stats">How many people play</a> · <a href="#/privacy">Privacy</a> · <a href="#/terms">Terms</a></p>
+  <p class="menu-foot theme-row"><button class="theme-toggle" id="themeToggle" role="switch" aria-checked="false"><span class="tt-track"><span class="tt-knob"></span></span><span class="tt-label">Dark mode</span></button></p>
 </main>
 
 <!-- ================= CLASSIC GAMES (Solos + practice matches) ================= -->
@@ -751,48 +752,48 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=118"></script>
-<script src="server.js?v=118"></script>
-<script src="common.js?v=118"></script>
-<script src="solos.js?v=118"></script>
-<script src="games-quick.js?v=118"></script>
-<script src="games-words.js?v=118"></script>
-<script src="games-board.js?v=118"></script>
-<script src="games-world.js?v=118"></script>
+<script src="config.js?v=119"></script>
+<script src="server.js?v=119"></script>
+<script src="common.js?v=119"></script>
+<script src="solos.js?v=119"></script>
+<script src="games-quick.js?v=119"></script>
+<script src="games-words.js?v=119"></script>
+<script src="games-board.js?v=119"></script>
+<script src="games-world.js?v=119"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=118"></script>
-<script src="games-quiz.js?v=118"></script>
-<script src="games-mind.js?v=118"></script>
-<script src="games-tracker.js?v=118"></script>
-<script src="games-pose.js?v=118"></script>
-<script src="cam-walls.js?v=118"></script>
-<script src="games-floppy.js?v=118"></script>
-<script src="games-barrel.js?v=118"></script>
-<script src="games-walls.js?v=118"></script>
-<script src="games-duel.js?v=118"></script>
-<script src="games-trails.js?v=118"></script>
-<script src="games-box.js?v=118"></script>
-<script src="games-sumo.js?v=118"></script>
-<script src="games-pond.js?v=118"></script>
-<script src="games-hockey.js?v=118"></script>
-<script src="games-paint.js?v=118"></script>
-<script src="games-cannons.js?v=118"></script>
-<script src="games-golf.js?v=118"></script>
-<script src="games-mouse.js?v=118"></script>
-<script src="games-kart.js?v=118"></script>
-<script src="games-swords.js?v=118"></script>
-<script src="games-stare.js?v=118"></script>
-<script src="games-boxing.js?v=118"></script>
-<script src="games-dodge.js?v=118"></script>
-<script src="games-parkour.js?v=118"></script>
-<script src="games-poop.js?v=118"></script>
-<script src="games-hoops.js?v=118"></script>
-<script src="games-simon.js?v=118"></script>
-<script src="games-climb.js?v=118"></script>
-<script src="chess.js?v=118"></script>
-<script src="pass.js?v=118"></script>
-<script src="character.js?v=118"></script>
-<script src="leaders.js?v=118"></script>
-<script src="app.js?v=118"></script>
+<script src="games-action.js?v=119"></script>
+<script src="games-quiz.js?v=119"></script>
+<script src="games-mind.js?v=119"></script>
+<script src="games-tracker.js?v=119"></script>
+<script src="games-pose.js?v=119"></script>
+<script src="cam-walls.js?v=119"></script>
+<script src="games-floppy.js?v=119"></script>
+<script src="games-barrel.js?v=119"></script>
+<script src="games-walls.js?v=119"></script>
+<script src="games-duel.js?v=119"></script>
+<script src="games-trails.js?v=119"></script>
+<script src="games-box.js?v=119"></script>
+<script src="games-sumo.js?v=119"></script>
+<script src="games-pond.js?v=119"></script>
+<script src="games-hockey.js?v=119"></script>
+<script src="games-paint.js?v=119"></script>
+<script src="games-cannons.js?v=119"></script>
+<script src="games-golf.js?v=119"></script>
+<script src="games-mouse.js?v=119"></script>
+<script src="games-kart.js?v=119"></script>
+<script src="games-swords.js?v=119"></script>
+<script src="games-stare.js?v=119"></script>
+<script src="games-boxing.js?v=119"></script>
+<script src="games-dodge.js?v=119"></script>
+<script src="games-parkour.js?v=119"></script>
+<script src="games-poop.js?v=119"></script>
+<script src="games-hoops.js?v=119"></script>
+<script src="games-simon.js?v=119"></script>
+<script src="games-climb.js?v=119"></script>
+<script src="chess.js?v=119"></script>
+<script src="pass.js?v=119"></script>
+<script src="character.js?v=119"></script>
+<script src="leaders.js?v=119"></script>
+<script src="app.js?v=119"></script>
 </body>
 </html>

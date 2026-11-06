@@ -96,6 +96,9 @@ h1, h2, h3 { font-weight: 900; }
 .topnav a { padding: 8px 12px; border-radius: 10px; color: var(--muted); font-weight: 800; white-space: nowrap; }
 .topnav a:hover { background: var(--surface); color: var(--text); }
 .topnav a.active { background: var(--accent-soft); color: var(--text); }
+.topnav a.nav-btn { border: 2px solid var(--accent); color: var(--accent); background: var(--surface); box-shadow: 0 2px 0 var(--accent); margin: 0 2px; }
+.topnav a.nav-btn:hover { background: var(--accent-soft); color: var(--text); transform: translateY(-1px); }
+.topnav a.nav-btn.active { background: var(--accent); color: #fff; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .icon-btn {
   display: grid; place-items: center; width: 38px; height: 38px;
@@ -1699,3 +1702,12 @@ body:not([data-route="auth"]):not([data-route="menu"]):not([data-route="privacy"
 
 /* Labels on a dark patch over a camera or a game stay white, whatever the page's colors are. */
 .toast, .v-label, .streak-tag, .f2f-label, .pn-name, .sm-tag, .sm-see, .sm-stamp small { color: #fff; }
+
+/* Dark mode switch at the bottom of the home page */
+#scr-menu .theme-row { margin-top: 10px; margin-bottom: 24px; }
+.theme-toggle { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 4px 0; color: var(--muted); font: inherit; font-weight: 800; cursor: pointer; }
+.theme-toggle:hover { color: var(--text); }
+.tt-track { position: relative; width: 44px; height: 24px; border-radius: 12px; background: var(--surface-2); border: 2px solid var(--accent); transition: background .2s; }
+.tt-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); transition: transform .2s, background .2s; }
+.theme-toggle[aria-checked="true"] .tt-track { background: var(--accent); }
+.theme-toggle[aria-checked="true"] .tt-knob { transform: translateX(20px); background: #fff; }
