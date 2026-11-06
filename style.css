@@ -1871,3 +1871,7 @@ body:not(.guest) #scr-menu .lobby-top { display: none; }
 @media (max-width: 700px) { .bar-stats .online-note { display: none; } }
 @media (max-width: 480px) { .bar-stats .stat-chip:nth-child(2) { display: none; } .bar-stats { margin-left: 4px; gap: 4px 9px; } }
 #scr-menu .lobby-top .guest-note { margin: 0; padding: 0; border: 0; }
+/* the rat is solid black, apart from its eye: body, arms, claws and teeth (its open mouth shows the wall behind) */
+.lobby-rat .sc-rat-body, .lobby-rat .sc-teeth, .lobby-rat .sc-arms { fill: #06080c; opacity: 1; }
+.lobby-rat .sc-arm { fill: none; stroke: #06080c; stroke-width: 46; stroke-linecap: round; }
+.lobby-rat { left: 110%; }
