@@ -94,14 +94,14 @@ const ITEMS = [
   { id: 'skin-ghost', slot: 'skin', name: 'Ghost', price: 120, c: ['#ffffff', '#e8efff', '#b9c8ec'], ear: '#dfe8ff', ghost: true },
   { id: 'skin-tiger', slot: 'skin', name: 'Tiger Stripes', price: 150, c: ['#ffc27a', '#f7a14a', '#e3822c'], ear: '#ffb77e', stripes: '#b8561a' },
   { id: 'skin-rainbow', slot: 'skin', name: 'Rainbow', price: 300, grad: ['#ff6b6b', '#ffb84d', '#ffe66b', '#7ee07a', '#5cc8ff', '#b28cff'], c: ['#fff', '#ffb84d', '#b28cff'], ear: '#ffffff' },
-  { id: 'skin-gold', slot: 'skin', name: 'Solid Gold', tier: 10, c: ['#fff1a8', '#ffd23f', '#d9a300'], ear: '#fff3b8' },
-  { id: 'skin-galaxy', slot: 'skin', name: 'Galaxy', tier: 18, c: ['#8b5cff', '#3b2394', '#140c45'], ear: '#b89cff', sparkle: true, dark: true },
+  { id: 'skin-gold', slot: 'skin', name: 'Solid Gold', price: 200, c: ['#fff1a8', '#ffd23f', '#d9a300'], ear: '#fff3b8' },
+  { id: 'skin-galaxy', slot: 'skin', name: 'Galaxy', price: 250, c: ['#8b5cff', '#3b2394', '#140c45'], ear: '#b89cff', sparkle: true, dark: true },
 
   { id: 'hat-bow', slot: 'hat', name: 'Pink Bow', price: 35, art: () =>
     '<path d="M128 34 C116 22 108 38 116 46 C120 50 126 42 128 34 Z" fill="#ff6fae" ' + EDGE + '/>' +
     '<path d="M128 34 C140 22 148 38 140 46 C136 50 130 42 128 34 Z" fill="#ff6fae" ' + EDGE + '/>' +
     '<circle cx="128" cy="36" r="5" fill="#e04a8c" ' + EDGE + '/>' },
-  { id: 'hat-party', slot: 'hat', name: 'Party Hat', tier: 2, art: () =>
+  { id: 'hat-party', slot: 'hat', name: 'Party Hat', price: 60, art: () =>
     '<path d="M80 40 L100 2 L120 40 Q100 46 80 40 Z" fill="#ff5fa2" ' + EDGE + '/>' +
     dots([[93, 27, 3], [106, 17, 3], [108, 33, 3]], '#ffe14d') +
     '<circle cx="100" cy="5" r="6" fill="#ffe14d" ' + EDGE + '/>' },
@@ -137,11 +137,11 @@ const ITEMS = [
     '<path d="M46 60 Q48 16 100 16 Q152 16 154 60 Z" fill="#a7b0c2" ' + EDGE + '/>' +
     '<rect x="44" y="52" width="112" height="13" rx="6.5" fill="#7d879c" ' + EDGE + '/>' +
     dots([[62, 58.5, 2.5], [100, 58.5, 2.5], [138, 58.5, 2.5]], '#e8ecf5') },
-  { id: 'hat-halo', slot: 'hat', name: 'Halo', tier: 15, art: () =>
+  { id: 'hat-halo', slot: 'hat', name: 'Halo', price: 150, art: () =>
     '<ellipse cx="100" cy="12" rx="34" ry="8" fill="none" stroke="#ffe066" stroke-width="8" opacity=".45"/>' +
     '<ellipse cx="100" cy="12" rx="34" ry="8" fill="none" stroke="#ffe066" stroke-width="5"/>' +
     '<ellipse cx="100" cy="11" rx="34" ry="8" fill="none" stroke="#fffbe0" stroke-width="1.5"/>' },
-  { id: 'hat-crown', slot: 'hat', name: 'Royal Crown', tier: 20, art: () =>
+  { id: 'hat-crown', slot: 'hat', name: 'Royal Crown', price: 250, art: () =>
     '<path d="M68 44 L66 10 L84 26 L100 2 L116 26 L134 10 L132 44 Z" fill="#ffd23f" ' + EDGE + '/>' +
     '<circle cx="100" cy="30" r="5.5" fill="#ff3b5c" ' + EDGE + '/>' +
     '<circle cx="80" cy="36" r="3.5" fill="#37b4ff"/><circle cx="120" cy="36" r="3.5" fill="#1ed49b"/>' },
@@ -165,11 +165,11 @@ const ITEMS = [
   { id: 'eyes-star', slot: 'eyes', name: 'Star Glasses', price: 70, art: () =>
     '<path d="' + star(71, 92, 21, 10) + '" fill="#ffd23f" opacity=".94" ' + EDGE + '/>' +
     '<path d="' + star(129, 92, 21, 10) + '" fill="#ffd23f" opacity=".94" ' + EDGE + '/>' },
-  { id: 'eyes-heart', slot: 'eyes', name: 'Heart Glasses', tier: 4, art: () =>
+  { id: 'eyes-heart', slot: 'eyes', name: 'Heart Glasses', price: 60, art: () =>
     '<path d="' + heart(71, 94, 13.5) + '" fill="#ff4f9a" opacity=".92" ' + EDGE + '/>' +
     '<path d="' + heart(129, 94, 13.5) + '" fill="#ff4f9a" opacity=".92" ' + EDGE + '/>' +
     '<path d="M88 88 Q100 83 112 88" fill="none" stroke="#c2185b" stroke-width="3.5" stroke-linecap="round"/>' },
-  { id: 'eyes-visor', slot: 'eyes', name: 'Cyber Visor', tier: 12, art: () =>
+  { id: 'eyes-visor', slot: 'eyes', name: 'Cyber Visor', price: 100, art: () =>
     '<rect x="36" y="76" width="128" height="32" rx="16" fill="#34f5ff" opacity=".55" ' + EDGE + '/>' +
     '<path d="M50 85 L150 85" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".75"/>' },
 
@@ -193,13 +193,13 @@ const ITEMS = [
     '<path d="M86 138 L100 176 L114 138 Z" fill="#fff"/>' +
     '<path d="M100 150 L90 145 L90 156 Z M100 150 L110 145 L110 156 Z" fill="#ff3b5c"/>' +
     dots([[100, 181, 2.2], [100, 188, 2.2]], '#ddd') },
-  { id: 'shirt-astro', slot: 'shirt', name: 'Space Suit', tier: 8, sleeve: '#f3f5fb', art: () =>
+  { id: 'shirt-astro', slot: 'shirt', name: 'Space Suit', price: 100, sleeve: '#f3f5fb', art: () =>
     shirtBase('#f3f5fb') +
     '<path d="M72 146 Q100 156 128 146" fill="none" stroke="#c9cfdc" stroke-width="8"/>' +
     '<rect x="86" y="156" width="28" height="16" rx="4" fill="#5b6bff"/>' +
     dots([[93, 164, 2.3], [100, 164, 2.3], [107, 164, 2.3]], '#fff') +
     '<rect x="50" y="182" width="100" height="7" fill="#9aa3b5"/>' },
-  { id: 'shirt-hero', slot: 'shirt', name: 'Superhero Suit', tier: 14, sleeve: '#2f6bff', art: () =>
+  { id: 'shirt-hero', slot: 'shirt', name: 'Superhero Suit', price: 120, sleeve: '#2f6bff', art: () =>
     shirtBase('#2f6bff') +
     '<path d="' + star(100, 167, 14) + '" fill="#ffd23f" ' + EDGE + '/>' +
     '<rect x="50" y="185" width="100" height="6" fill="#ffd23f"/>',
@@ -251,7 +251,7 @@ const ITEMS = [
   { id: 'neck-chain', slot: 'neck', name: 'Gold Chain', price: 90, art: () =>
     '<path d="M74 142 Q100 178 126 142" fill="none" stroke="#ffd23f" stroke-width="5" stroke-dasharray="2 5" stroke-linecap="round"/>' +
     '<path d="' + star(100, 164, 9) + '" fill="#ffd23f" ' + EDGE + '/>' },
-  { id: 'neck-medal', slot: 'neck', name: 'Champion Medal', tier: 11, art: () =>
+  { id: 'neck-medal', slot: 'neck', name: 'Champion Medal', price: 80, art: () =>
     '<path d="M86 140 L100 164 L114 140" fill="none" stroke="#2f6bff" stroke-width="7" stroke-linejoin="round"/>' +
     '<circle cx="100" cy="171" r="10.5" fill="#ffd23f" ' + EDGE + '/>' +
     '<path d="' + star(100, 171, 6) + '" fill="#e6a800"/>' },
@@ -272,12 +272,12 @@ const ITEMS = [
   { id: 'hand-flag', slot: 'hand', name: 'Cat Flag', price: 40, art: () =>
     '<path d="M146 200 L158 104" stroke="#8a5a2b" stroke-width="5" stroke-linecap="round"/>' +
     '<path d="M158 106 L190 118 L155 132 Z" fill="#1ed49b" ' + EDGE + '/>' },
-  { id: 'hand-laser', slot: 'hand', name: 'Laser Sword', tier: 16, art: () =>
+  { id: 'hand-laser', slot: 'hand', name: 'Laser Sword', price: 120, art: () =>
     '<g transform="rotate(24 144 187)">' +
     '<rect x="136" y="84" width="16" height="94" rx="8" fill="#34f5ff" opacity=".35"/>' +
     '<rect x="140" y="88" width="8" height="88" rx="4" fill="#bafcff"/>' +
     '<rect x="137" y="174" width="14" height="28" rx="4" fill="#55556a" ' + EDGE + '/></g>' },
-  { id: 'hand-trophy', slot: 'hand', name: 'Trophy', tier: 19, art: () =>
+  { id: 'hand-trophy', slot: 'hand', name: 'Trophy', price: 150, art: () =>
     '<path d="M133 164 Q122 164 125 173 Q128 180 136 178 M155 164 Q166 164 163 173 Q160 180 152 178" fill="none" stroke="#e6a800" stroke-width="3.5"/>' +
     '<path d="M132 160 L156 160 Q156 184 144 186 Q132 184 132 160 Z" fill="#ffd23f" ' + EDGE + '/>' +
     '<rect x="140" y="185" width="8" height="9" fill="#e6a800"/>' +
@@ -311,7 +311,7 @@ const ITEMS = [
     c.defs.push('<pattern id="' + c.uid + '-bg" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="11" height="22" fill="#ffb3da"/></pattern>');
     return '<rect width="200" height="240" fill="#ffe0f0"/><rect width="200" height="240" fill="url(#' + c.uid + '-bg)"/>';
   } },
-  { id: 'bg-neon', slot: 'bg', name: 'Neon City', tier: 6, art: c => {
+  { id: 'bg-neon', slot: 'bg', name: 'Neon City', price: 100, art: c => {
     c.defs.push(grad(c.uid + '-bg', ['#1b0b3d', '#4a1170'], 0, 1));
     c.defs.push(grad(c.uid + '-sun', ['#ffd36e', '#ff4fa3'], 0, 1));
     const verticals = [-140, -60, 20, 100, 180, 260, 340].map(x => '<path d="M100 170 L' + x + ' 240" stroke="#37f0ff" stroke-width="1.5" opacity=".6"/>').join('');
@@ -320,22 +320,87 @@ const ITEMS = [
       '<rect y="170" width="200" height="70" fill="#12052b"/>' +
       [178, 190, 206, 228].map(y => '<path d="M0 ' + y + ' L200 ' + y + '" stroke="#ff4fd8" stroke-width="1.5" opacity=".75"/>').join('') + verticals;
   } },
-  { id: 'bg-gold', slot: 'bg', name: 'Golden Glory', tier: 17, art: c => {
+  { id: 'bg-gold', slot: 'bg', name: 'Golden Glory', price: 200, art: c => {
     c.defs.push(grad(c.uid + '-bg', ['#fff3b0', '#ffc93c', '#d98f00'], 0, 0, true));
     let rays = '';
     for (let i = 0; i < 12; i++) rays += '<path d="M100 110 L88 -70 L112 -70 Z" fill="#fff" opacity=".22" transform="rotate(' + i * 30 + ' 100 110)"/>';
     return '<rect width="200" height="240" fill="url(#' + c.uid + '-bg)"/>' + rays;
   } },
+
+  // ===== Season 1: Fear of Rats (the Streak Pass rewards) =====
+  { id: 'hat-ratears', slot: 'hat', name: 'Rat Ears', tier: 2, art: () =>
+    '<path d="M50 54 Q100 20 150 54" fill="none" stroke="#3a3f4b" stroke-width="7" stroke-linecap="round"/>' +
+    '<circle cx="56" cy="30" r="23" fill="#9aa1ae" ' + EDGE + '/><circle cx="56" cy="31" r="14" fill="#ffb3c4"/>' +
+    '<circle cx="144" cy="30" r="23" fill="#9aa1ae" ' + EDGE + '/><circle cx="144" cy="31" r="14" fill="#ffb3c4"/>' },
+  { id: 'eyes-ratglow', slot: 'eyes', name: 'Glowing Rat Eyes', tier: 4, art: () =>
+    [71, 129].map(x => '<circle cx="' + x + '" cy="92" r="19" fill="#ff2a2a" opacity=".28"/>' +
+      '<ellipse cx="' + x + '" cy="92" rx="13" ry="10" fill="#ff3b30" ' + EDGE + '/>' +
+      '<path d="M' + x + ' 84 Q' + (x - 3) + ' 92 ' + x + ' 100" fill="none" stroke="#2a0000" stroke-width="3.5" stroke-linecap="round"/>' +
+      '<circle cx="' + (x + 4) + '" cy="88" r="2.2" fill="#fff" opacity=".8"/>').join('') },
+  { id: 'bg-temple', slot: 'bg', name: 'Rat Temple', tier: 6, art: c => {
+    c.defs.push(grad(c.uid + '-bg', ['#0f2238', '#0a1524'], 0, 1));
+    c.defs.push(grad(c.uid + '-door', ['#3f78bd', '#11264a'], 0, 0, true));
+    return '<rect width="200" height="240" fill="url(#' + c.uid + '-bg)"/>' +
+      [0, 32, 64, 96, 128, 160].map(y => '<path d="M0 ' + y + ' H200" stroke="#1c3354" stroke-width="1.5"/>').join('') +
+      '<path d="M48 200 V92 A52 52 0 0 1 152 92 V200 Z" fill="url(#' + c.uid + '-door)"/>' +
+      '<rect x="6" y="20" width="26" height="190" fill="#1d3a60"/><rect x="168" y="20" width="26" height="190" fill="#1d3a60"/>' +
+      '<path d="M200 60 Q176 70 164 98 L140 108 L164 116 L172 140 L200 150 Z" fill="#05070b"/>' +
+      '<path d="M146 108 l4 6 l4 -6 l4 6 l4 -6" fill="none" stroke="#05070b" stroke-width="3"/>' +
+      '<circle cx="176" cy="96" r="6" fill="#ff2a2a" opacity=".35"/><ellipse cx="176" cy="96" rx="3.5" ry="2.2" fill="#ff3b30"/>' +
+      '<rect y="200" width="200" height="40" fill="#2a2418"/>' +
+      [[19, 120], [181, 120]].map(([x, y]) => '<circle cx="' + x + '" cy="' + (y - 10) + '" r="22" fill="#ffae3c" opacity=".22"/>' +
+        '<path d="M' + (x - 5) + ' ' + y + ' h10 l-3 12 h-4z" fill="#2b2f38"/>' +
+        '<path d="M' + x + ' ' + (y - 18) + ' C' + (x + 7) + ' ' + (y - 9) + ' ' + (x + 7) + ' ' + (y - 1) + ' ' + x + ' ' + y + ' C' + (x - 7) + ' ' + (y - 1) + ' ' + (x - 7) + ' ' + (y - 9) + ' ' + x + ' ' + (y - 18) + 'z" fill="#ffb02e"/>').join('');
+  } },
+  { id: 'skin-rat', slot: 'skin', name: 'Sewer Rat', tier: 10, c: ['#c9c0b6', '#958b80', '#6b6259'], ear: '#f2a5b5',
+    marks: '<path d="M66 40 Q76 34 86 40 Q76 46 66 40 Z M128 60 Q140 54 150 62" fill="#6b6259" stroke="#6b6259" stroke-width="3" stroke-linecap="round" opacity=".5"/>' },
+  { id: 'skin-labrat', slot: 'skin', name: 'Lab Rat', tier: 8, c: ['#ffffff', '#f3eef0', '#d8c9cf'], ear: '#ff9fb6' },
+  { id: 'skin-stone', slot: 'skin', name: 'Temple Stone', tier: 12, c: ['#b9c6d6', '#8396ad', '#5a6b82'], ear: '#9fb0c4',
+    marks: '<path d="M58 40 L70 56 L64 70 M140 34 L130 52 L138 64 L132 76 M96 22 L102 36 M150 96 L160 104" fill="none" stroke="#3e4c60" stroke-width="2.5" stroke-linecap="round" opacity=".7"/>' +
+      '<path d="M44 100 Q50 96 56 100 M120 30 Q126 26 132 30" fill="none" stroke="#5f8a4a" stroke-width="4" stroke-linecap="round" opacity=".8"/>' },
+  { id: 'skin-torchlight', slot: 'skin', name: 'Torchlight', tier: 15, c: ['#ffe27a', '#ff9a2e', '#d4461a'], ear: '#ffd06b',
+    marks: '<path d="M78 30 Q84 18 90 30 Q92 22 98 14 Q104 24 108 30 Q114 18 122 30" fill="#ffe9a0" opacity=".55"/>' },
+  { id: 'skin-cheese', slot: 'skin', name: 'Cheese Cat', tier: 17, c: ['#fff1a0', '#ffd23f', '#e0a800'], ear: '#ffe680',
+    marks: [[64, 46, 8], [132, 40, 6], [104, 30, 4.5], [150, 92, 6], [48, 92, 5], [82, 30, 3.5]].map(([x, y, r]) =>
+      '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="#d99a00"/><circle cx="' + (x - r * .2) + '" cy="' + (y - r * .2) + '" r="' + r * .75 + '" fill="#c88a00"/>').join('') },
+  { id: 'skin-shadow', slot: 'skin', name: 'Shadow Rat', tier: 18, c: ['#3a3f4b', '#1c1f27', '#07080b'], ear: '#4a1218', dark: true,
+    marks: '<circle cx="100" cy="60" r="60" fill="#ff2a2a" opacity=".06"/>' },
+  { id: 'skin-toxic', slot: 'skin', name: 'Toxic Sewer', tier: 19, c: ['#c8ff7a', '#7be03c', '#3c9a1c'], ear: '#e2ffb0', sparkle: true,
+    marks: '<path d="M54 44 Q60 52 56 62 Q50 70 58 76 M142 42 Q136 52 144 60" fill="none" stroke="#2f7a12" stroke-width="5" stroke-linecap="round" opacity=".55"/>' +
+      '<circle cx="128" cy="62" r="5" fill="#2f7a12" opacity=".45"/><circle cx="74" cy="34" r="4" fill="#2f7a12" opacity=".45"/>' },
+  { id: 'neck-cheese', slot: 'neck', name: 'Cheese Charm', tier: 11, art: () =>
+    '<path d="M80 140 Q100 162 120 140" fill="none" stroke="#6b4a1f" stroke-width="3"/>' +
+    '<path d="M86 160 L118 152 L114 178 Z" fill="#ffcf3d" ' + EDGE + '/>' +
+    dots([[104, 162, 2.6], [110, 170, 2], [98, 166, 1.8]], '#e0a800') },
+  { id: 'shirt-rathunter', slot: 'shirt', name: 'Rat Hunter Suit', tier: 14, sleeve: '#3f4a2c', art: () =>
+    shirtBase('#4b5735') +
+    '<path d="M64 140 L100 196 M136 140 L118 168" stroke="#2c331f" stroke-width="7" stroke-linecap="round"/>' +
+    '<circle cx="114" cy="170" r="11" fill="#f1e8cf" ' + EDGE + '/>' +
+    '<path d="M106 172 Q110 164 118 166 Q120 170 118 174 Z" fill="#3a3f4b"/>' +
+    '<path d="M107 163 L121 177 M121 163 L107 177" stroke="#ff3b30" stroke-width="2.5" stroke-linecap="round"/>' +
+    '<rect x="50" y="186" width="100" height="7" fill="#2c331f"/><rect x="94" y="185" width="12" height="9" rx="2" fill="#c9a24a"/>' },
+  { id: 'hand-torch', slot: 'hand', name: 'Torch', tier: 16, art: () =>
+    '<circle cx="152" cy="140" r="26" fill="#ffae3c" opacity=".25"/>' +
+    '<g transform="rotate(14 146 190)"><rect x="141" y="152" width="10" height="52" rx="3" fill="#7a4f25" ' + EDGE + '/>' +
+    '<path d="M137 152 h18 l-3 8 h-12 z" fill="#3b3f48" ' + EDGE + '/>' +
+    '<path d="M146 112 C160 128 158 146 146 152 C134 146 132 128 146 112 Z" fill="#ff8a2a"/>' +
+    '<path d="M146 128 C153 138 152 147 146 150 C140 147 139 138 146 128 Z" fill="#ffd84a"/></g>' },
+  { id: 'hat-ratking', slot: 'hat', name: 'Rat King Crown', tier: 20, art: () =>
+    '<circle cx="62" cy="26" r="16" fill="#9aa1ae" ' + EDGE + '/><circle cx="62" cy="27" r="9" fill="#ffb3c4"/>' +
+    '<circle cx="138" cy="26" r="16" fill="#9aa1ae" ' + EDGE + '/><circle cx="138" cy="27" r="9" fill="#ffb3c4"/>' +
+    '<path d="M70 46 L68 14 L84 28 L100 4 L116 28 L132 14 L130 46 Z" fill="#3b3f48" ' + EDGE + '/>' +
+    '<path d="M70 40 L130 40" stroke="#ffd23f" stroke-width="3"/>' +
+    '<circle cx="100" cy="30" r="5.5" fill="#ff2a2a" ' + EDGE + '/><circle cx="83" cy="35" r="3" fill="#ff2a2a"/><circle cx="117" cy="35" r="3" fill="#ff2a2a"/>' },
 ];
 
 const ITEM = {};
 for (const it of ITEMS) ITEM[it.id] = it;
 
 const PASS = [
-  { fish: 25 }, { item: 'hat-party' }, { fish: 40 }, { item: 'eyes-heart' }, { fish: 60 },
-  { item: 'bg-neon' }, { fish: 80 }, { item: 'shirt-astro' }, { fish: 100 }, { item: 'skin-gold' },
-  { item: 'neck-medal' }, { item: 'eyes-visor' }, { fish: 150 }, { item: 'shirt-hero' }, { item: 'hat-halo' },
-  { item: 'hand-laser' }, { item: 'bg-gold' }, { item: 'skin-galaxy' }, { item: 'hand-trophy' }, { item: 'hat-crown' },
+  { fish: 25 }, { item: 'hat-ratears' }, { fish: 40 }, { item: 'eyes-ratglow' }, { fish: 60 },
+  { item: 'bg-temple' }, { fish: 80 }, { item: 'skin-labrat' }, { fish: 100 }, { item: 'skin-rat' },
+  { item: 'neck-cheese' }, { item: 'skin-stone' }, { fish: 150 }, { item: 'shirt-rathunter' }, { item: 'skin-torchlight' },
+  { item: 'hand-torch' }, { item: 'skin-cheese' }, { item: 'skin-shadow' }, { item: 'skin-toxic' }, { item: 'hat-ratking' },
 ].map((r, i) => Object.assign({ tier: i + 1 }, r));
 const TIER_XP = 300;
 
@@ -418,6 +483,7 @@ function catSVG(equip, opts) {
     p.push('<g clip-path="url(#' + uid + '-head)" stroke="' + fur.stripes + '" stroke-width="5" stroke-linecap="round" fill="none" opacity=".75">' +
       '<path d="M100 28 L100 48 M86 30 Q90 40 92 48 M114 30 Q110 40 108 48 M35 84 L50 86 M35 96 L48 96 M165 84 L150 86 M165 96 L152 96"/></g>');
   }
+  if (fur.marks) p.push('<g clip-path="url(#' + uid + '-head)">' + fur.marks + '</g>'); // (spots, cracks and so on, on the head)
   if (fur.sparkle) p.push(dots([[58, 58, 1.8], [146, 62, 2], [118, 40, 1.5], [82, 42, 1.3], [154, 110, 1.5], [46, 112, 1.4]], '#fff', 0.9));
   p.push('<ellipse cx="96" cy="56" rx="44" ry="24" fill="url(#' + uid + '-sheen)"/>');
   const rim = fur.dark ? ' stroke="#fff" stroke-opacity=".5" stroke-width="1.6"' : ''; // so dark cats' eyes still show
@@ -590,6 +656,8 @@ function normalize(p, name) {
     }
   }
   if (Array.isArray(p.claimed)) out.claimed = p.claimed.filter(n => Number.isInteger(n) && n >= 1 && n <= PASS.length);
+  // (Season 1, Fear of Rats, changed some rewards: a tier you already claimed gives you its new reward too)
+  for (const n of out.claimed) { const r = PASS[n - 1]; if (r && r.item && !out.owned.includes(r.item)) out.owned.push(r.item); }
   if (p.records && typeof p.records === 'object') { // ({ game id: { record name: the best so far } })
     for (const game of Object.keys(p.records).slice(0, 80)) {
       const r = p.records[game];

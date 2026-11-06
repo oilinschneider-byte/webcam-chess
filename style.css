@@ -1893,3 +1893,23 @@ body.guest { --lobby-top: 58px; }
   body:has(#scr-menu:not(.hidden)) { background: var(--sc-floor-bot); }
 }
 .sc-floorx { fill: var(--sc-floor-bot); }
+
+/* ===== Streak Pass, Season 1: Fear of Rats (a dark temple banner with the giant rat in it) ===== */
+.pass-head { position: relative; overflow: hidden; border-color: #1d3a60; color: #e8eef7;
+  background: radial-gradient(circle at 12% 110%, rgba(255, 174, 60, .28), transparent 40%), radial-gradient(ellipse at 40% 30%, #1b375c, #0a1524 75%); }
+.pass-head > :not(.pass-scene) { position: relative; z-index: 1; }
+.pass-scene { position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 39px, rgba(120, 170, 230, .07) 39px 41px); }
+.pass-rat { position: absolute; right: -70px; top: -24px; height: 125%; width: auto; overflow: visible; }
+.pass-rat .sc-rat-body, .pass-rat .sc-teeth, .pass-rat .sc-arms { fill: #020306; opacity: 1; }
+.pass-rat .sc-arm { fill: none; stroke: #020306; stroke-width: 46; stroke-linecap: round; }
+.pass-head h1 { font-family: 'Bowlby One', var(--font); font-weight: 400; color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, .4), 0 0 24px rgba(255, 59, 48, .35); }
+.pass-head p { max-width: 62%; color: rgba(232, 238, 247, .78); }
+.pass-head .tag { background: rgba(255, 59, 48, .16); border: 1px solid rgba(255, 59, 48, .45); color: #ffb3ad; }
+.pass-head .pp-top { color: #fff; max-width: 62%; }
+.pass-head .bar.big { max-width: 62%; background: rgba(255, 255, 255, .1); }
+.tier-card.claimed { border-color: rgba(255, 59, 48, .45); }
+@media (max-width: 760px) {
+  .pass-rat { right: -120px; opacity: .55; }
+  .pass-head p, .pass-head .pp-top, .pass-head .bar.big { max-width: none; }
+}
