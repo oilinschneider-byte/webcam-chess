@@ -1,5 +1,6 @@
 /* Classic Games: Gator Bars. Two cats race across the same monkey bars over a pit of alligators. Each cat hangs from
-   a bar by one super long, dangly arm and swings. Pump the swing by pushing the way you're swinging (A/D or the arrows),
+   a jungle vine by one super long, dangly arm and swings. Pump the swing with the mouse (the cat pulls toward the pointer:
+   move it back and forth with the swing; on a phone, the stick),
    let go at the right moment (Space or click), and your free paw grabs the next bar it can reach. Miss, and the
    alligators get you: you start again from the last bar you held.
    The cats swing right through each other, but a cat swinging fast into the other one bonks it: a hanging cat is
@@ -16,17 +17,22 @@ const WATER = 470;            // fall below this and the alligators get you
 const N_BARS = 16, LIMIT = 120, CHOMP = 1.3;
 const BONK_R = 58, BONK_SPEED = 330, BONK_WAIT = 0.7; // how close, how fast a swing has to be to knock the other cat
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const F = CA.floppy;  // (the cats' pictures without arms: see games-floppy.js)
+let looks = null;
 
 CA.games.add('gator', {
   name: 'Gator Bars', icon: '🐊',
-  blurb: 'Race the other cat across the monkey bars over a pit of alligators, swinging on super long arms! Push the way you\'re swinging (A/D or the arrows) to swing higher, and let go (Space or click) to fly to the next bar. Swing into the other cat fast to knock them off! First to the golden bar wins.',
+  blurb: 'Race the other cat across the jungle vines over a pit of alligators, swinging on super long arms! Move the mouse back and forth with your swing to swing higher, and click (or Space) to let go and fly to the next vine. Swing into the other cat fast to knock them off! First to the golden vine wins.',
   start(ctx) {
+    looks = [];
+    looks[ctx.isHost ? 0 : 1] = { pics: F.pictures(CA.profile.equip), fur: F.fur(CA.profile.equip) };
+    looks[ctx.isHost ? 1 : 0] = { pics: F.pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) };
     CA.duel.run(ctx, {
       id: 'gator', mouse: true,
-      help: 'A / D (or ← →): swing higher · Space or click: let go and grab the next bar · swing into the other cat to knock them off!',
-      helpTouch: 'Move the stick the way you\'re swinging · tap Let go to fly to the next bar',
+      help: 'Move the mouse back and forth to swing higher · click or Space: let go and grab the next vine · swing into the other cat to knock them off!',
+      helpTouch: 'Move the stick (or drag on the jungle) the way you\'re swinging · tap Let go to fly to the next vine',
       pad: { stick: true, buttons: [{ k: 'a', label: '🙌 Let go', main: true }] },
-      note: 'First to the golden bar',
+      note: 'First to the golden vine',
       init, step, snap, bot, draw, event,
       lerp: (a, b, f) => ({ bars: b.bars, t: b.t, c: b.c.map((q, i) => { const o = a.c[i]; if (!o || o.d !== q.d || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q; const m = k => o[k] + (q[k] - o[k]) * f; return Object.assign({}, q, { x: m('x'), y: m('y'), hx: m('hx'), hy: m('hy') }); }) }),
     });
@@ -48,6 +54,12 @@ function hang(bars, k, th) {
   const c = { bar: k, last: k, R: REST, th: th || 0, w: 0, fly: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0 };
   place(c, bars);
   return c;
+}
+
+// Where a cat's screen is scrolled to (each screen follows its own cat).
+function camOf(s, c) {
+  const end = s.bars[s.bars.length - 1].x + 300;
+  return clamp(c.x - 440, -120, Math.max(0, end - W));
 }
 
 function place(c, bars) {
@@ -79,8 +91,9 @@ function step(s, inp, dt, api) {
       continue;
     }
     if (!c.fly) {
-      // a pendulum: gravity pulls it back down, and pushing the way it swings pumps it higher
-      const pump = clamp(ip.mx || 0, -1, 1);
+      // a pendulum: gravity pulls it back down, and pulling the way it swings pumps it higher. You swing with the mouse:
+      // the cat pulls toward the mouse pointer (move it back and forth with the swing). On a phone, the stick does it.
+      const pump = Math.abs(ip.mx || 0) > 0.1 ? clamp(ip.mx, -1, 1) : clamp(((ip.ax == null ? c.x - camOf(s, c) : ip.ax) + camOf(s, c) - c.x) / 160, -1, 1); // (the pointer is on the screen, which follows the cat: see draw)
       c.w += (-(G / c.R) * Math.sin(c.th) + pump * PUMP - DAMP * c.w) * dt;
       c.th += c.w * dt;
       if (c.th > 2.3) { c.th = 2.3; c.w = Math.min(0, c.w); }
@@ -163,7 +176,8 @@ function bot(s, i, dt, api) {
   const c = s.cats[i], o = s.cats[1 - i];
   const st = s.bs || (s.bs = {});
   const me = st[i] || (st[i] = { rel: 0.5 + (Math.random() - 0.5) * 0.3 });
-  if (c.fly || c.dead > 0 || c.done) return { mx: 0 };
+  const sx = c.x - camOf(s, c); // (where the bot's cat is on its screen)
+  if (c.fly || c.dead > 0 || c.done) return { mx: 0, ax: sx, ay: c.y };
   const next = s.bars[c.bar + 1];
   const gap = next ? next.x - s.bars[c.bar].x : 300;
   const needW = 1.5 + gap / 260 + (Math.random() - 0.5) * 0.3 * (1 - api.skill);
@@ -175,7 +189,7 @@ function bot(s, i, dt, api) {
     me.go = 0;
   }
   if (c.th < 0) me.go = 0; // (a new chance to let go on every forward swing)
-  return { mx: c.w >= 0 ? 1 : -1, hit, held: {} };
+  return { ax: sx + (c.w >= 0 ? 400 : -400), ay: c.y, hit, held: {} }; // (it swings with the "mouse", like you)
 }
 
 function event(v, e) {
@@ -242,31 +256,44 @@ function drawGator(g, x, y, open) {
   g.restore();
 }
 
+// A super long arm in the cat's own fur (dark outline, fur middle, a light paw), with a slight tint of its team's
+// color (blue or orange) so you can tell the cats apart.
+function furArm(v, i, look, x0, y0, cx, cy, x1, y1, wide) {
+  const g = v.g, fur = look.fur;
+  const path = () => { g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(cx, cy, x1, y1); };
+  g.lineCap = 'round';
+  path(); g.strokeStyle = fur.dark; g.lineWidth = wide + 4; g.stroke();
+  path(); g.strokeStyle = fur.mid; g.lineWidth = wide; g.stroke();
+  path(); g.strokeStyle = v.team[i].main; g.globalAlpha = 0.22; g.lineWidth = wide; g.stroke(); g.globalAlpha = 1;
+  if (fur.sleeve) { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + (cx - x0) * 0.18, y0 + (cy - y0) * 0.18); g.strokeStyle = fur.sleeve; g.lineWidth = wide + 5; g.stroke(); }
+  g.fillStyle = fur.light;
+  v.dot(x1, y1, wide * 0.75);
+  g.strokeStyle = fur.dark; g.lineWidth = 2;
+  g.beginPath(); g.arc(x1, y1, wide * 0.75, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = v.team[i].main; g.globalAlpha = 0.22; v.dot(x1, y1, wide * 0.75); g.globalAlpha = 1;
+}
+
 function drawCat(v, c, i) {
-  const g = v.g;
+  const g = v.g, look = (looks && looks[i]) || v.looks[i];
   if (c.d) { // just got chomped: a splash
     g.fillStyle = 'rgba(255, 255, 255, .55)';
     v.dot(c.x, WATER + 14, 22 + Math.random() * 8);
     return;
   }
-  const sx = c.x, sy = c.y - 10, sway = Math.sin(v.now / 160 + i) * 14;
-  g.lineCap = 'round';
-  // the other arm, dangling (it's super long too)
-  g.strokeStyle = v.team[i].dark;
-  g.lineWidth = 10;
-  g.beginPath(); g.moveTo(sx - 8, sy); g.quadraticCurveTo(sx - 40 - c.w * 10, sy + 70, sx - 20 + sway, sy + 110); g.stroke();
-  g.fillStyle = v.team[i].light;
-  v.dot(sx - 20 + sway, sy + 110, 7);
-  // the long arm, up to the paw on the bar (it bows a little with the swing)
-  g.strokeStyle = v.team[i].dark;
-  g.lineWidth = 12;
-  g.beginPath(); g.moveTo(sx + 6, sy); g.quadraticCurveTo((sx + c.hx) / 2 - c.w * 14, (sy + c.hy) / 2 + 16, c.hx, c.hy); g.stroke();
-  g.strokeStyle = v.team[i].main;
-  g.lineWidth = 6;
-  g.stroke();
-  g.fillStyle = v.team[i].light;
-  v.dot(c.hx, c.hy, 9);
-  v.catSide(i, c.x, c.y + 40, 1.15, { tilt: clamp(c.w * 0.05, -0.4, 0.4) });
+  const K = 1.15, feet = c.y + 40, tilt = clamp(c.w * 0.05, -0.4, 0.4), right = c.hx >= c.x;
+  const sh = dx => [c.x + (dx * Math.cos(tilt) + 33 * Math.sin(tilt)) * K, feet - (33 * Math.cos(tilt) - dx * Math.sin(tilt)) * K];
+  const [bx, by] = sh(right ? -12.4 : 12.4), [fx, fy] = sh(right ? 12.4 : -12.4); // the back shoulder, and the front one (the swinging arm)
+  const sway = Math.sin(v.now / 160 + i) * 14, dir = right ? -1 : 1;
+  // the other arm, dangling (super long too)
+  furArm(v, i, look, bx, by, bx + dir * 30 - c.w * 10, by + 70, bx + dir * 14 + sway, by + 110, 9);
+  // the cat's body (its own picture, without arms)
+  g.save();
+  g.translate(c.x, feet);
+  g.scale(K, K);
+  F.drawBody(g, look, 0, 0, { tilt, lookRight: right });
+  g.restore();
+  // the long arm, up to the paw on the vine (it bows a little with the swing)
+  furArm(v, i, look, fx, fy, (fx + c.hx) / 2 - c.w * 14, (fy + c.hy) / 2 + 16, c.hx, c.hy, 11);
   v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 62, 13, i === v.me ? '#ffd23f' : v.team[i].light);
 }
 
@@ -294,20 +321,38 @@ function draw(v, s) {
     const open = near ? Math.max(0, 1 - (v.now - near.at) / 600) : (Math.sin(v.now / 700 + x) > 0.85 ? 0.3 : 0);
     drawGator(g, x + Math.sin(v.now / 900 + x) * 10, wy + 6 + Math.sin(v.now / 500 + x) * 2, open);
   }
-  // the start ledge, the bars (the last one golden) and the beam they hang from
+  // the start ledge, the leafy canopy, and the vines hanging from it (the last one golden, with a flower)
   g.fillStyle = '#5b4632';
   g.fillRect(-140, 400, 250, H - 400);
-  g.fillStyle = '#3d2e20';
-  g.fillRect(cam, 0, W, 26);
+  g.fillStyle = '#1f5a2c';
+  g.fillRect(cam, 0, W, 22);
+  for (let x = Math.floor(cam / 46) * 46; x < cam + W + 46; x += 46) { // leaves along the canopy
+    g.fillStyle = (x / 46) % 2 ? '#2f7a3a' : '#3d8f45';
+    g.beginPath(); g.ellipse(x, 22 + Math.sin(x) * 4, 30, 16, 0, 0, Math.PI * 2); g.fill();
+  }
   s.bars.forEach(([x, y], k) => {
-    if (x < cam - 60 || x > cam + W + 60) return;
+    if (x < cam - 80 || x > cam + W + 80) return;
     const gold = k === s.bars.length - 1;
-    g.strokeStyle = '#4a3a2a';
-    g.lineWidth = 4;
-    g.beginPath(); g.moveTo(x - 20, 26); g.lineTo(x - 20, y); g.moveTo(x + 20, 26); g.lineTo(x + 20, y); g.stroke();
-    if (gold) { g.fillStyle = 'rgba(255, 210, 63, .3)'; v.dot(x, y, 34); }
-    g.fillStyle = gold ? '#ffd23f' : '#c9ced8';
-    g.fillRect(x - 30, y - 7, 60, 14);
+    const sway = Math.sin(v.now / 900 + k) * 8;
+    const vine = () => { g.beginPath(); g.moveTo(x - 6, 14); g.bezierCurveTo(x + 14 + sway, y * 0.35, x - 14 + sway, y * 0.7, x, y); };
+    g.lineCap = 'round';
+    vine(); g.strokeStyle = gold ? '#b8860b' : '#1f5a1f'; g.lineWidth = 9; g.stroke();
+    vine(); g.strokeStyle = gold ? '#ffd23f' : '#3f9a3a'; g.lineWidth = 5; g.stroke();
+    // little leaves along the vine
+    g.fillStyle = gold ? '#ffe680' : '#58b84e';
+    for (let f = 0.25; f < 0.95; f += 0.22) {
+      const lx = x - 6 + (6 + sway) * f + Math.sin(f * 9) * 8, ly = 14 + (y - 14) * f, side = (f * 10) % 2 > 1 ? 1 : -1;
+      g.beginPath(); g.ellipse(lx + side * 9, ly, 9, 4.5, side * 0.6, 0, Math.PI * 2); g.fill();
+    }
+    // the loop at the end, where a paw grabs on
+    g.strokeStyle = gold ? '#ffd23f' : '#3f9a3a';
+    g.lineWidth = 6;
+    g.beginPath(); g.arc(x, y + 6, 9, 0, Math.PI * 2); g.stroke();
+    if (gold) {
+      g.fillStyle = 'rgba(255, 210, 63, .3)'; v.dot(x, y, 38);
+      g.fillStyle = '#ff6fae'; [0, 1.26, 2.51, 3.77, 5.03].forEach(a => v.dot(x + Math.cos(a) * 9, y - 18 + Math.sin(a) * 9, 6));
+      g.fillStyle = '#ffd23f'; v.dot(x, y - 18, 5);
+    }
   });
   // the other cat first, so yours is in front
   [1 - v.me, v.me].forEach(i => { if (s.c[i]) drawCat(v, s.c[i], i); });
