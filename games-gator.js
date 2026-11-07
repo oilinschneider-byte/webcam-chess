@@ -11,11 +11,13 @@
 
 const W = 960, H = 540;
 const G = 1300;               // gravity (and the swing's)
-const RMAX = 250, RMIN = 110, REST = 205; // the super long arms: how far they reach, and how long they hang
+const RMAX = 250, RMIN = 80, REST = 205; // the super long arms: how far they reach (and how short you can climb up them), and how long they hang
+const CLIMB = 230;            // how fast you climb up (W) or slide down (S) the arm, hanging
+const ROUNDS = 2, PAUSE = 3;  // first to win 2 rounds wins (the cat and the gator swap every round); the break between rounds
 const GRAB = 330, GRAB_HOLD = 0.4; // how far a paw can snatch a vine from (the arm stretches), and how long a click keeps trying
 const PUMP = 4.6, DAMP = 0.1;
 const WATER = 470;            // the water's surface
-const N_BARS = 16, LIMIT = 100;
+const N_BARS = 16, LIMIT = 100, GATOR_X = 1150; // (where the gator starts: a few vines in)
 const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start island (its right edge and top); walking and jumping on it
 const SWIM = 150, HOP = 640;  // the cat in the water: how fast it swims, and how hard it hops up
 const GSWIM = 250, GJUMP = 680, GWAIT = 0.55, GSTART = 2; // the gator: swim speed, leap, rest between leaps, the cat's head start
@@ -33,12 +35,12 @@ CA.games.add('gator', {
     looks[ctx.isHost ? 1 : 0] = { pics: F.pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) };
     CA.duel.run(ctx, {
       id: 'gator', mouse: true,
-      help: 'Cat: A/D walk and swing · W or Space jump · click to grab a vine, click again to let go. Gator: A/D swim · W, Space or click to leap!',
+      help: 'Cat: A/D walk and swing · W or Space jump · click to grab a vine, click again to let go · W/S climb up and down the vine. Gator: A/D swim · W, Space or click to leap!',
       helpTouch: 'Stick moves and swings · Jump · Grab / Let go (gator: leap)',
       pad: { stick: true, buttons: [{ k: 'u', label: '⤒ Jump' }, { k: 'fire', label: '🙌 Grab · Leap', main: true }] },
-      note: 'Cat vs Gator',
+      note: 'Cat vs Gator · first to 2 rounds',
       init, step, snap, bot, draw, event,
-      lerp: (a, b, f) => ({ bars: b.bars, t: b.t, gi: b.gi, c: b.c.map((q, i) => {
+      lerp: (a, b, f) => ({ bars: b.bars, t: b.t, gi: b.gi, wins: b.wins, rd: b.rd, p: b.p, lw: b.lw, c: b.c.map((q, i) => {
         const o = a.c[i];
         if (!o || o.e !== q.e || o.sw !== q.sw || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q;
         const m = k => (o[k] === undefined ? q[k] : o[k] + (q[k] - o[k]) * f);
@@ -54,11 +56,19 @@ function init(api) {
     const p = bars[k - 1];
     bars.push({ x: p.x + 250 + api.rng() * 130 + k * 3, y: clamp(p.y + (api.rng() - 0.5) * 70, 80, 170) });
   }
-  const gi = api.rng() < 0.5 ? 0 : 1; // (who's the gator)
-  const cats = [];
-  cats[1 - gi] = onLedge();
-  cats[gi] = { gator: true, x: 520, y: WATER, vx: 0, vy: 0, face: -1, water: true, wait: 0, eat: 0 };
-  return { t: 0, bars, gi, cats };
+  const s = { t: 0, bars, wins: [0, 0], rd: 0, pause: 0, last: -1 };
+  newRound(s, api.rng() < 0.5 ? 0 : 1);
+  return s;
+}
+
+// A new round: gi is the gator this time (the other one is the cat, back on the island).
+function newRound(s, gi) {
+  s.gi = gi;
+  s.t = 0;
+  s.rd++;
+  s.cats = [];
+  s.cats[1 - gi] = onLedge();
+  s.cats[gi] = { gator: true, x: GATOR_X, y: WATER, vx: 0, vy: 0, face: -1, water: true, wait: 0, eat: 0 };
 }
 
 // The cat standing on the start island (c.y is where its body is: its feet are 40 below).
@@ -108,7 +118,7 @@ function grab(s, c, k, i, api) {
   if (k > c.last) c.last = k;
   place(c, s.bars);
   api.ev('grab', { i, k });
-  if (k === N_BARS - 1) { c.done = true; api.end(i, 'The cat made it across!'); return true; }
+  if (k === N_BARS - 1) { c.done = true; roundOver(s, api, i, 'The cat made it across!'); return true; }
   return false;
 }
 
@@ -119,7 +129,18 @@ function jaws(q) {
   return [q.x + (q.vx / sp) * 70, q.y + (q.vy / sp) * 70];
 }
 
+// Someone won the round: a point for them, and either the next round (the cat and the gator swap) or the end.
+function roundOver(s, api, w, text) {
+  s.wins[w]++;
+  s.last = w;
+  api.score(s.wins[0], s.wins[1]);
+  api.ev('round', { w, text });
+  if (s.wins[w] >= ROUNDS) { s.pause = 1e9; api.end(w, text); }
+  else s.pause = PAUSE;
+}
+
 function step(s, inp, dt, api) {
+  if (s.pause > 0) { s.pause -= dt; if (s.pause <= 0) newRound(s, 1 - s.gi); return; }
   s.t += dt;
   const gi = s.gi, ci = 1 - gi, c = s.cats[ci], q = s.cats[gi];
   if (c.done || c.eaten) return;
@@ -152,7 +173,13 @@ function step(s, inp, dt, api) {
       c.th += c.w * dt;
       if (c.th > 2.3) { c.th = 2.3; c.w = Math.min(0, c.w); }
       if (c.th < -2.3) { c.th = -2.3; c.w = Math.max(0, c.w); }
-      c.R += (REST - c.R) * Math.min(1, dt * 1.5); // (the arm slowly settles to its hanging length)
+      // W climbs up the arm (shorter), S slides down (longer). The swing keeps its momentum, so climbing up speeds it up.
+      const held = ip.held || {}, climb = (held.d ? 1 : 0) - (held.u ? 1 : 0);
+      if (climb) {
+        const R0 = c.R;
+        c.R = clamp(c.R + climb * CLIMB * dt, RMIN, RMAX);
+        c.w = clamp(c.w * (R0 / c.R) * (R0 / c.R), -9, 9);
+      }
       place(c, s.bars);
       if (click || hit.a) { letGo(c, api, ci); c.want = 0; } // a click (or Space) lets go
     } else {
@@ -203,12 +230,12 @@ function step(s, inp, dt, api) {
         c.eaten = true;
         q.eat = 1;
         api.ev('chomp', { i: gi, x: Math.round(c.x), y: Math.round(c.y) });
-        api.end(gi, 'CHOMP! The gator ate the cat!');
+        roundOver(s, api, gi, 'CHOMP! The gator ate the cat!');
         return;
       }
     }
   }
-  if (s.t >= LIMIT) api.end(gi, "Time's up! The cat didn't make it across.");
+  if (s.t >= LIMIT) roundOver(s, api, gi, "Time's up! The cat didn't make it across.");
 }
 
 function snap(s) {
@@ -216,6 +243,10 @@ function snap(s) {
     bars: s.bars.map(b => [Math.round(b.x), Math.round(b.y)]),
     t: Math.max(0, Math.ceil(LIMIT - s.t)),
     gi: s.gi,
+    wins: s.wins,
+    rd: s.rd,
+    p: s.pause > 0 ? 1 : 0,
+    lw: s.last,
     c: s.cats.map(c => {
       if (c.gator) return { g: 1, x: Math.round(c.x), y: Math.round(c.y), vx: Math.round(c.vx), vy: Math.round(c.vy), f: c.water ? 0 : 1, fc: c.face, o: c.eat > 0 ? 1 : 0, e: 0 };
       const b = s.bars[c.bar];
@@ -479,7 +510,8 @@ function draw(v, s) {
   v.dot(W / 2 + 160, 41, 6);
   v.label('⏱ ' + s.t, W / 2, 66, 16, '#ffffff');
   const amGator = v.me === gi;
-  if (s.t >= LIMIT - 6) v.msg(amGator ? 'You\'re the GATOR 🐊 A/D swim · W, Space or click to leap and eat the cat!' : 'You\'re the CAT 🐱 Swing to the golden vine before the gator eats you!', true);
+  if (s.p) v.msg((s.lw === v.me ? 'You won round ' : (v.names[s.lw] || 'They') + ' won round ') + s.rd + '! Next round you swap: you\'ll be the ' + (amGator ? 'CAT 🐱' : 'GATOR 🐊'), true);
+  else if (s.t >= LIMIT - 6) v.msg('Round ' + s.rd + ' · ' + (amGator ? 'You\'re the GATOR 🐊 A/D swim · W, Space or click to leap and eat the cat!' : 'You\'re the CAT 🐱 Swing to the golden vine before the gator eats you! (W/S climb the vine)'), true);
   else if (amGator) { if (s.t >= LIMIT - 9) v.msg('Swim under the cat and leap (W, Space or click) to eat it!'); }
   else if (mine.sw) v.msg('Swim! A/D to move, W or Space to hop up, click to grab a vine — before the gator gets you!', true);
   else if (mine.f === 2) v.msg('Walk to the edge (D), jump (W or Space), then click to grab a vine!');
