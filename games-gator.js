@@ -12,10 +12,10 @@
 const W = 960, H = 540;
 const G = 1300;               // gravity (and the swing's)
 const RMAX = 250, RMIN = 80, REST = 205; // the super long arms: how far they reach (and how short you can climb up them), and how long they hang
-const CLIMB = 230;            // how fast you climb up (W) or slide down (S) the arm, hanging
+const CLIMB = 420;            // how fast you climb up (W) or slide down (S) the arm, hanging
 const ROUNDS = 2, PAUSE = 3;  // first to win 2 rounds wins (the cat and the gator swap every round); the break between rounds
 const GRAB = 330, GRAB_HOLD = 0.4; // how far a paw can snatch a vine from (the arm stretches), and how long a click keeps trying
-const PUMP = 4.6, DAMP = 0.1;
+const PUMP = 7, DAMP = 0.06;
 const WATER = 470;            // the water's surface
 const N_BARS = 16, LIMIT = 100, GATOR_X = 1150; // (where the gator starts: a few vines in)
 const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start island (its right edge and top); walking and jumping on it
