@@ -1941,3 +1941,80 @@ body.guest { --lobby-top: 58px; }
 .pot-choices button { position: relative; min-width: 96px; padding: 16px 18px; border-radius: 14px; border: 2px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 26px; font-weight: 900; cursor: pointer; }
 .pot-choices button:hover { border-color: var(--accent); transform: translateY(-2px); }
 .pot-choices kbd { position: absolute; top: 4px; right: 7px; color: var(--muted); font-family: inherit; font-size: 11px; }
+
+/* ===== The Classic Games page: a sewer, with a big picture tile for every game ===== */
+.sewer-scene { display: none; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #1a2420; }
+.sewer-scene svg { display: block; width: 100%; height: 100%; }
+body:has(#scr-games:not(.hidden)) { background: #0d1410; }
+body:has(#scr-games:not(.hidden)) .sewer-scene { display: block; }
+body:has(#scr-games:not(.hidden)) .topbar { background: rgba(10, 18, 14, .82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.sw-drip { animation: sw-drip 2.4s ease-in infinite; }
+@keyframes sw-drip { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(480px); opacity: 0; } }
+#scr-games { --text: #eef6ee; --muted: #a9c2ae; --slime: #8fe35a; --slime-dark: #3f8f2a; max-width: 1240px; color: var(--text); }
+#scr-games .sewer-hero { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px 24px; margin: 4px 0 26px; padding: 18px 22px; border-radius: 20px; background: rgba(12, 20, 15, .78); border: 2px solid rgba(143, 227, 90, .25); box-shadow: 0 14px 40px rgba(0, 0, 0, .45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#scr-games .games-back { margin: 0; color: var(--muted); }
+#scr-games .games-back:hover { color: var(--slime); }
+#scr-games .sewer-title { margin: 0; font-size: clamp(30px, 4vw, 46px); color: #f4ffe8; text-shadow: 0 3px 0 #1d3a12, 0 0 22px rgba(143, 227, 90, .35); }
+#scr-games .sewer-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+#scr-games .sewer-go, #scr-games .sewer-mix { padding: 13px 22px; border-radius: 14px; font-size: 17px; font-weight: 900; border: 0; transition: transform .12s, filter .12s; }
+#scr-games .sewer-go { color: #10220a; background: linear-gradient(180deg, #b6ff6a, #6fcf3a); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .45), 0 5px 0 #2f6b1a, 0 12px 26px rgba(111, 207, 58, .3); }
+#scr-games .sewer-mix { color: var(--text); background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 2px rgba(143, 227, 90, .45); }
+#scr-games .sewer-go:hover, #scr-games .sewer-mix:hover { transform: translateY(-2px); filter: brightness(1.08); }
+#scr-games .practice-card { padding: 0; background: none; border: 0; box-shadow: none; }
+#scr-games .pc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 6px; padding: 0 4px; }
+#scr-games .pc-head h2 { margin: 0; font-size: 28px; color: #f4ffe8; text-shadow: 0 2px 0 #000; }
+#scr-games .pc-head h2 small { margin-left: 6px; font-family: var(--font); font-size: 15px; color: var(--muted); }
+#scr-games .seg { padding: 4px; gap: 4px; border-radius: 12px; background: rgba(12, 20, 15, .8); border: 1px solid rgba(143, 227, 90, .25); }
+#scr-games .seg button { padding: 7px 14px; border: 0; border-radius: 9px; color: var(--muted); font-weight: 800; }
+#scr-games .seg button.active { background: var(--slime); color: #10220a; }
+#scr-games .pc-group { display: inline-block; margin: 26px 0 12px; padding: 7px 16px; border-radius: 10px; background: linear-gradient(180deg, #4a5a52, #34423b); border: 2px solid #22302a; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15), 0 4px 10px rgba(0, 0, 0, .4); color: #f0f6f0; font-size: 15px; letter-spacing: .5px; text-transform: none; }
+#scr-games .pc-games { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+#scr-games .pc-game { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-radius: 16px; border: 2px solid rgba(143, 227, 90, .18); background: #101a14; box-shadow: 0 8px 22px rgba(0, 0, 0, .45); text-align: left; transition: transform .15s, border-color .15s, box-shadow .15s; }
+#scr-games .pc-art { display: block; aspect-ratio: 16 / 10; overflow: hidden; }
+#scr-games .pc-art svg { display: block; width: 100%; height: 100%; transition: transform .25s; }
+#scr-games .pc-game b { display: block; padding: 9px 12px 11px; font-size: 15px; font-weight: 900; color: var(--text); background: linear-gradient(180deg, #17241c, #101a14); border-top: 2px solid rgba(0, 0, 0, .35); }
+#scr-games .pc-game:hover { transform: translateY(-4px); border-color: var(--slime); box-shadow: 0 14px 30px rgba(0, 0, 0, .5), 0 0 0 3px rgba(143, 227, 90, .18); }
+#scr-games .pc-game:hover .pc-art svg { transform: scale(1.06); }
+#scr-games .pc-new, #scr-games .pc-cam { position: absolute; top: 8px; font-style: normal; font-size: 11px; font-weight: 900; line-height: 1; }
+#scr-games .pc-new { left: 8px; padding: 4px 7px; border-radius: 6px; background: #ff3b5c; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); letter-spacing: .5px; }
+#scr-games .pc-cam { right: 8px; padding: 4px 5px; border-radius: 6px; background: rgba(0, 0, 0, .55); }
+@media (max-width: 1050px) { #scr-games .pc-games { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  #scr-games .sewer-hero { grid-template-columns: 1fr; }
+  #scr-games .sewer-actions { justify-content: stretch; }
+  #scr-games .sewer-go, #scr-games .sewer-mix { flex: 1; text-align: center; }
+  #scr-games .pc-games { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  #scr-games .pc-head { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .sw-drip { animation: none; } }
+/* the top bar over the sewer is always dark, so its words use the dark-mode colors (whatever mode you're in) */
+body:has(#scr-games:not(.hidden)) .topbar {
+  --surface: #152536; --surface-2: #1b2e42; --surface-3: #23384f; --border: #2c4560; --text: #e8f2fb; --muted: #93abc2;
+  --accent: #3d8ff0; --accent-soft: rgba(61, 143, 240, .16); --fish: #6cc8ff; --logo: #4fa3ff; color: var(--text); color-scheme: dark;
+}
+/* Hot Potato Bomb: the two cats with the bomb flying between them; Rock Paper Claw's bet buttons */
+.g-potato { max-width: 760px; }
+.pot-row { grid-template-columns: 170px 1fr 170px; gap: 0; }
+.pot-cat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 8px 12px; border-radius: 18px; }
+.pot-cat svg { width: 110px; height: auto; }
+.pot-cat.hot { animation: pot-shake .18s linear infinite; }
+@keyframes pot-shake { 25% { transform: translateX(-2px) rotate(-1deg); } 75% { transform: translateX(2px) rotate(1deg); } }
+.pot-lane { position: relative; height: 120px; }
+.pot-lane::before { content: ''; position: absolute; left: 10%; right: 10%; top: 50%; border-top: 3px dashed var(--border); }
+.pot-bomb { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; font-size: 0; transition: left .3s cubic-bezier(.3, 1.5, .5, 1), transform .3s; }
+.pot-bomb.at-me { left: 12%; transform: rotate(-14deg); }
+.pot-bomb.at-them { left: 88%; transform: rotate(14deg); }
+.pb-body { position: absolute; inset: 8px 4px 0; border-radius: 50%; background: radial-gradient(circle at 34% 30%, #6a6f80 0 12%, #2a2d38 45%, #121318 100%); box-shadow: 0 6px 14px rgba(0, 0, 0, .45); }
+.pb-body::after { content: ''; position: absolute; left: 50%; top: -9px; width: 18px; height: 12px; margin-left: -9px; border-radius: 3px; background: #4a4e5c; }
+.pb-fuse { position: absolute; left: 50%; top: -6px; width: 18px; height: 16px; border: 3px solid #c9a77a; border-color: #c9a77a transparent transparent #c9a77a; border-radius: 50% 0 0 0; }
+.pb-spark { position: absolute; left: calc(50% + 12px); top: -14px; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle, #fff 0 20%, #ffd23f 35%, #ff7a1a 60%, transparent 70%); animation: pb-spark .15s steps(2) infinite; }
+@keyframes pb-spark { 50% { transform: scale(1.4) rotate(45deg); } }
+.pot-bomb.pulse .pb-body { animation: pb-pulse .18s ease-out; }
+@keyframes pb-pulse { 50% { transform: scale(1.1); box-shadow: 0 0 22px #ff6b2a; } }
+.pot-bomb.boom { transform: scale(2.2); }
+.pot-bomb.boom .pb-body { background: radial-gradient(circle, #fff 0 15%, #ffe14d 30%, #ff7a1a 55%, rgba(255, 60, 30, 0) 72%); box-shadow: none; }
+.pot-bomb.boom .pb-body::after, .pot-bomb.boom .pb-fuse, .pot-bomb.boom .pb-spark { display: none; }
+.pot-bomb.pulse { animation: none; }
+.claw-pick button { min-width: 96px; font-size: 15px; font-weight: 800; }
+.claw-pick .claw-n { font-size: 22px; color: #ff9a3c; }
+@media (max-width: 600px) { .pot-row { grid-template-columns: 110px 1fr 110px; } .pot-cat svg { width: 76px; } }

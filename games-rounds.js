@@ -193,7 +193,7 @@ CA.games.add('claw', {
       '<div class="timer"><i id="clTimer"></i></div>' +
       '<div class="rps-picks">' + Object.keys(HANDS).map((k, i) =>
         '<button class="rps-pick" data-c="' + k + '"><span>' + HANDS[k][0] + '</span>' + HANDS[k][1] + '<kbd>' + (i + 1) + '</kbd></button>').join('') + '</div>' +
-      '<div class="claw-pick" id="clBet"><b>Bet:</b>' + [1, 2, 3].map(n => '<button data-b="' + n + '">' + '🐾'.repeat(n) + '<kbd>' + ['Q', 'W', 'E'][n - 1] + '</kbd></button>').join('') + '</div>' +
+      '<div class="claw-pick" id="clBet"><b>Bet:</b>' + [1, 2, 3].map(n => '<button data-b="' + n + '"><b class="claw-n">' + n + '</b>' + (n > 1 ? ' claws' : ' claw') + '<kbd>' + ['Q', 'W', 'E'][n - 1] + '</kbd></button>').join('') + '</div>' +
       '<p class="g-msg" id="clMsg"></p></div>';
     const picks = [...ctx.stage.querySelectorAll('.rps-pick')];
     const betBtns = [...ctx.stage.querySelectorAll('#clBet [data-b]')];
@@ -227,7 +227,7 @@ CA.games.add('claw', {
           onPick = null;
           picks.forEach(b => { b.disabled = true; b.classList.toggle('picked', b.dataset.c === c); });
           setMsg('clMe', HANDS[c][0]);
-          setMsg('clMyBet', 'Your bet: ' + '🐾'.repeat(bet));
+          setMsg('clMyBet', 'Your bet: ' + bet + (bet > 1 ? ' claws' : ' claw'));
           $('clMe').classList.add('locked');
           setMsg('clMsg', 'Locked in! Waiting for ' + ctx.oppName + '…');
           stopTimer('clTimer');
@@ -245,13 +245,13 @@ CA.games.add('claw', {
       reveal(r, a, b, w) {
         setMsg('clMe', HANDS[a.h][0]);
         setMsg('clThem', valid(b) ? HANDS[b.h][0] : '❔');
-        setMsg('clMyBet', 'You bet ' + '🐾'.repeat(a.b));
-        setMsg('clTheirBet', valid(b) ? ctx.oppName + ' bet ' + '🐾'.repeat(b.b) : '');
+        setMsg('clMyBet', 'You bet ' + a.b);
+        setMsg('clTheirBet', valid(b) ? ctx.oppName + ' bet ' + b.b : '');
         $('clMe').classList.add(w > 0 ? 'won' : w < 0 ? 'lost' : 'tied');
         $('clThem').classList.add(w < 0 ? 'won' : w > 0 ? 'lost' : 'tied');
         const pot = a.b + (valid(b) ? b.b : 0);
         setMsg('clVs', w ? '+' + pot : '=');
-        setMsg('clMsg', w > 0 ? 'You take ' + pot + ' claws! 🐾' : w < 0 ? ctx.oppName + ' takes ' + pot + ' claws.' : 'Same hand: nobody scores.');
+        setMsg('clMsg', w > 0 ? 'You take ' + pot + ' claws!' : w < 0 ? ctx.oppName + ' takes ' + pot + ' claws.' : 'Same hand: nobody scores.');
       },
       botValue() {
         const lv = skillOf(ctx);
@@ -290,7 +290,9 @@ CA.games.add('potato', {
   start(ctx) {
     ctx.stage.innerHTML =
       '<div class="g-potato">' +
-      '<div class="pot-row"><div class="pot-cat" id="potMe">You</div><div class="pot-bomb" id="potBomb">💣</div><div class="pot-cat them" id="potThem">' + esc(ctx.oppName) + '</div></div>' +
+      '<div class="pot-row"><div class="pot-cat" id="potMe">' + CA.catSVG(CA.profile.equip, { bg: false, anim: false, talker: 'me' }) + '<b>You</b></div>' +
+      '<div class="pot-lane"><div class="pot-bomb" id="potBomb"><i class="pb-body"></i><i class="pb-fuse"></i><i class="pb-spark"></i></div></div>' +
+      '<div class="pot-cat them" id="potThem">' + CA.catSVG(ctx.oppEquip, { bg: false, anim: false, talker: 'opp' }) + '<b>' + esc(ctx.oppName) + '</b></div></div>' +
       '<p class="pot-who" id="potWho">Get ready…</p>' +
       '<div class="pot-task" id="potTask"><b id="potQ"></b><div class="pot-choices" id="potChoices"></div></div>' +
       '<p class="g-msg" id="potMsg"></p></div>';
@@ -363,14 +365,12 @@ CA.games.add('potato', {
       sc[1 - loser]++;
       ctx.score(sc[me], sc[them]);
       $('potBomb').className = 'pot-bomb boom';
-      setMsg('potBomb', '💥');
       $('potTask').classList.add('hidden');
       setMsg('potWho', loser === me ? '💥 BOOM! It blew up in your paws!' : '💥 BOOM! ' + ctx.oppName + ' was holding it!');
       $('potWho').classList.remove('hot');
       sound(loser === me ? 'miss' : 'win');
       if (loser === me) ctx.oppCheer();
       ctx.later(() => {
-        setMsg('potBomb', '💣');
         if (sc[0] >= BOMB_WIN || sc[1] >= BOMB_WIN) ctx.finish(sc[me] > sc[them] ? 'win' : 'lose');
         else if (host) nextRound();
       }, 2600);

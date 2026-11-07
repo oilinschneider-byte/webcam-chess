@@ -476,6 +476,11 @@ if (window.ResizeObserver) { const ro = new ResizeObserver(() => fitScene()); ro
 CA.register('games', {
   enter() {
     CA.showScreen('scr-games');
+    // the little picture of each game, on its tile (drawn once)
+    document.querySelectorAll('#scr-games .pc-game[data-art]').forEach(a => {
+      if (a.querySelector('.pc-art')) return;
+      a.insertAdjacentHTML('afterbegin', '<span class="pc-art">' + CA.gameArt(a.dataset.art) + '</span>');
+    });
     renderPracticeLevel();
   },
 });
