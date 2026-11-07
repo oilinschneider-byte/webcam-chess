@@ -1,10 +1,11 @@
-/* Classic Games: Gator Bars. Two cats race across the same jungle vines over a pit of alligators. Both start standing on
-   a ledge: A and D walk, W or Space jumps, and a click grabs a vine your super long arm can reach. Hanging, A and D
-   pump the swing higher (push the way you're swinging); click (or Space) to let go and fly, then click again to grab
-   the next vine. Miss, and the alligators get you: you start again from the last vine you held.
-   The cats swing right through each other, but a cat swinging fast into the other one bonks it: a hanging cat is
-   knocked off its vine (and probably into the gators), a flying one is knocked off course. First to the golden vine
-   wins (after 2 minutes, whoever got further). Each screen follows its own cat. (The host's app runs it: see games-duel.js.) */
+/* Classic Games: Gator Bars. Cat vs Gator. One player (picked at random each game) is the CAT, the other is the GATOR.
+   The cat starts on a little island and has to swing across the jungle vines to the golden one: A and D walk, W or
+   Space jumps, and a click grabs a vine its super long arm can reach. Hanging, A and D pump the swing higher; click (or
+   Space) lets go, and a click grabs the next vine (each new vine with the other paw, like monkey bars).
+   The gator swims in the water below (A and D) and leaps up out of it (W, Space or a click) to eat the cat. A cat that
+   falls in doesn't die: it has to swim (A and D) and get out, by hopping up (W or Space) and grabbing a vine, or
+   climbing back onto the island, before the gator gets there. The cat wins on the golden vine; the gator wins if it
+   eats the cat, or if time runs out. Each screen follows its own player. (The host's app runs it: see games-duel.js.) */
 (() => {
 'use strict';
 
@@ -13,31 +14,36 @@ const G = 1300;               // gravity (and the swing's)
 const RMAX = 250, RMIN = 110, REST = 205; // the super long arms: how far they reach, and how long they hang
 const GRAB = 330, GRAB_HOLD = 0.4; // how far a paw can snatch a vine from (the arm stretches), and how long a click keeps trying
 const PUMP = 4.6, DAMP = 0.1;
-const WATER = 470;            // fall below this and the alligators get you
-const N_BARS = 16, LIMIT = 120, CHOMP = 1.3;
-const CHECK = 8;              // the checkpoint vine, halfway: fall after reaching it and you start again there (before it, from the ledge)
-const LEAP_WARN = 0.85, LEAP_T = 0.75, LEAP_H = 250; // a gator jumping out of the water: ripples first, then the leap (how long, how high)
-const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start ledge (its right edge and top); walking and jumping on it
-const BONK_R = 58, BONK_SPEED = 330, BONK_WAIT = 0.7; // how close, how fast a swing has to be to knock the other cat
+const WATER = 470;            // the water's surface
+const N_BARS = 16, LIMIT = 100;
+const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start island (its right edge and top); walking and jumping on it
+const SWIM = 150, HOP = 640;  // the cat in the water: how fast it swims, and how hard it hops up
+const GSWIM = 250, GJUMP = 680, GWAIT = 0.55, GSTART = 2; // the gator: swim speed, leap, rest between leaps, the cat's head start
+const EAT_R = 58;             // how close the gator's jaws have to get to the cat
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const F = CA.floppy;  // (the cats' pictures without arms: see games-floppy.js)
 let looks = null;
 
 CA.games.add('gator', {
   name: 'Gator Bars', icon: '🐊',
-  blurb: 'Race the other cat across the jungle vines over a pit of alligators! You both start on the ledge: A/D walk, W or Space jumps, and a click grabs a vine with your super long arm. Swing higher with A/D, then click again to let go and fly to the next vine (click to grab it). Swing into the other cat fast to knock them off! First to the golden vine wins.',
+  blurb: 'Cat vs Gator! One of you is the cat, swinging across the jungle vines to the golden one (A/D walk and swing, W or Space jump, click to grab a vine and to let go). The other is the gator in the water below: swim with A/D and leap up with W, Space or a click to eat the cat! Fall in as the cat and you have to swim out before you get eaten.',
   start(ctx) {
     looks = [];
     looks[ctx.isHost ? 0 : 1] = { pics: F.pictures(CA.profile.equip), fur: F.fur(CA.profile.equip) };
     looks[ctx.isHost ? 1 : 0] = { pics: F.pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) };
     CA.duel.run(ctx, {
       id: 'gator', mouse: true,
-      help: 'A/D walk and swing · W or Space jump · click to grab a vine, click again to let go · swing into the other cat to knock them off!',
-      helpTouch: 'Stick walks and swings · Jump · Grab / Let go',
-      pad: { stick: true, buttons: [{ k: 'u', label: '⤒ Jump' }, { k: 'fire', label: '🙌 Grab · Let go', main: true }] },
-      note: 'First to the golden vine',
+      help: 'Cat: A/D walk and swing · W or Space jump · click to grab a vine, click again to let go. Gator: A/D swim · W, Space or click to leap!',
+      helpTouch: 'Stick moves and swings · Jump · Grab / Let go (gator: leap)',
+      pad: { stick: true, buttons: [{ k: 'u', label: '⤒ Jump' }, { k: 'fire', label: '🙌 Grab · Leap', main: true }] },
+      note: 'Cat vs Gator',
       init, step, snap, bot, draw, event,
-      lerp: (a, b, f) => ({ bars: b.bars, t: b.t, gj: b.gj, c: b.c.map((q, i) => { const o = a.c[i]; if (!o || o.d !== q.d || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q; const m = k => o[k] + (q[k] - o[k]) * f; return Object.assign({}, q, { x: m('x'), y: m('y'), hx: m('hx'), hy: m('hy') }); }) }),
+      lerp: (a, b, f) => ({ bars: b.bars, t: b.t, gi: b.gi, c: b.c.map((q, i) => {
+        const o = a.c[i];
+        if (!o || o.e !== q.e || o.sw !== q.sw || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q;
+        const m = k => (o[k] === undefined ? q[k] : o[k] + (q[k] - o[k]) * f);
+        return Object.assign({}, q, { x: m('x'), y: m('y'), hx: m('hx'), hy: m('hy') });
+      }) }),
     });
   },
 });
@@ -48,25 +54,16 @@ function init(api) {
     const p = bars[k - 1];
     bars.push({ x: p.x + 250 + api.rng() * 130 + k * 3, y: clamp(p.y + (api.rng() - 0.5) * 70, 80, 170) });
   }
-  // both start standing on the ledge
-  return { t: 0, bars, cats: [0, 1].map(i => onLedge(i)), gj: null, gjWait: 5 + api.rng() * 3 };
+  const gi = api.rng() < 0.5 ? 0 : 1; // (who's the gator)
+  const cats = [];
+  cats[1 - gi] = onLedge();
+  cats[gi] = { gator: true, x: 520, y: WATER, vx: 0, vy: 0, face: -1, water: true, wait: 0, eat: 0 };
+  return { t: 0, bars, gi, cats };
 }
 
-// A cat standing on the start ledge (c.y is where its body is: its feet are 40 below).
-function onLedge(i) {
-  return { bar: 0, last: -1, R: REST, th: 0, w: 0, fly: false, ground: true, x: i ? 30 : 80, y: LEDGE_Y - 40, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0, hand: 0, want: 0 };
-}
-
-function hang(bars, k, th) {
-  const c = { bar: k, last: k, R: REST, th: th || 0, w: 0, fly: false, ground: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0, hand: 0, want: 0 };
-  place(c, bars);
-  return c;
-}
-
-// Where a cat's screen is scrolled to (each screen follows its own cat).
-function camOf(s, c) {
-  const end = s.bars[s.bars.length - 1].x + 300;
-  return clamp(c.x - 440, -120, Math.max(0, end - W));
+// The cat standing on the start island (c.y is where its body is: its feet are 40 below).
+function onLedge() {
+  return { bar: 0, last: -1, R: REST, th: 0, w: 0, fly: false, ground: true, swim: false, x: 80, y: LEDGE_Y - 40, vx: 0, vy: 0, done: false, eaten: false, from: -1, fromT: 0, hand: 0, want: 0 };
 }
 
 function place(c, bars) {
@@ -75,8 +72,8 @@ function place(c, bars) {
   c.y = b.y + c.R * Math.cos(c.th);
 }
 
-// how fast a cat is moving (hanging: along its swing)
-const vel = c => (c.fly || c.ground ? [c.vx, c.vy] : [c.R * c.w * Math.cos(c.th), -c.R * c.w * Math.sin(c.th)]);
+// how fast the cat is moving (hanging: along its swing)
+const vel = c => (c.fly || c.ground || c.swim ? [c.vx, c.vy] : [c.R * c.w * Math.cos(c.th), -c.R * c.w * Math.sin(c.th)]);
 
 function letGo(c, api, i) {
   [c.vx, c.vy] = vel(c);
@@ -84,16 +81,16 @@ function letGo(c, api, i) {
   c.ground = false;
   c.from = c.bar;
   c.fromT = 0.35;
-  if (api) api.ev('let', { i });
+  api.ev('let', { i });
 }
 
-// The vine your paw can reach (the nearest one above you), or -1.
+// The vine the cat's paw can reach (the nearest one above it, a vine ahead preferred a little), or -1.
 function reachable(s, c) {
   let best = -1, bd = 1e9;
   s.bars.forEach((b, k) => {
     if (k === c.from && c.fromT > 0) return;
     const d = Math.hypot(c.x - b.x, c.y - b.y);
-    const sc = d - (b.x > c.x ? 40 : 0); // (vines ahead of you are preferred a little)
+    const sc = d - (b.x > c.x ? 40 : 0);
     if (d <= GRAB && b.y < c.y + 30 && sc < bd) { bd = sc; best = k; }
   });
   return best;
@@ -101,52 +98,55 @@ function reachable(s, c) {
 
 function grab(s, c, k, i, api) {
   const b = s.bars[k], d = Math.hypot(c.x - b.x, c.y - b.y);
-  c.fly = false;
-  c.ground = false;
+  c.fly = c.ground = c.swim = false;
   c.bar = k;
   c.hand = 1 - (c.hand || 0); // (each swing, the other arm grabs)
   c.want = 0;
   c.R = clamp(d, RMIN, RMAX);
   c.th = Math.atan2(c.x - b.x, c.y - b.y);
   c.w = (c.vx * Math.cos(c.th) - c.vy * Math.sin(c.th)) / c.R;
-  if (k > c.last) { c.last = k; if (k === CHECK) api.ev('check', { i }); }
+  if (k > c.last) c.last = k;
   place(c, s.bars);
   api.ev('grab', { i, k });
-  if (k === N_BARS - 1) { c.done = true; api.end(i, 'Made it across!'); return true; }
+  if (k === N_BARS - 1) { c.done = true; api.end(i, 'The cat made it across!'); return true; }
   return false;
+}
+
+// Where the gator's jaws are: at the front of its head (in the water), or up top while it leaps.
+function jaws(q) {
+  if (q.water) return [q.x + q.face * 70, q.y - 6];
+  const sp = Math.hypot(q.vx, q.vy) || 1;
+  return [q.x + (q.vx / sp) * 70, q.y + (q.vy / sp) * 70];
 }
 
 function step(s, inp, dt, api) {
   s.t += dt;
-  for (let i = 0; i < 2; i++) {
-    const c = s.cats[i], ip = inp[i], hit = ip.hit || {};
-    c.bonk = Math.max(0, c.bonk - dt);
-    if (c.done) continue;
-    if (c.dead > 0) {
-      c.dead -= dt;
-      if (c.dead <= 0) { // back to the start ledge, or to the checkpoint vine if you got that far
-        const cp = c.last >= CHECK;
-        Object.assign(c, cp ? hang(s.bars, CHECK) : onLedge(i));
-        c.last = cp ? CHECK : -1;
-        c.bonk = 1.5; // (safe from bonks for a moment)
-      }
-      continue;
-    }
+  const gi = s.gi, ci = 1 - gi, c = s.cats[ci], q = s.cats[gi];
+  if (c.done || c.eaten) return;
+  // ---- the cat ----
+  {
+    const ip = inp[ci], hit = ip.hit || {};
     const mx = clamp(ip.mx || 0, -1, 1); // A / D
     const click = hit.fire;              // the mouse button
     const jump = hit.u || hit.a;         // W or Space
+    if (click) c.want = GRAB_HOLD;
+    c.want = Math.max(0, c.want - dt);
+    const tryGrab = () => { if (c.want > 0) { const k = reachable(s, c); if (k >= 0) return grab(s, c, k, ci, api) ? 2 : 1; } return 0; };
     if (c.ground) {
-      // on the ledge: A and D walk, W or Space jumps, a click grabs a vine if one is in reach
+      // on the island: A and D walk, W or Space jumps, a click grabs a vine if one is in reach
       c.vx = mx * WALK;
       c.x = Math.max(-110, c.x + c.vx * dt);
-      if (jump) { c.ground = false; c.fly = true; c.vy = -JUMP; c.from = -1; api.ev('jump', { i }); }
+      if (jump) { c.ground = false; c.fly = true; c.vy = -JUMP; c.from = -1; api.ev('jump', { i: ci }); }
       else if (c.x > LEDGE_X) { c.ground = false; c.fly = true; c.vy = 0; } // (walked off the edge)
-      if (click) c.want = GRAB_HOLD;
-      c.want = Math.max(0, c.want - dt);
-      if (c.want > 0) { const k = reachable(s, c); if (k >= 0 && grab(s, c, k, i, api)) return; }
-      continue;
-    }
-    if (!c.fly) {
+      if (tryGrab() === 2) return;
+    } else if (c.swim) {
+      // in the water: swim with A and D, hop up with W or Space (and grab a vine, or land back on the island)
+      c.vx = mx * SWIM;
+      c.x = Math.max(LEDGE_X + 14, c.x + c.vx * dt);
+      c.y = WATER - 15;
+      if (jump) { c.swim = false; c.fly = true; c.vy = -HOP; c.vx = mx * 230; c.from = -1; api.ev('jump', { i: ci }); }
+      if (tryGrab() === 2) return;
+    } else if (!c.fly) {
       // hanging: a pendulum. Gravity pulls it back down, and A / D (pushing the way it swings) pump it higher.
       c.w += (-(G / c.R) * Math.sin(c.th) + mx * PUMP - DAMP * c.w) * dt;
       c.th += c.w * dt;
@@ -154,111 +154,114 @@ function step(s, inp, dt, api) {
       if (c.th < -2.3) { c.th = -2.3; c.w = Math.max(0, c.w); }
       c.R += (REST - c.R) * Math.min(1, dt * 1.5); // (the arm slowly settles to its hanging length)
       place(c, s.bars);
-      if (click || hit.a) letGo(c, api, i); // a click (or Space) lets go
-      continue;
-    }
-    // flying: a click grabs the nearest vine in reach (not the one you just let go of, for a moment)
-    c.fromT -= dt;
-    c.stun = Math.max(0, c.stun - dt);
-    c.vy += G * dt;
-    c.vx += mx * 160 * dt; // (A / D steer a little in the air)
-    c.x += c.vx * dt;
-    c.y += c.vy * dt;
-    if (click) c.want = GRAB_HOLD;
-    if (c.want > 0 && c.stun <= 0) {
-      c.want -= dt;
-      const k = reachable(s, c);
-      if (k >= 0) { if (grab(s, c, k, i, api)) return; continue; }
-      if (c.want <= 0) api.ev('miss', { i });
-    }
-    // landing back on the ledge
-    if (c.vy > 0 && c.x <= LEDGE_X && c.y + 40 >= LEDGE_Y) { c.y = LEDGE_Y - 40; c.vy = 0; c.vx = 0; c.fly = false; c.ground = true; continue; }
-    if (c.y > WATER || c.x < -140) {
-      c.dead = CHOMP;
-      c.fly = false;
-      api.ev('chomp', { i, x: Math.round(c.x) });
+      if (click || hit.a) { letGo(c, api, ci); c.want = 0; } // a click (or Space) lets go
+    } else {
+      // flying: a click grabs the nearest vine in reach (not the one it just let go of, for a moment)
+      c.fromT -= dt;
+      c.vy += G * dt;
+      c.vx += mx * 160 * dt; // (A / D steer a little in the air)
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+      const g = tryGrab();
+      if (g === 2) return;
+      if (!g && click) api.ev('miss', { i: ci });
+      if (!g) {
+        if (c.vy > 0 && c.x <= LEDGE_X && c.y + 40 >= LEDGE_Y) { c.y = LEDGE_Y - 40; c.vy = 0; c.vx = 0; c.fly = false; c.ground = true; } // (back on the island)
+        else if (c.x < LEDGE_X + 14 && c.y + 40 > LEDGE_Y) { c.x = LEDGE_X + 14; c.vx = Math.max(0, c.vx); } // (bumps the island's side)
+        if (c.fly && c.vy > 0 && c.y > WATER - 15) { // splash! now it has to swim
+          c.fly = false; c.swim = true; c.vy = 0; c.y = WATER - 15;
+          api.ev('splash', { i: ci, x: Math.round(c.x) });
+        }
+      }
     }
   }
-  leap(s, dt, api);
-  // bonk: a cat swinging fast into the other knocks it (they pass through each other otherwise)
-  const [a, b] = s.cats;
-  if (!a.ground && !b.ground && !a.dead && !b.dead && !a.done && !b.done && a.bonk <= 0 && b.bonk <= 0 && Math.hypot(a.x - b.x, a.y - b.y) < BONK_R) {
-    const va = vel(a), vb = vel(b), sa = Math.hypot(va[0], va[1]), sb = Math.hypot(vb[0], vb[1]);
-    if (Math.max(sa, sb) > BONK_SPEED) {
-      const hi = sa >= sb ? 0 : 1, hit = s.cats[hi], vic = s.cats[1 - hi], hv = hi ? vb : va;
-      if (!vic.fly) letGo(vic, null, 1 - hi);
-      vic.vx += hv[0] * 0.9;
-      vic.vy += hv[1] * 0.9 - 120;
-      vic.stun = 0.45; // (knocked loose: it can't grab anything for a moment)
-      hit.bonk = vic.bonk = BONK_WAIT;
-      api.ev('bonk', { i: hi, x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) });
+  // ---- the gator ----
+  {
+    const ip = inp[gi], hit = ip.hit || {};
+    const mx = s.t < GSTART ? 0 : clamp(ip.mx || 0, -1, 1);
+    const leap = s.t >= GSTART && (hit.u || hit.a || hit.fire);
+    q.wait = Math.max(0, q.wait - dt);
+    q.eat = Math.max(0, q.eat - dt);
+    if (q.water) {
+      q.vx += (mx * GSWIM - q.vx) * Math.min(1, dt * 5);
+      if (mx) q.face = mx > 0 ? 1 : -1;
+      q.x += q.vx * dt;
+      q.y = WATER;
+      if (leap && q.wait <= 0) { q.water = false; q.vy = -GJUMP; q.eat = 0.5; api.ev('leap', { i: gi, x: Math.round(q.x) }); }
+    } else {
+      q.vy += G * dt;
+      q.vx += (mx * GSWIM * 0.6 - q.vx) * Math.min(1, dt * 1.5);
+      q.x += q.vx * dt;
+      q.y += q.vy * dt;
+      if (q.vy > 0 && q.y >= WATER) { q.y = WATER; q.vy = 0; q.water = true; q.wait = GWAIT; api.ev('splash', { i: gi, x: Math.round(q.x) }); }
+    }
+    q.x = clamp(q.x, LEDGE_X + 60, s.bars[N_BARS - 1].x + 260); // (it can't climb onto the island)
+    // chomp: the jaws reach the cat (not while it's safe on the island)
+    if (!c.ground) {
+      const [jx, jy] = jaws(q);
+      if (Math.hypot(c.x - jx, c.y + 10 - jy) < EAT_R) {
+        c.eaten = true;
+        q.eat = 1;
+        api.ev('chomp', { i: gi, x: Math.round(c.x), y: Math.round(c.y) });
+        api.end(gi, 'CHOMP! The gator ate the cat!');
+        return;
+      }
     }
   }
-  if (s.t >= LIMIT) {
-    const far = c => c.last * 10000 + c.x;
-    const fa = far(s.cats[0]), fb = far(s.cats[1]);
-    api.end(fa === fb ? -1 : fa > fb ? 0 : 1, "Time's up!");
-  }
-}
-
-// Every few seconds (at random) an alligator picks a cat that's off the ledge: ripples show up in the water under it,
-// then the gator leaps straight up, jaws open. Anything near its jaws on the way up gets eaten (back to the start or
-// the checkpoint). Swing or fly out of the way in time!
-function leap(s, dt, api) {
-  if (!s.gj) {
-    s.gjWait -= dt;
-    if (s.gjWait > 0) return;
-    const ok = [0, 1].filter(i => { const c = s.cats[i]; return !c.ground && !c.dead && !c.done && c.x > LEDGE_X + 60; });
-    if (!ok.length) { s.gjWait = 1; return; }
-    const c = s.cats[ok[Math.floor(api.rng() * ok.length)]];
-    s.gj = { x: c.x, t: 0 };
-    api.ev('ripple', { x: Math.round(c.x) });
-    return;
-  }
-  const j = s.gj;
-  j.t += dt;
-  const p = (j.t - LEAP_WARN) / LEAP_T;
-  if (p >= 1) { s.gj = null; s.gjWait = 3.5 + api.rng() * 4.5; return; }
-  if (p <= 0) return;
-  const jy = WATER - LEAP_H * Math.sin(Math.PI * p); // (where the jaws are)
-  s.cats.forEach((c, i) => {
-    if (c.ground || c.dead || c.done) return;
-    if (Math.abs(c.x - j.x) < 62 && Math.abs(c.y - jy) < 70) {
-      c.dead = CHOMP;
-      c.fly = false;
-      api.ev('chomp', { i, x: Math.round(c.x), leap: 1 });
-    }
-  });
+  if (s.t >= LIMIT) api.end(gi, "Time's up! The cat didn't make it across.");
 }
 
 function snap(s) {
   return {
     bars: s.bars.map(b => [Math.round(b.x), Math.round(b.y)]),
     t: Math.max(0, Math.ceil(LIMIT - s.t)),
-    gj: s.gj ? [Math.round(s.gj.x), Math.round((s.gj.t - LEAP_WARN) / LEAP_T * 100) / 100] : null,
+    gi: s.gi,
     c: s.cats.map(c => {
+      if (c.gator) return { g: 1, x: Math.round(c.x), y: Math.round(c.y), vx: Math.round(c.vx), vy: Math.round(c.vy), f: c.water ? 0 : 1, fc: c.face, o: c.eat > 0 ? 1 : 0, e: 0 };
       const b = s.bars[c.bar];
-      const hand = c.ground ? { x: c.x + 24, y: c.y + 70 } : c.fly ? { x: c.x + c.vx * 0.05, y: c.y - REST * 0.8 } : b;
-      return { x: Math.round(c.x), y: Math.round(c.y), hx: Math.round(hand.x), hy: Math.round(hand.y), f: c.fly ? 1 : c.ground ? 2 : 0, d: c.dead > 0 ? 1 : 0, l: c.last, w: Math.round(c.w * 10) / 10, a: c.hand || 0 };
+      const hand = c.ground ? { x: c.x + 24, y: c.y + 70 }
+        : c.swim ? { x: c.x + Math.sin(s.t * 8) * 40, y: c.y + 30 }
+        : c.fly ? { x: c.x + c.vx * 0.05, y: c.y - REST * 0.8 } : b;
+      return { x: Math.round(c.x), y: Math.round(c.y), hx: Math.round(hand.x), hy: Math.round(hand.y), f: c.fly ? 1 : c.ground ? 2 : c.swim ? 3 : 0, sw: c.swim ? 1 : 0, e: c.eaten ? 1 : 0, l: c.last, w: Math.round(c.w * 10) / 10, a: c.hand || 0 };
     }),
   };
 }
 
-// The bot plays with the same controls. On the ledge it walks to the edge and jumps, and clicks a vine once it's in
-// reach. Hanging, it pumps the way it swings (A / D) and lets go on the forward swing once it's going fast enough (a
-// worse bot judges it worse, and sometimes ends up with the gators). Flying, it grabs the next vine in reach. When the
-// other cat is hanging on the next vine, it tries to swing into it.
+// The bot plays with the same controls.
+// As the cat: on the island it walks to the edge and jumps, and clicks a vine once it's in reach. Hanging, it pumps
+// the way it swings and lets go on the forward swing once it's going fast enough (a worse bot judges it worse). Flying,
+// it grabs the next vine in reach. In the water it swims to the next vine and hops up to grab it.
+// As the gator: it swims under the cat (leading it a little) and leaps when the cat is low enough to catch.
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i];
   const st = s.bs || (s.bs = {});
   const me = st[i] || (st[i] = { rel: 0.5 + (Math.random() - 0.5) * 0.3, wait: 0 });
   const hit = {};
-  if (c.dead > 0 || c.done) return { mx: 0, hit };
   me.wait = Math.max(0, me.wait - dt);
+  const c = s.cats[i];
+  if (c.gator) {
+    const cat = s.cats[1 - i];
+    if (cat.done || cat.eaten || s.t < GSTART) return { mx: 0, hit };
+    const [cvx] = vel(cat);
+    const tx = cat.x + cvx * (0.15 + 0.25 * api.skill) + (me.off || 0);
+    if (me.wait <= 0) { me.off = (Math.random() - 0.5) * 140 * (1.2 - api.skill); me.wait = 1; }
+    const dx = tx - c.x;
+    const mx = clamp(dx / 60, -1, 1) * (0.55 + 0.45 * api.skill);
+    // leap when the cat is right above and low enough to reach (the peak of a leap is about 180 above the water)
+    if (c.water && !cat.ground && Math.abs(dx) < 50 && cat.y > WATER - 260 && Math.random() < 0.04 + 0.12 * api.skill) hit.u = true;
+    return { mx, hit };
+  }
+  if (c.done || c.eaten) return { mx: 0, hit };
   if (c.ground) {
     if (c.x < LEDGE_X - 40) return { mx: 1, hit };
     if (me.wait <= 0) { hit.u = true; me.wait = 0.6 + (1 - api.skill) * 0.6; }
     return { mx: 0.3, hit };
+  }
+  if (c.swim) {
+    const k = reachable(s, c);
+    if (k >= 0) { hit.fire = true; return { mx: 0, hit }; }
+    const b = s.bars[Math.min(N_BARS - 1, Math.max(0, c.last + 1))];
+    if (Math.abs(b.x - c.x) < 60 && me.wait <= 0) { hit.u = true; hit.fire = true; me.wait = 0.5; }
+    return { mx: clamp((b.x - c.x) / 40, -1, 1), hit };
   }
   if (c.fly) {
     const k = reachable(s, c);
@@ -269,10 +272,9 @@ function bot(s, i, dt, api) {
   const next = s.bars[c.bar + 1];
   const gap = next ? next.x - s.bars[c.bar].x : 300;
   const needW = 1.5 + gap / 260 + (Math.random() - 0.5) * 0.3 * (1 - api.skill);
-  const target = !o.dead && !o.fly && !o.ground && o.bar === c.bar + 1 && api.skill > 0.3 && Math.random() < 0.5; // (the other cat is on the next vine: crash into it)
   if (c.w > needW && c.th > me.rel && c.th < me.rel + 0.3 && (me.go || (me.go = Math.random() < 0.3 + 0.6 * api.skill ? 1 : -1)) > 0) {
     hit.fire = true;
-    me.rel = (target ? 0.35 : 0.5) + (Math.random() - 0.5) * 0.4 * (1.2 - api.skill);
+    me.rel = 0.5 + (Math.random() - 0.5) * 0.4 * (1.2 - api.skill);
     me.go = 0;
     me.wait = 0.25;
   }
@@ -285,21 +287,16 @@ function event(v, e) {
   if (e.type === 'let') { if (e.i === v.me) v.sound([[340, 0, 0.04]]); }
   if (e.type === 'jump') { if (e.i === v.me) v.sound([[500, 0, 0.04]]); }
   if (e.type === 'miss') { if (e.i === v.me) v.sound([[200, 0, 0.05]]); }
-  if (e.type === 'bonk') {
-    v.burst(e.x, e.y, '#fff3b0', 18, 300);
-    v.ring(e.x, e.y, v.team[e.i].main, 24);
-    v.pop(e.x, e.y - 40, e.i === v.me ? 'BONK! 💥' : 'BONKED!', e.i === v.me ? '#7dffb0' : '#ff6b6b');
-    v.shake(10);
-    v.sound([[500, 0, 0.04], [250, 0.03, 0.1]]);
+  if (e.type === 'leap') v.sound(e.i === v.me ? [[140, 0, 0.08], [220, 0.06, 0.06]] : [[120, 0, 0.08], [90, 0.08, 0.1]]);
+  if (e.type === 'splash') {
+    (v.splashes || (v.splashes = [])).push({ x: e.x, at: v.now });
+    v.sound([[180, 0, 0.05], [130, 0.04, 0.06]]);
   }
-  if (e.type === 'check') {
-    if (e.i === v.me) { v.pop(W / 2, 120, 'CHECKPOINT! 🚩', '#7dffb0'); v.sound([[520, 0, 0.05], [660, 0.06, 0.05], [880, 0.12, 0.08]]); }
-  }
-  if (e.type === 'ripple') v.sound([[120, 0, 0.08], [90, 0.1, 0.1]]);
   if (e.type === 'chomp') {
-    v.shake(e.i === v.me ? 12 : 4);
-    v.sound(e.i === v.me ? [[160, 0, 0.12], [110, 0.1, 0.18]] : [[220, 0, 0.06]]);
-    (v.chomps || (v.chomps = [])).push({ i: e.i, x: e.x, at: v.now });
+    v.burst(e.x, e.y, '#ffffff', 16, 260);
+    v.pop(e.x, e.y - 50, 'CHOMP! 🐊', e.i === v.me ? '#7dffb0' : '#ff6b6b');
+    v.shake(12);
+    v.sound([[160, 0, 0.12], [110, 0.1, 0.18]]);
   }
 }
 
@@ -326,6 +323,7 @@ function makeJungle() {
   return c;
 }
 
+// An alligator, facing left (its snout out at -100 from its middle), jaws open by 0 to 1.
 function drawGator(g, x, y, open) {
   g.save();
   g.translate(x, y);
@@ -339,10 +337,13 @@ function drawGator(g, x, y, open) {
   g.beginPath(); g.moveTo(0, 0); g.lineTo(-38, -4); g.lineTo(-36, 4); g.lineTo(0, 6); g.fill();
   if (open > 0.1) { g.fillStyle = '#f4f1e6'; for (let k = 0; k < 5; k++) { g.beginPath(); g.moveTo(-6 - k * 7, 4); g.lineTo(-9 - k * 7, 9); g.lineTo(-12 - k * 7, 4); g.fill(); } }
   g.restore();
+  if (open > 0.1) { g.fillStyle = '#b8333f'; g.beginPath(); g.moveTo(-36, 6); g.lineTo(-66, 8); g.lineTo(-36, 10); g.fill(); } // (inside its mouth)
   g.fillStyle = '#3b8233';
-  g.beginPath(); g.moveTo(-36, 6); g.lineTo(-72, 8); g.lineTo(-36, 14); g.fill();
+  g.beginPath(); g.moveTo(-36, 6); g.lineTo(-72, 8 + open * 4); g.lineTo(-36, 14); g.fill();
+  if (open > 0.1) { g.fillStyle = '#f4f1e6'; for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(-40 - k * 7, 8 + open * 2); g.lineTo(-43 - k * 7, 4 + open * 2); g.lineTo(-46 - k * 7, 8 + open * 2); g.fill(); } }
   g.fillStyle = '#245520';
   for (let k = -2; k <= 3; k++) { g.beginPath(); g.arc(k * 11, -3, 4, Math.PI, 0); g.fill(); }
+  g.beginPath(); g.moveTo(40, 4); g.quadraticCurveTo(70, 2, 92, 10); g.lineTo(40, 14); g.fill(); // (its tail)
   g.fillStyle = '#e8d34a';
   g.beginPath(); g.arc(-30, -4, 4, 0, Math.PI * 2); g.fill();
   g.fillStyle = '#111';
@@ -350,8 +351,24 @@ function drawGator(g, x, y, open) {
   g.restore();
 }
 
+// The gator player: swimming at the surface (half under the water), or leaping out of it nose first.
+function drawPlayerGator(v, q, i) {
+  const g = v.g;
+  g.save();
+  g.translate(q.x, q.f ? q.y : q.y - 9); // (swimming, its back and eyes stick out of the water)
+  if (q.f) g.rotate(Math.atan2(q.vy, q.vx) - Math.PI); // (leaping: its snout points the way it's going)
+  else if (q.fc > 0) g.scale(-1, 1);                    // (swimming: faces the way it last swam)
+  // a glow in its team's color, so you can tell whose gator it is
+  g.fillStyle = v.team[i].main; g.globalAlpha = 0.25;
+  g.beginPath(); g.ellipse(0, 8, 74, 22, 0, 0, Math.PI * 2); g.fill();
+  g.globalAlpha = 1;
+  drawGator(g, 0, 0, q.o ? 1 : q.f ? 0.6 : 0.1);
+  g.restore();
+  v.label(i === v.me ? 'You 🐊' : v.names[i] + ' 🐊', q.x, q.f ? q.y + 60 : q.y - 34, 13, i === v.me ? '#ffd23f' : v.team[i].light);
+}
+
 // A super long arm in the cat's own fur (dark outline, fur middle, a light paw), with a slight tint of its team's
-// color (blue or orange) so you can tell the cats apart.
+// color (blue or orange).
 function furArm(v, i, look, x0, y0, cx, cy, x1, y1, wide) {
   const g = v.g, fur = look.fur;
   const path = () => { g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(cx, cy, x1, y1); };
@@ -369,51 +386,23 @@ function furArm(v, i, look, x0, y0, cx, cy, x1, y1, wide) {
 
 function drawCat(v, c, i) {
   const g = v.g, look = (looks && looks[i]) || v.looks[i];
-  if (c.d) { // just got chomped: a splash
-    g.fillStyle = 'rgba(255, 255, 255, .55)';
-    v.dot(c.x, WATER + 14, 22 + Math.random() * 8);
-    return;
-  }
-  const K = 1.15, feet = c.y + 40, tilt = clamp(c.w * 0.05, -0.4, 0.4), right = c.hx >= c.x;
+  if (c.e) return; // (eaten)
+  const K = 1.15, feet = c.y + 40, tilt = c.sw ? Math.sin(v.now / 200) * 0.12 : clamp(c.w * 0.05, -0.4, 0.4), right = c.hx >= c.x;
   const sh = dx => [c.x + (dx * Math.cos(tilt) + 33 * Math.sin(tilt)) * K, feet - (33 * Math.cos(tilt) - dx * Math.sin(tilt)) * K];
   // the arm on the vine swaps every swing (left paw, then right paw, like monkey bars); flying, the free arm reaches for the next one
   const side = (c.f !== 0 ? 1 - c.a : c.a) ? 12.4 : -12.4;
-  const [bx, by] = sh(-side), [fx, fy] = sh(side); // the dangling shoulder, and the reaching one
+  const [bx, by] = sh(-side), [fx, fy] = sh(side); // the dangling (or paddling) shoulder, and the reaching one
   const sway = Math.sin(v.now / 160 + i) * 14, dir = side > 0 ? -1 : 1;
-  // the other arm, dangling (super long too)
-  furArm(v, i, look, bx, by, bx + dir * 30 - c.w * 10, by + 70, bx + dir * 14 + sway, by + 110, 9);
+  if (c.sw) furArm(v, i, look, bx, by, bx + dir * 30, by + 20, c.x * 2 - c.hx, c.hy, 9); // (paddling)
+  else furArm(v, i, look, bx, by, bx + dir * 30 - c.w * 10, by + 70, bx + dir * 14 + sway, by + 110, 9);
   // the cat's body (its own picture, without arms)
   g.save();
   g.translate(c.x, feet);
   g.scale(K, K);
   F.drawBody(g, look, 0, 0, { tilt, lookRight: right });
   g.restore();
-  // the long arm, up to the paw on the vine (it bows a little with the swing)
   furArm(v, i, look, fx, fy, (fx + c.hx) / 2 - c.w * 14, (fy + c.hy) / 2 + 16, c.hx, c.hy, 11);
-  v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 62, 13, i === v.me ? '#ffd23f' : v.team[i].light);
-}
-
-// A gator jumping out of the water: ripples and two eyes first, then it leaps straight up with its jaws open.
-function drawLeap(v, [x, p]) {
-  const g = v.g, wy = WATER + 8;
-  if (p <= 0) {
-    const k = 1 + p; // (0 to 1 while it gets ready)
-    g.strokeStyle = 'rgba(200, 240, 255, .6)'; g.lineWidth = 2;
-    for (let r = 0; r < 3; r++) { const q = ((v.now / 500 + r / 3) % 1); g.globalAlpha = 1 - q; g.beginPath(); g.ellipse(x, wy + 6, 20 + q * 60, 5 + q * 10, 0, 0, Math.PI * 2); g.stroke(); }
-    g.globalAlpha = 1;
-    g.fillStyle = '#e8d34a'; v.dot(x - 12, wy + 2, 4 * k); v.dot(x + 12, wy + 2, 4 * k);
-    return;
-  }
-  const jy = WATER - LEAP_H * Math.sin(Math.PI * Math.min(1, p));
-  g.save();
-  g.beginPath(); g.rect(x - 200, -50, 400, wy + 50); g.clip(); // (only the part out of the water shows)
-  g.translate(x, jy + 100);
-  g.rotate(Math.PI / 2);
-  g.translate(-x, -(jy + 100));
-  drawGator(g, x, jy + 100, p < 0.6 ? 1 : 0.3);
-  g.restore();
-  g.fillStyle = 'rgba(255, 255, 255, .5)'; // the splash where it came out
-  for (let k = -2; k <= 2; k++) v.dot(x + k * 16, wy - 4 - Math.abs(Math.sin(v.now / 90 + k)) * 12 * (1 - p), 6);
+  v.label(i === v.me ? 'You' : v.names[i], c.x, c.sw ? c.y - 78 : c.y + 62, 13, i === v.me ? '#ffd23f' : v.team[i].light);
 }
 
 function draw(v, s) {
@@ -421,29 +410,15 @@ function draw(v, s) {
   if (!jungle) jungle = makeJungle();
   const end = s.bars[s.bars.length - 1][0] + 300;
   const mine = s.c[v.me] || s.c[0];
-  const cam = clamp(mine.x - 440, -120, Math.max(0, end - W)); // (your screen follows your own cat)
+  const gi = s.gi, ci = 1 - gi;
+  const cam = clamp(mine.x - 440, -120, Math.max(0, end - W)); // (your screen follows you)
   const bgx = (((-cam * 0.4) % 1600) + 1600) % 1600 - 1600;
   g.drawImage(jungle, bgx, 0);
   g.drawImage(jungle, bgx + 1600, 0);
   g.save();
   g.translate(-cam, 0);
-  // the water and the alligators, bobbing
   const wy = WATER + 8;
-  g.fillStyle = '#123f4a';
-  g.fillRect(cam, wy, W, H - wy);
-  g.fillStyle = 'rgba(120, 200, 220, .25)';
-  for (let x = Math.floor(cam / 40) * 40; x < cam + W; x += 40) g.fillRect(x + Math.sin(v.now / 400 + x) * 6, wy + 6, 18, 2);
-  const chomps = (v.chomps || []).filter(q => v.now - q.at < 900);
-  for (let x = 260; x < end; x += 300) {
-    if (x < cam - 120 || x > cam + W + 120) continue;
-    const near = chomps.find(q => Math.abs(q.x - x) < 220);
-    const open = near ? Math.max(0, 1 - (v.now - near.at) / 600) : (Math.sin(v.now / 700 + x) > 0.85 ? 0.3 : 0);
-    drawGator(g, x + Math.sin(v.now / 900 + x) * 10, wy + 6 + Math.sin(v.now / 500 + x) * 2, open);
-  }
-  // the start ledge, the leafy canopy, and the vines hanging from it (the last one golden, with a flower)
-  g.fillStyle = '#5b4632';
-  g.fillRect(-180, LEDGE_Y, LEDGE_X + 180, H - LEDGE_Y);
-  g.fillStyle = '#3f8f3a'; g.fillRect(-180, LEDGE_Y - 6, LEDGE_X + 180, 10); // (grass on top)
+  // the leafy canopy, and the vines hanging from it (the last one golden, with a flower)
   g.fillStyle = '#1f5a2c';
   g.fillRect(cam, 0, W, 22);
   for (let x = Math.floor(cam / 46) * 46; x < cam + W + 46; x += 46) { // leaves along the canopy
@@ -458,43 +433,55 @@ function draw(v, s) {
     g.lineCap = 'round';
     vine(); g.strokeStyle = gold ? '#b8860b' : '#1f5a1f'; g.lineWidth = 9; g.stroke();
     vine(); g.strokeStyle = gold ? '#ffd23f' : '#3f9a3a'; g.lineWidth = 5; g.stroke();
-    // little leaves along the vine
-    g.fillStyle = gold ? '#ffe680' : '#58b84e';
+    g.fillStyle = gold ? '#ffe680' : '#58b84e'; // little leaves along the vine
     for (let f = 0.25; f < 0.95; f += 0.22) {
       const lx = x - 6 + (6 + sway) * f + Math.sin(f * 9) * 8, ly = 14 + (y - 14) * f, side = (f * 10) % 2 > 1 ? 1 : -1;
       g.beginPath(); g.ellipse(lx + side * 9, ly, 9, 4.5, side * 0.6, 0, Math.PI * 2); g.fill();
     }
-    // the loop at the end, where a paw grabs on
-    g.strokeStyle = gold ? '#ffd23f' : '#3f9a3a';
+    g.strokeStyle = gold ? '#ffd23f' : '#3f9a3a'; // the loop at the end, where a paw grabs on
     g.lineWidth = 6;
     g.beginPath(); g.arc(x, y + 6, 9, 0, Math.PI * 2); g.stroke();
-    if (k === CHECK) { // the checkpoint: a flag on the canopy above its vine
-      g.strokeStyle = '#e8e0d0'; g.lineWidth = 4;
-      g.beginPath(); g.moveTo(x + 18, 14); g.lineTo(x + 18, 78); g.stroke();
-      g.fillStyle = '#ff4d5e';
-      g.beginPath(); g.moveTo(x + 20, 18 + Math.sin(v.now / 200) * 2); g.quadraticCurveTo(x + 40, 22 + Math.sin(v.now / 150) * 4, x + 58, 30); g.lineTo(x + 20, 46); g.fill();
-      g.fillStyle = 'rgba(125, 255, 176, .18)'; v.dot(x, y, 30);
-    }
     if (gold) {
       g.fillStyle = 'rgba(255, 210, 63, .3)'; v.dot(x, y, 38);
       g.fillStyle = '#ff6fae'; [0, 1.26, 2.51, 3.77, 5.03].forEach(a => v.dot(x + Math.cos(a) * 9, y - 18 + Math.sin(a) * 9, 6));
       g.fillStyle = '#ffd23f'; v.dot(x, y - 18, 5);
     }
   });
-  if (s.gj) drawLeap(v, s.gj);
-  // the other cat first, so yours is in front
-  [1 - v.me, v.me].forEach(i => { if (s.c[i]) drawCat(v, s.c[i], i); });
+  // the deep water (behind), the start island standing in it
+  g.fillStyle = '#123f4a';
+  g.fillRect(cam, wy, W, H - wy);
+  g.fillStyle = '#5b4632';
+  g.beginPath(); g.moveTo(-180, LEDGE_Y); g.lineTo(LEDGE_X, LEDGE_Y); g.lineTo(LEDGE_X + 14, H); g.lineTo(-180, H); g.fill();
+  g.fillStyle = '#4a3828'; g.fillRect(-180, LEDGE_Y + 30, LEDGE_X + 186, 8); // (a darker layer of earth)
+  g.fillStyle = '#3f8f3a'; g.fillRect(-180, LEDGE_Y - 6, LEDGE_X + 180, 10); // (grass on top)
+  g.fillStyle = '#58b84e'; for (let x = -170; x < LEDGE_X; x += 22) { g.beginPath(); g.moveTo(x, LEDGE_Y - 4); g.lineTo(x + 5, LEDGE_Y - 16); g.lineTo(x + 10, LEDGE_Y - 4); g.fill(); }
+  // the players: the cat, then the gator (so its jaws are in front)
+  if (s.c[ci]) drawCat(v, s.c[ci], ci);
+  if (s.c[gi]) drawPlayerGator(v, s.c[gi], gi);
+  // the water's surface in front (so swimmers are half under it), with ripples and splashes
+  g.fillStyle = 'rgba(18, 63, 74, .62)';
+  g.fillRect(cam, wy, W, H - wy);
+  g.fillStyle = 'rgba(120, 200, 220, .35)';
+  g.fillRect(cam, wy - 1, W, 3);
+  g.fillStyle = 'rgba(120, 200, 220, .25)';
+  for (let x = Math.floor(cam / 40) * 40; x < cam + W; x += 40) g.fillRect(x + Math.sin(v.now / 400 + x) * 6, wy + 10, 18, 2);
+  (v.splashes = (v.splashes || []).filter(p => v.now - p.at < 600)).forEach(p => {
+    const k = (v.now - p.at) / 600;
+    g.fillStyle = 'rgba(255, 255, 255, ' + (0.6 * (1 - k)) + ')';
+    for (let d = -2; d <= 2; d++) v.dot(p.x + d * 14 * (1 + k), wy - 4 - Math.sin(Math.PI * k) * (24 - Math.abs(d) * 6), 5);
+  });
   g.restore();
-  // how far each cat got: a little map along the top, and the time
+  // how far the cat got: a little map along the top (with the gator on it), and the time
   g.fillStyle = 'rgba(0, 0, 0, .45)';
   v.roundRect(W / 2 - 160, 36, 320, 10, 5); g.fill();
-  s.c.forEach((q, i) => { g.fillStyle = v.team[i].main; v.dot(W / 2 - 160 + 320 * clamp(q.x / end, 0, 1), 41, i === v.me ? 8 : 6); });
-  g.fillStyle = '#ff4d5e';
-  v.dot(W / 2 - 160 + 320 * clamp(s.bars[CHECK][0] / end, 0, 1), 41, 4); // (the checkpoint on the map)
+  s.c.forEach((q, i) => { g.fillStyle = q.g ? '#3b8233' : v.team[i].main; v.dot(W / 2 - 160 + 320 * clamp(q.x / end, 0, 1), 41, i === v.me ? 8 : 6); });
   g.fillStyle = '#ffd23f';
   v.dot(W / 2 + 160, 41, 6);
   v.label('⏱ ' + s.t, W / 2, 66, 16, '#ffffff');
-  if (mine.d) v.msg(mine.l >= CHECK ? 'CHOMP! 🐊 Back to the checkpoint…' : 'CHOMP! 🐊 Back to the start…', true);
+  const amGator = v.me === gi;
+  if (s.t >= LIMIT - 6) v.msg(amGator ? 'You\'re the GATOR 🐊 A/D swim · W, Space or click to leap and eat the cat!' : 'You\'re the CAT 🐱 Swing to the golden vine before the gator eats you!', true);
+  else if (amGator) { if (s.t >= LIMIT - 9) v.msg('Swim under the cat and leap (W, Space or click) to eat it!'); }
+  else if (mine.sw) v.msg('Swim! A/D to move, W or Space to hop up, click to grab a vine — before the gator gets you!', true);
   else if (mine.f === 2) v.msg('Walk to the edge (D), jump (W or Space), then click to grab a vine!');
   else if (mine.f === 1) v.msg('Click to grab a vine!');
 }
