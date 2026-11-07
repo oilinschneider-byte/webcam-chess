@@ -285,17 +285,36 @@ function newTask() {
 }
 
 CA.games.add('potato', {
-  name: 'Hot Potato Bomb', icon: '💣',
+  name: 'Hot Potato Bomb', icon: '🥔',
   blurb: 'Pass the bomb! When you\'re holding it, answer the quick question to throw it to the other cat. Nobody knows when it blows up. Whoever holds it when it goes BOOM loses the round. First to 2!',
   start(ctx) {
     ctx.stage.innerHTML =
-      '<div class="g-potato">' +
-      '<div class="pot-row"><div class="pot-cat" id="potMe">' + CA.catSVG(CA.profile.equip, { bg: false, anim: false, talker: 'me' }) + '<b>You</b></div>' +
-      '<div class="pot-lane"><div class="pot-bomb" id="potBomb"><i class="pb-body"></i><i class="pb-fuse"></i><i class="pb-spark"></i></div></div>' +
+      '<div class="g-potato kitchen">' +
+      '<svg class="kit-bg" viewBox="0 0 760 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">' +
+      // the window, with the sky and a little sun
+      '<rect x="300" y="26" width="160" height="112" rx="8" fill="#8a5a33"/><rect x="310" y="36" width="140" height="92" rx="4" fill="#9fdcff"/>' +
+      '<circle cx="420" cy="64" r="14" fill="#ffe27a"/><path d="M310 112 q40 -22 80 0 t60 -6 V128 H310z" fill="#7cc46a"/>' +
+      '<rect x="377" y="36" width="6" height="92" fill="#8a5a33"/><rect x="310" y="79" width="140" height="6" fill="#8a5a33"/>' +
+      '<path d="M296 26 h168 l-10 18 h-148z" fill="#e8574e"/><path d="M296 26 h168" stroke="#c23f37" stroke-width="4"/>' +
+      // a shelf with jars on the left
+      '<rect x="40" y="96" width="170" height="10" rx="3" fill="#8a5a33"/>' +
+      '<rect x="54" y="62" width="30" height="34" rx="6" fill="#ffd27a" opacity=".9"/><rect x="52" y="56" width="34" height="9" rx="3" fill="#c23f37"/>' +
+      '<rect x="98" y="54" width="34" height="42" rx="7" fill="#b9e3a0" opacity=".9"/><rect x="96" y="48" width="38" height="9" rx="3" fill="#3b7a3a"/>' +
+      '<rect x="146" y="68" width="26" height="28" rx="5" fill="#f2b6c8" opacity=".9"/><rect x="144" y="63" width="30" height="8" rx="3" fill="#a2456a"/>' +
+      '<circle cx="190" cy="84" r="12" fill="#d68a3a"/>' +
+      // pots and pans hanging on the right
+      '<rect x="540" y="20" width="180" height="6" rx="3" fill="#6b6f7a"/>' +
+      '<path d="M570 26 v16" stroke="#6b6f7a" stroke-width="3"/><circle cx="570" cy="70" r="26" fill="#4a4e5c"/><circle cx="570" cy="70" r="18" fill="#5c6170"/>' +
+      '<path d="M630 26 v10" stroke="#6b6f7a" stroke-width="3"/><rect x="626" y="34" width="8" height="28" rx="3" fill="#8a5a33"/><ellipse cx="630" cy="82" rx="22" ry="24" fill="#c98b4a"/><ellipse cx="630" cy="82" rx="15" ry="17" fill="#e0a868"/>' +
+      '<path d="M690 26 v14" stroke="#6b6f7a" stroke-width="3"/><path d="M676 40 h28 l-4 40 h-20z" fill="#d9dce3"/><rect x="684" y="80" width="12" height="4" fill="#b8bcc6"/>' +
+      '</svg>' +
+            '<div class="pot-row"><div class="pot-cat" id="potMe">' + CA.catSVG(CA.profile.equip, { bg: false, anim: false, talker: 'me' }) + '<b>You</b></div>' +
+      '<div class="pot-lane"><div class="pot-bomb" id="potBomb"><span class="pb-arc" id="potArc"><i class="pb-body"></i><i class="pb-fuse"></i><i class="pb-spark"></i><i class="pb-steam"></i></span></div></div>' +
       '<div class="pot-cat them" id="potThem">' + CA.catSVG(ctx.oppEquip, { bg: false, anim: false, talker: 'opp' }) + '<b>' + esc(ctx.oppName) + '</b></div></div>' +
-      '<p class="pot-who" id="potWho">Get ready…</p>' +
+      '<div class="kit-counter"></div>' +
+      '<div class="kit-cab"><p class="pot-who" id="potWho">Get ready…</p>' +
       '<div class="pot-task" id="potTask"><b id="potQ"></b><div class="pot-choices" id="potChoices"></div></div>' +
-      '<p class="g-msg" id="potMsg"></p></div>';
+      '<p class="g-msg" id="potMsg"></p></div></div>';
     const host = ctx.isHost || !!ctx.bot;
     const me = host ? 0 : 1, them = 1 - me;
     const sc = [0, 0];
@@ -303,10 +322,12 @@ CA.games.add('potato', {
 
     function show() {
       const mine = holder === me;
+      const arc = $('potArc');
+      if (holder >= 0 && arc.dataset.h !== String(holder)) { arc.dataset.h = holder; arc.classList.remove('toss'); void arc.offsetWidth; arc.classList.add('toss'); }
       $('potBomb').className = 'pot-bomb ' + (holder < 0 ? '' : mine ? 'at-me' : 'at-them');
       $('potMe').classList.toggle('hot', mine);
       $('potThem').classList.toggle('hot', holder === them);
-      setMsg('potWho', !live ? '' : mine ? '🔥 YOU HAVE THE BOMB! Answer to pass it!' : ctx.oppName + ' has the bomb…');
+      setMsg('potWho', !live ? '' : mine ? '🔥 YOU HAVE THE HOT POTATO! Solve it to throw it!' : ctx.oppName + ' has the hot potato…');
       $('potWho').classList.toggle('hot', live && mine);
       $('potTask').classList.toggle('hidden', !(live && mine));
       if (live && mine) {
@@ -365,8 +386,9 @@ CA.games.add('potato', {
       sc[1 - loser]++;
       ctx.score(sc[me], sc[them]);
       $('potBomb').className = 'pot-bomb boom';
+      $(loser === me ? 'potMe' : 'potThem').classList.add('blown');
       $('potTask').classList.add('hidden');
-      setMsg('potWho', loser === me ? '💥 BOOM! It blew up in your paws!' : '💥 BOOM! ' + ctx.oppName + ' was holding it!');
+      setMsg('potWho', loser === me ? '💥 BOOM! The potato blew up in your paws!' : '💥 BOOM! ' + ctx.oppName + ' was holding it!');
       $('potWho').classList.remove('hot');
       sound(loser === me ? 'miss' : 'win');
       if (loser === me) ctx.oppCheer();
@@ -377,6 +399,9 @@ CA.games.add('potato', {
     }
     function begin(r, h) {
       round = r;
+      $('potMe').classList.remove('blown');
+      $('potThem').classList.remove('blown');
+      $('potArc').dataset.h = '';
       passes = 0;
       ctx.note('Round ' + r + ' · first to ' + BOMB_WIN);
       setMsg('potWho', '3…');
