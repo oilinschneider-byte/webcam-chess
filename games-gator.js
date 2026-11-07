@@ -15,6 +15,8 @@ const GRAB = 330, GRAB_HOLD = 0.4; // how far a paw can snatch a vine from (the 
 const PUMP = 4.6, DAMP = 0.1;
 const WATER = 470;            // fall below this and the alligators get you
 const N_BARS = 16, LIMIT = 120, CHOMP = 1.3;
+const CHECK = 8;              // the checkpoint vine, halfway: fall after reaching it and you start again there (before it, from the ledge)
+const LEAP_WARN = 0.85, LEAP_T = 0.75, LEAP_H = 250; // a gator jumping out of the water: ripples first, then the leap (how long, how high)
 const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start ledge (its right edge and top); walking and jumping on it
 const BONK_R = 58, BONK_SPEED = 330, BONK_WAIT = 0.7; // how close, how fast a swing has to be to knock the other cat
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -35,7 +37,7 @@ CA.games.add('gator', {
       pad: { stick: true, buttons: [{ k: 'u', label: '⤒ Jump' }, { k: 'fire', label: '🙌 Grab · Let go', main: true }] },
       note: 'First to the golden vine',
       init, step, snap, bot, draw, event,
-      lerp: (a, b, f) => ({ bars: b.bars, t: b.t, c: b.c.map((q, i) => { const o = a.c[i]; if (!o || o.d !== q.d || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q; const m = k => o[k] + (q[k] - o[k]) * f; return Object.assign({}, q, { x: m('x'), y: m('y'), hx: m('hx'), hy: m('hy') }); }) }),
+      lerp: (a, b, f) => ({ bars: b.bars, t: b.t, gj: b.gj, c: b.c.map((q, i) => { const o = a.c[i]; if (!o || o.d !== q.d || (o.f !== q.f && Math.hypot(o.x - q.x, o.y - q.y) > 80)) return q; const m = k => o[k] + (q[k] - o[k]) * f; return Object.assign({}, q, { x: m('x'), y: m('y'), hx: m('hx'), hy: m('hy') }); }) }),
     });
   },
 });
@@ -47,7 +49,7 @@ function init(api) {
     bars.push({ x: p.x + 250 + api.rng() * 130 + k * 3, y: clamp(p.y + (api.rng() - 0.5) * 70, 80, 170) });
   }
   // both start standing on the ledge
-  return { t: 0, bars, cats: [0, 1].map(i => onLedge(i)) };
+  return { t: 0, bars, cats: [0, 1].map(i => onLedge(i)), gj: null, gjWait: 5 + api.rng() * 3 };
 }
 
 // A cat standing on the start ledge (c.y is where its body is: its feet are 40 below).
@@ -107,7 +109,7 @@ function grab(s, c, k, i, api) {
   c.R = clamp(d, RMIN, RMAX);
   c.th = Math.atan2(c.x - b.x, c.y - b.y);
   c.w = (c.vx * Math.cos(c.th) - c.vy * Math.sin(c.th)) / c.R;
-  if (k > c.last) c.last = k;
+  if (k > c.last) { c.last = k; if (k === CHECK) api.ev('check', { i }); }
   place(c, s.bars);
   api.ev('grab', { i, k });
   if (k === N_BARS - 1) { c.done = true; api.end(i, 'Made it across!'); return true; }
@@ -122,10 +124,10 @@ function step(s, inp, dt, api) {
     if (c.done) continue;
     if (c.dead > 0) {
       c.dead -= dt;
-      if (c.dead <= 0) { // back to the last vine you held (or the ledge, if you never got one)
-        const last = c.last;
-        Object.assign(c, last < 0 ? onLedge(i) : hang(s.bars, last));
-        c.last = last;
+      if (c.dead <= 0) { // back to the start ledge, or to the checkpoint vine if you got that far
+        const cp = c.last >= CHECK;
+        Object.assign(c, cp ? hang(s.bars, CHECK) : onLedge(i));
+        c.last = cp ? CHECK : -1;
         c.bonk = 1.5; // (safe from bonks for a moment)
       }
       continue;
@@ -177,6 +179,7 @@ function step(s, inp, dt, api) {
       api.ev('chomp', { i, x: Math.round(c.x) });
     }
   }
+  leap(s, dt, api);
   // bonk: a cat swinging fast into the other knocks it (they pass through each other otherwise)
   const [a, b] = s.cats;
   if (!a.ground && !b.ground && !a.dead && !b.dead && !a.done && !b.done && a.bonk <= 0 && b.bonk <= 0 && Math.hypot(a.x - b.x, a.y - b.y) < BONK_R) {
@@ -198,10 +201,41 @@ function step(s, inp, dt, api) {
   }
 }
 
+// Every few seconds (at random) an alligator picks a cat that's off the ledge: ripples show up in the water under it,
+// then the gator leaps straight up, jaws open. Anything near its jaws on the way up gets eaten (back to the start or
+// the checkpoint). Swing or fly out of the way in time!
+function leap(s, dt, api) {
+  if (!s.gj) {
+    s.gjWait -= dt;
+    if (s.gjWait > 0) return;
+    const ok = [0, 1].filter(i => { const c = s.cats[i]; return !c.ground && !c.dead && !c.done && c.x > LEDGE_X + 60; });
+    if (!ok.length) { s.gjWait = 1; return; }
+    const c = s.cats[ok[Math.floor(api.rng() * ok.length)]];
+    s.gj = { x: c.x, t: 0 };
+    api.ev('ripple', { x: Math.round(c.x) });
+    return;
+  }
+  const j = s.gj;
+  j.t += dt;
+  const p = (j.t - LEAP_WARN) / LEAP_T;
+  if (p >= 1) { s.gj = null; s.gjWait = 3.5 + api.rng() * 4.5; return; }
+  if (p <= 0) return;
+  const jy = WATER - LEAP_H * Math.sin(Math.PI * p); // (where the jaws are)
+  s.cats.forEach((c, i) => {
+    if (c.ground || c.dead || c.done) return;
+    if (Math.abs(c.x - j.x) < 62 && Math.abs(c.y - jy) < 70) {
+      c.dead = CHOMP;
+      c.fly = false;
+      api.ev('chomp', { i, x: Math.round(c.x), leap: 1 });
+    }
+  });
+}
+
 function snap(s) {
   return {
     bars: s.bars.map(b => [Math.round(b.x), Math.round(b.y)]),
     t: Math.max(0, Math.ceil(LIMIT - s.t)),
+    gj: s.gj ? [Math.round(s.gj.x), Math.round((s.gj.t - LEAP_WARN) / LEAP_T * 100) / 100] : null,
     c: s.cats.map(c => {
       const b = s.bars[c.bar];
       const hand = c.ground ? { x: c.x + 24, y: c.y + 70 } : c.fly ? { x: c.x + c.vx * 0.05, y: c.y - REST * 0.8 } : b;
@@ -258,6 +292,10 @@ function event(v, e) {
     v.shake(10);
     v.sound([[500, 0, 0.04], [250, 0.03, 0.1]]);
   }
+  if (e.type === 'check') {
+    if (e.i === v.me) { v.pop(W / 2, 120, 'CHECKPOINT! 🚩', '#7dffb0'); v.sound([[520, 0, 0.05], [660, 0.06, 0.05], [880, 0.12, 0.08]]); }
+  }
+  if (e.type === 'ripple') v.sound([[120, 0, 0.08], [90, 0.1, 0.1]]);
   if (e.type === 'chomp') {
     v.shake(e.i === v.me ? 12 : 4);
     v.sound(e.i === v.me ? [[160, 0, 0.12], [110, 0.1, 0.18]] : [[220, 0, 0.06]]);
@@ -355,6 +393,29 @@ function drawCat(v, c, i) {
   v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 62, 13, i === v.me ? '#ffd23f' : v.team[i].light);
 }
 
+// A gator jumping out of the water: ripples and two eyes first, then it leaps straight up with its jaws open.
+function drawLeap(v, [x, p]) {
+  const g = v.g, wy = WATER + 8;
+  if (p <= 0) {
+    const k = 1 + p; // (0 to 1 while it gets ready)
+    g.strokeStyle = 'rgba(200, 240, 255, .6)'; g.lineWidth = 2;
+    for (let r = 0; r < 3; r++) { const q = ((v.now / 500 + r / 3) % 1); g.globalAlpha = 1 - q; g.beginPath(); g.ellipse(x, wy + 6, 20 + q * 60, 5 + q * 10, 0, 0, Math.PI * 2); g.stroke(); }
+    g.globalAlpha = 1;
+    g.fillStyle = '#e8d34a'; v.dot(x - 12, wy + 2, 4 * k); v.dot(x + 12, wy + 2, 4 * k);
+    return;
+  }
+  const jy = WATER - LEAP_H * Math.sin(Math.PI * Math.min(1, p));
+  g.save();
+  g.beginPath(); g.rect(x - 200, -50, 400, wy + 50); g.clip(); // (only the part out of the water shows)
+  g.translate(x, jy + 100);
+  g.rotate(Math.PI / 2);
+  g.translate(-x, -(jy + 100));
+  drawGator(g, x, jy + 100, p < 0.6 ? 1 : 0.3);
+  g.restore();
+  g.fillStyle = 'rgba(255, 255, 255, .5)'; // the splash where it came out
+  for (let k = -2; k <= 2; k++) v.dot(x + k * 16, wy - 4 - Math.abs(Math.sin(v.now / 90 + k)) * 12 * (1 - p), 6);
+}
+
 function draw(v, s) {
   const g = v.g;
   if (!jungle) jungle = makeJungle();
@@ -407,12 +468,20 @@ function draw(v, s) {
     g.strokeStyle = gold ? '#ffd23f' : '#3f9a3a';
     g.lineWidth = 6;
     g.beginPath(); g.arc(x, y + 6, 9, 0, Math.PI * 2); g.stroke();
+    if (k === CHECK) { // the checkpoint: a flag on the canopy above its vine
+      g.strokeStyle = '#e8e0d0'; g.lineWidth = 4;
+      g.beginPath(); g.moveTo(x + 18, 14); g.lineTo(x + 18, 78); g.stroke();
+      g.fillStyle = '#ff4d5e';
+      g.beginPath(); g.moveTo(x + 20, 18 + Math.sin(v.now / 200) * 2); g.quadraticCurveTo(x + 40, 22 + Math.sin(v.now / 150) * 4, x + 58, 30); g.lineTo(x + 20, 46); g.fill();
+      g.fillStyle = 'rgba(125, 255, 176, .18)'; v.dot(x, y, 30);
+    }
     if (gold) {
       g.fillStyle = 'rgba(255, 210, 63, .3)'; v.dot(x, y, 38);
       g.fillStyle = '#ff6fae'; [0, 1.26, 2.51, 3.77, 5.03].forEach(a => v.dot(x + Math.cos(a) * 9, y - 18 + Math.sin(a) * 9, 6));
       g.fillStyle = '#ffd23f'; v.dot(x, y - 18, 5);
     }
   });
+  if (s.gj) drawLeap(v, s.gj);
   // the other cat first, so yours is in front
   [1 - v.me, v.me].forEach(i => { if (s.c[i]) drawCat(v, s.c[i], i); });
   g.restore();
@@ -420,10 +489,12 @@ function draw(v, s) {
   g.fillStyle = 'rgba(0, 0, 0, .45)';
   v.roundRect(W / 2 - 160, 36, 320, 10, 5); g.fill();
   s.c.forEach((q, i) => { g.fillStyle = v.team[i].main; v.dot(W / 2 - 160 + 320 * clamp(q.x / end, 0, 1), 41, i === v.me ? 8 : 6); });
+  g.fillStyle = '#ff4d5e';
+  v.dot(W / 2 - 160 + 320 * clamp(s.bars[CHECK][0] / end, 0, 1), 41, 4); // (the checkpoint on the map)
   g.fillStyle = '#ffd23f';
   v.dot(W / 2 + 160, 41, 6);
   v.label('⏱ ' + s.t, W / 2, 66, 16, '#ffffff');
-  if (mine.d) v.msg('CHOMP! 🐊 The gators got you…', true);
+  if (mine.d) v.msg(mine.l >= CHECK ? 'CHOMP! 🐊 Back to the checkpoint…' : 'CHOMP! 🐊 Back to the start…', true);
   else if (mine.f === 2) v.msg('Walk to the edge (D), jump (W or Space), then click to grab a vine!');
   else if (mine.f === 1) v.msg('Click to grab a vine!');
 }
