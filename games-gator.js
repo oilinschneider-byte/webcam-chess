@@ -20,7 +20,7 @@ const WATER = 470;            // the water's surface
 const N_BARS = 16, LIMIT = 100, GATOR_X = 1150; // (where the gator starts: a few vines in)
 const LEDGE_X = 150, LEDGE_Y = 400, WALK = 190, JUMP = 760; // the start island (its right edge and top); walking and jumping on it
 const SWIM = 150, HOP = 640;  // the cat in the water: how fast it swims, and how hard it hops up
-const GSWIM = 250, GJUMP = 680, GWAIT = 0.55, GSTART = 2; // the gator: swim speed, leap, rest between leaps, the cat's head start
+const GSWIM = 420, GJUMP = 680, GWAIT = 0.55, GSTART = 2; // the gator: swim speed, leap, rest between leaps, the cat's head start
 const EAT_R = 58;             // how close the gator's jaws have to get to the cat
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const F = CA.floppy;  // (the cats' pictures without arms: see games-floppy.js)
@@ -210,7 +210,7 @@ function step(s, inp, dt, api) {
     q.wait = Math.max(0, q.wait - dt);
     q.eat = Math.max(0, q.eat - dt);
     if (q.water) {
-      q.vx += (mx * GSWIM - q.vx) * Math.min(1, dt * 5);
+      q.vx += (mx * GSWIM - q.vx) * Math.min(1, dt * 7);
       if (mx) q.face = mx > 0 ? 1 : -1;
       q.x += q.vx * dt;
       q.y = WATER;
