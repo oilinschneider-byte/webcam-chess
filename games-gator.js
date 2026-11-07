@@ -11,6 +11,7 @@
 const W = 960, H = 540;
 const G = 1300;               // gravity (and the swing's)
 const RMAX = 250, RMIN = 110, REST = 205; // the super long arms: how far they reach, and how long they hang
+const GRAB = 330, GRAB_HOLD = 0.4; // how far a paw can snatch a vine from (the arm stretches), and how long a click keeps trying
 const PUMP = 4.6, DAMP = 0.1;
 const WATER = 470;            // fall below this and the alligators get you
 const N_BARS = 16, LIMIT = 120, CHOMP = 1.3;
@@ -51,11 +52,11 @@ function init(api) {
 
 // A cat standing on the start ledge (c.y is where its body is: its feet are 40 below).
 function onLedge(i) {
-  return { bar: 0, last: -1, R: REST, th: 0, w: 0, fly: false, ground: true, x: i ? 30 : 80, y: LEDGE_Y - 40, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0 };
+  return { bar: 0, last: -1, R: REST, th: 0, w: 0, fly: false, ground: true, x: i ? 30 : 80, y: LEDGE_Y - 40, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0, hand: 0, want: 0 };
 }
 
 function hang(bars, k, th) {
-  const c = { bar: k, last: k, R: REST, th: th || 0, w: 0, fly: false, ground: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0 };
+  const c = { bar: k, last: k, R: REST, th: th || 0, w: 0, fly: false, ground: false, x: 0, y: 0, vx: 0, vy: 0, dead: 0, done: false, from: -1, fromT: 0, bonk: 0, stun: 0, hand: 0, want: 0 };
   place(c, bars);
   return c;
 }
@@ -90,7 +91,8 @@ function reachable(s, c) {
   s.bars.forEach((b, k) => {
     if (k === c.from && c.fromT > 0) return;
     const d = Math.hypot(c.x - b.x, c.y - b.y);
-    if (d <= RMAX && b.y < c.y - 40 && d < bd) { bd = d; best = k; }
+    const sc = d - (b.x > c.x ? 40 : 0); // (vines ahead of you are preferred a little)
+    if (d <= GRAB && b.y < c.y + 30 && sc < bd) { bd = sc; best = k; }
   });
   return best;
 }
@@ -100,6 +102,8 @@ function grab(s, c, k, i, api) {
   c.fly = false;
   c.ground = false;
   c.bar = k;
+  c.hand = 1 - (c.hand || 0); // (each swing, the other arm grabs)
+  c.want = 0;
   c.R = clamp(d, RMIN, RMAX);
   c.th = Math.atan2(c.x - b.x, c.y - b.y);
   c.w = (c.vx * Math.cos(c.th) - c.vy * Math.sin(c.th)) / c.R;
@@ -135,7 +139,9 @@ function step(s, inp, dt, api) {
       c.x = Math.max(-110, c.x + c.vx * dt);
       if (jump) { c.ground = false; c.fly = true; c.vy = -JUMP; c.from = -1; api.ev('jump', { i }); }
       else if (c.x > LEDGE_X) { c.ground = false; c.fly = true; c.vy = 0; } // (walked off the edge)
-      if (click) { const k = reachable(s, c); if (k >= 0 && grab(s, c, k, i, api)) return; }
+      if (click) c.want = GRAB_HOLD;
+      c.want = Math.max(0, c.want - dt);
+      if (c.want > 0) { const k = reachable(s, c); if (k >= 0 && grab(s, c, k, i, api)) return; }
       continue;
     }
     if (!c.fly) {
@@ -156,10 +162,12 @@ function step(s, inp, dt, api) {
     c.vx += mx * 160 * dt; // (A / D steer a little in the air)
     c.x += c.vx * dt;
     c.y += c.vy * dt;
-    if (click && c.stun <= 0) {
+    if (click) c.want = GRAB_HOLD;
+    if (c.want > 0 && c.stun <= 0) {
+      c.want -= dt;
       const k = reachable(s, c);
       if (k >= 0) { if (grab(s, c, k, i, api)) return; continue; }
-      api.ev('miss', { i });
+      if (c.want <= 0) api.ev('miss', { i });
     }
     // landing back on the ledge
     if (c.vy > 0 && c.x <= LEDGE_X && c.y + 40 >= LEDGE_Y) { c.y = LEDGE_Y - 40; c.vy = 0; c.vx = 0; c.fly = false; c.ground = true; continue; }
@@ -197,7 +205,7 @@ function snap(s) {
     c: s.cats.map(c => {
       const b = s.bars[c.bar];
       const hand = c.ground ? { x: c.x + 24, y: c.y + 70 } : c.fly ? { x: c.x + c.vx * 0.05, y: c.y - REST * 0.8 } : b;
-      return { x: Math.round(c.x), y: Math.round(c.y), hx: Math.round(hand.x), hy: Math.round(hand.y), f: c.fly ? 1 : c.ground ? 2 : 0, d: c.dead > 0 ? 1 : 0, l: c.last, w: Math.round(c.w * 10) / 10 };
+      return { x: Math.round(c.x), y: Math.round(c.y), hx: Math.round(hand.x), hy: Math.round(hand.y), f: c.fly ? 1 : c.ground ? 2 : 0, d: c.dead > 0 ? 1 : 0, l: c.last, w: Math.round(c.w * 10) / 10, a: c.hand || 0 };
     }),
   };
 }
@@ -330,8 +338,10 @@ function drawCat(v, c, i) {
   }
   const K = 1.15, feet = c.y + 40, tilt = clamp(c.w * 0.05, -0.4, 0.4), right = c.hx >= c.x;
   const sh = dx => [c.x + (dx * Math.cos(tilt) + 33 * Math.sin(tilt)) * K, feet - (33 * Math.cos(tilt) - dx * Math.sin(tilt)) * K];
-  const [bx, by] = sh(right ? -12.4 : 12.4), [fx, fy] = sh(right ? 12.4 : -12.4); // the back shoulder, and the front one (the swinging arm)
-  const sway = Math.sin(v.now / 160 + i) * 14, dir = right ? -1 : 1;
+  // the arm on the vine swaps every swing (left paw, then right paw, like monkey bars); flying, the free arm reaches for the next one
+  const side = (c.f !== 0 ? 1 - c.a : c.a) ? 12.4 : -12.4;
+  const [bx, by] = sh(-side), [fx, fy] = sh(side); // the dangling shoulder, and the reaching one
+  const sway = Math.sin(v.now / 160 + i) * 14, dir = side > 0 ? -1 : 1;
   // the other arm, dangling (super long too)
   furArm(v, i, look, bx, by, bx + dir * 30 - c.w * 10, by + 70, bx + dir * 14 + sway, by + 110, 9);
   // the cat's body (its own picture, without arms)
