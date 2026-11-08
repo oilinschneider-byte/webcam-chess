@@ -38,21 +38,76 @@ function setAuthMode(mode) {
   authMode = mode;
   authOpenedAt = Date.now();
   document.querySelectorAll('[data-auth]').forEach(b => b.classList.toggle('active', b.dataset.auth === mode));
-  const signup = mode === 'signup';
-  $('authPass2Row').classList.toggle('hidden', !signup);
+  const google = mode === 'google', signup = mode === 'signup' || google;
+  $('authPassRow').classList.toggle('hidden', google);
+  $('authPass2Row').classList.toggle('hidden', !signup || google);
   $('authBirthRow').classList.toggle('hidden', !signup);
   $('authRulesRow').classList.toggle('hidden', !signup);
   $('rememberRow').classList.toggle('hidden', signup);
+  $('googleBtn').classList.toggle('hidden', !CA.googleOn || google);
+  document.querySelector('.auth-tabs').classList.toggle('hidden', google);
   $('authPass').autocomplete = signup ? 'new-password' : 'current-password';
-  $('authSubmit').textContent = signup ? 'Create account' : 'Log in';
+  $('authSubmit').textContent = google ? 'Create my account' : signup ? 'Create account' : 'Log in';
   $('authSubmit').disabled = signup && ageBlocked();
-  $('authHint').textContent = signup
+  $('authHint').textContent = google ? 'Signed in with Google ✓ Now pick a username for your cat (other players see it), and when you were born.'
+    : signup
     ? 'Your account is saved online, so you can log in on any device. Played here before? Use the same username and password, and your cat and fish come along.'
     : "Don't have an account yet? Press Sign up.";
   $('authMsg').className = 'msg' + (CA.server.configured ? '' : ' error');
   $('authMsg').textContent = !CA.server.configured ? CA.server.message('not_configured')
     : signup && ageBlocked() ? 'Sorry, you have to be 13 or older to play CamArcade.' : '';
 }
+
+// Signed in with Google, but no CamArcade account yet: the username and birthday (the same rules as signing up).
+async function googleSignUp(name) {
+  const msg = $('authMsg');
+  msg.className = 'msg error';
+  if (ageBlocked()) { msg.textContent = 'Sorry, you have to be 13 or older to play CamArcade.'; return; }
+  const bad = CA.checkUsername(name);
+  if (bad) { msg.textContent = bad; $('authUser').focus(); return; }
+  const birth = { month: +$('authMonth').value, year: +$('authYear').value };
+  if (!birth.month || !birth.year) { msg.textContent = 'Pick the month and year you were born.'; $('authMonth').focus(); return; }
+  if (ageOf(birth.year, birth.month) < 13) { blockAge(); setAuthMode('signup'); return; }
+  if (!$('authRules').checked) { msg.textContent = 'Tick the box to agree to the Terms and promise to be kind to other players.'; $('authRules').focus(); return; }
+  $('authSubmit').disabled = true;
+  msg.className = 'msg';
+  msg.textContent = 'Creating your account…';
+  try {
+    await CA.googleLogIn({ name, birth });
+    msg.textContent = '';
+    CA.toast('Welcome to CamArcade, ' + CA.profile.name + '! 🐱');
+    CA.resume();
+  } catch (err) {
+    if (err.code === 'too_young') { blockAge(); setAuthMode('signup'); return; }
+    msg.className = 'msg error';
+    msg.textContent = err.message;
+  } finally {
+    $('authSubmit').disabled = false;
+  }
+}
+
+// Back from Google: log in (or, for a new Google account, pick a username first).
+async function googleBack() {
+  const msg = $('authMsg');
+  if (CA.googleError) { msg.className = 'msg error'; msg.textContent = CA.googleError; return; }
+  msg.className = 'msg';
+  msg.textContent = 'Signing you in with Google…';
+  try {
+    const r = await CA.googleLogIn();
+    if (r && r.need) { setAuthMode('google'); $('authUser').value = ''; $('authUser').focus(); return; }
+    msg.textContent = '';
+    CA.toast('Welcome back, ' + CA.profile.name + '!');
+    CA.resume();
+  } catch (err) {
+    msg.className = 'msg error';
+    msg.textContent = err.message;
+  }
+}
+
+$('googleBtn').addEventListener('click', () => {
+  if (ageBlocked()) { $('authMsg').className = 'msg error'; $('authMsg').textContent = 'Sorry, you have to be 13 or older to play CamArcade.'; return; }
+  CA.googleStart();
+});
 
 async function submitAuth(e) {
   e.preventDefault();
@@ -63,6 +118,7 @@ async function submitAuth(e) {
   let birth = null;
   msg.className = 'msg error';
   if (!name) { msg.textContent = 'Type a username.'; $('authUser').focus(); return; }
+  if (authMode === 'google') { googleSignUp(name); return; }
   if (!pass) { msg.textContent = 'Type a password.'; $('authPass').focus(); return; }
   if (signup) {
     if (ageBlocked()) { msg.textContent = 'Sorry, you have to be 13 or older to play CamArcade.'; return; }
@@ -173,6 +229,7 @@ CA.register('auth', {
     const want = params.get('mode');
     setAuthMode(want === 'signup' || (want !== 'login' && !CA.lastUser()) ? 'signup' : 'login');
     if (authMode === 'login' && !$('authUser').value) $('authUser').value = CA.lastUser();
+    if (params.get('google')) { googleBack(); return; }
     setTimeout(() => ($('authUser').value ? $('authPass') : $('authUser')).focus(), 50);
   },
 });
@@ -605,14 +662,14 @@ $('logoutBtn').addEventListener('click', () => {
 $('deleteAccountBtn').addEventListener('click', () => {
   CA.modal({
     icon: '🗑️', title: 'Delete your account?',
-    text: 'This deletes your account, your cat, your fish and your streak from CamArcade for good. Type your password to confirm.',
-    input: { type: 'password', placeholder: 'Your password' },
+    text: 'This deletes your account, your cat, your fish and your streak from CamArcade for good. ' + (CA.profile.google ? 'Type your username to confirm.' : 'Type your password to confirm.'),
+    input: CA.profile.google ? { type: 'text', placeholder: 'Your username' } : { type: 'password', placeholder: 'Your password' },
     buttons: [{ label: 'Delete my account', danger: true, fn: deleteAccount }, { label: 'Cancel' }],
   });
 });
 
 function deleteAccount(password) {
-  if (!password) { CA.toast('Type your password to delete your account.'); return; }
+  if (!password) { CA.toast(CA.profile.google ? 'Type your username to delete your account.' : 'Type your password to delete your account.'); return; }
   CA.requestLeave(async () => {
     try {
       await CA.deleteAccount(password);

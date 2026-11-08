@@ -26,6 +26,8 @@ const MESSAGES = {
   name_taken: 'That username is taken. Pick another one.',
   no_such_name: "There's no account with that username. Check the spelling, or sign up.",
   wrong_password: 'That password is not right. Try again.',
+  wrong_username: "That's not your username. Type it exactly to delete your account.",
+  google_failed: 'Signing in with Google did not work. Please try again.',
   too_many_tries: 'Too many wrong tries. Wait 15 minutes and try again.',
   not_logged_in: 'You were logged out. Please log in again.',
   profile_too_big: 'Your cat could not be saved.',
@@ -52,6 +54,7 @@ async function call(fn, args, opts) {
   if (!configured) throw fail('not_configured');
   const headers = { 'Content-Type': 'application/json', apikey: KEY };
   if (KEY.startsWith('eyJ')) headers.Authorization = 'Bearer ' + KEY; // (the legacy keys also want this)
+  if (opts && opts.auth) headers.Authorization = 'Bearer ' + opts.auth; // (signed in with Google: Supabase's proof, see ca_google)
   let res;
   try {
     res = await fetch(URL_ + '/rest/v1/rpc/' + fn, {
@@ -72,6 +75,6 @@ async function call(fn, args, opts) {
   return data;
 }
 
-window.CAServer = { configured, call, message: code => MESSAGES[code] || MESSAGES.server_error };
+window.CAServer = { configured, call, url: URL_, google: configured && cfg.googleLogin === true, message: code => MESSAGES[code] || MESSAGES.server_error };
 
 })();

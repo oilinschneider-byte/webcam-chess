@@ -74,6 +74,9 @@ alter table camarcade.players add column if not exists test_with text;
 -- Guests: a made-up name and no password, for one visit. They count as under 18 (we never asked their age), so other
 -- players only ever see and hear their cat. They stay off the leaderboards, and are deleted after a while (see guest_up).
 alter table camarcade.players add column if not exists is_guest boolean not null default false;
+-- Google accounts: the id of the Google sign-in (Supabase's own log-in system, auth.users) that this player logs in with.
+-- They have no password of their own (a random one is stored, that nobody knows).
+alter table camarcade.players add column if not exists google_id uuid unique;
 
 create table if not exists camarcade.sessions (
   token_hash text primary key,
@@ -239,7 +242,7 @@ begin
   return jsonb_build_object(
     'id', p.id, 'name', p.name, 'adult', p.born + interval '18 years' <= current_date,
     'streak', p.streak, 'best', p.best, 'wins', p.wins, 'losses', p.losses, 'draws', p.draws,
-    'friendly', p.friendly, 'disputes', p.disputes, 'profile', p.profile, 'test', p.is_test, 'test_with', p.test_with, 'guest', p.is_guest,
+    'friendly', p.friendly, 'disputes', p.disputes, 'profile', p.profile, 'test', p.is_test, 'test_with', p.test_with, 'guest', p.is_guest, 'google', p.google_id is not null,
     'banned_until', case when p.banned_until > now() then p.banned_until end,
     'ban_reason', case when p.banned_until > now() then p.ban_reason end);
 end $$;
@@ -939,6 +942,26 @@ begin
   delete from camarcade.players where id = v_id and is_guest;
 end $$;
 
+-- Logging in with Google. The website sends along Supabase's proof that you signed in with Google (the Authorization
+-- header: set up in Supabase → Authentication → Providers → Google). If that Google account already has a CamArcade
+-- account, you're logged in. If not, this says {need: 'signup'}, and the website asks for a username and the month and
+-- year you were born (the same rules as signing up) and calls this again with them, to make the account.
+create or replace function public.ca_google(p_name text default null, p_year int default null, p_month int default null, p_profile jsonb default '{}'::jsonb)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := auth.uid();
+  v_id bigint;
+  r jsonb;
+begin
+  if v_uid is null then raise exception 'google_failed'; end if;
+  select id into v_id from camarcade.players where google_id = v_uid;
+  if found then return jsonb_build_object('token', camarcade.new_session(v_id), 'me', camarcade.me_json(v_id)); end if;
+  if p_name is null then return jsonb_build_object('need', 'signup'); end if;
+  r := camarcade.sign_up(p_name, encode(extensions.gen_random_bytes(24), 'hex'), p_year, p_month, p_profile, camarcade.net());
+  update camarcade.players set google_id = v_uid where name_key = lower(p_name);
+  return jsonb_set(r, '{me,google}', 'true'::jsonb);
+end $$;
+
 create or replace function public.ca_guest() returns jsonb
 language sql security definer set search_path = '' as $$
   select camarcade.guest_up(camarcade.net())
@@ -984,7 +1007,9 @@ declare
   p camarcade.players;
 begin
   select * into p from camarcade.players where id = v_id;
-  if p.pass_hash <> extensions.crypt(coalesce(p_pass, ''), p.pass_hash) then
+  if p.google_id is not null then -- (a Google account has no password: you type your username instead)
+    if lower(coalesce(p_pass, '')) <> p.name_key then return jsonb_build_object('error', 'wrong_username'); end if;
+  elsif p.pass_hash <> extensions.crypt(coalesce(p_pass, ''), p.pass_hash) then
     return jsonb_build_object('error', 'wrong_password');
   end if;
   delete from camarcade.players where id = v_id;
@@ -1117,7 +1142,7 @@ begin
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
-    'ca_turn(text)', 'ca_guest()', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)'
+    'ca_turn(text)', 'ca_guest()', 'ca_google(text, int, int, jsonb)', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);

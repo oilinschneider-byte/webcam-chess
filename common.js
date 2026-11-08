@@ -724,6 +724,7 @@ function applyStats(me) {
   profile.test = !!me.test;              // a test account (testplayer.js plays it by itself)
   profile.testWith = me.test_with || null;
   profile.guest = !!me.guest;            // a guest: nothing is saved, and no shop or Streak Pass
+  profile.google = !!me.google;          // logs in with Google (no password: deleting the account asks for the username)
   document.body.classList.toggle('guest', profile.guest);
 }
 
@@ -1289,6 +1290,7 @@ function guestGate() {
       buttons: [
         { label: 'Sign up', primary: true, fn: () => { logOut(); go('auth', { mode: 'signup' }); } },
         { label: 'Log in', fn: () => { logOut(); go('auth', { mode: 'login' }); } },
+        ...(CAServer.google ? [{ label: "Continue with Google", fn: () => { logOut(); googleStart(); } }] : []),
         { label: 'Not now' },
       ],
     });
@@ -1339,7 +1341,35 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
 
-const restoring = restoreSession();
+/* ================= GOOGLE ================= */
+// "Continue with Google": Supabase's sign-in page sends you to Google and back here, with its proof that you signed in
+// in the address (after the #). It's picked up here, before anything else reads the address, and the log-in screen
+// hands it to the server (ca_google in server/schema.sql), which logs you in or asks for a username first.
+let googleToken = null, googleError = '';
+if (/[#&](access_token|error_description)=/.test(location.hash)) {
+  const q = new URLSearchParams(location.hash.replace(/^#/, ''));
+  googleToken = q.get('access_token');
+  if (!googleToken) googleError = (q.get('error_description') || 'Signing in with Google did not work.');
+  history.replaceState(null, '', location.pathname + location.search + '#/auth?google=1');
+}
+
+function googleStart() {
+  location.href = CAServer.url + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(location.origin + location.pathname);
+}
+
+// Logs in with Google. If that Google account has no CamArcade account yet, resolves with {need: 'signup'}: then
+// call it again with { name, birth } to make one. (Google players stay logged in on this computer.)
+async function googleLogIn(signup) {
+  if (!googleToken) throw new Error('That took too long. Press Continue with Google again.');
+  const args = signup ? { p_name: signup.name, p_year: signup.birth.year, p_month: signup.birth.month, p_profile: looks(fresh(signup.name)) } : {};
+  const r = await CAServer.call('ca_google', args, { auth: googleToken });
+  if (r && r.need) return r;
+  googleToken = null;
+  startSession(r.token, r.me, true);
+  return r;
+}
+
+const restoring = googleToken ? Promise.resolve() : restoreSession(); // (just back from Google: that's who you are now)
 
 // Count this visit (once a day per browser), so you can show how many people play. (Not the automated tests.)
 if (CAServer.configured && !/[?&]autotest=/.test(location.search)) CAServer.call('ca_visit', { p_visitor: deviceId() }).catch(() => {});
@@ -1353,6 +1383,7 @@ window.CA = {
   ITEMS, ITEM, SLOTS, PASS, TIER_XP,
   catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest, setRecord,
   guestGate,
+  googleStart, googleLogIn, get googleOn() { return CAServer.google; }, get googleError() { return googleError; },
   signUp, playAsGuest, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
   server: CAServer, deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
   register, go, render, resume, showScreen, requestLeave,

@@ -3,6 +3,9 @@
 window.CAMARCADE_CONFIG = {
   supabaseUrl: 'https://gcobykzdjjnrukbluqya.supabase.co',   // like 'https://abcdefghijklmnop.supabase.co'
   supabaseKey: 'sb_publishable_NbMcKVVrW0C-072QblUYaA_EImQQBaL',   // the "publishable" key (sb_publishable_…) or the legacy "anon" key (eyJ…). Never the secret one.
+  // "Continue with Google" on the log-in screen. Turn it on (true) only after setting up Google in Supabase (see SETUP.md,
+  // "Log in with Google"): until then the button would only show an error.
+  googleLogin: true,
   // How two players' browsers find each other. When a network (like school Wi-Fi) blocks a direct connection, they go
   // through a relay: logged-in players get a Cloudflare relay login from the server (ca_turn), and Open Relay is a
   // free spare. (PeerJS's old relays, eu-0/us-0.turn.peerjs.com, are gone: they were taken out.)

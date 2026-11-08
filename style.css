@@ -2074,3 +2074,8 @@ body.guest .guest-login { display: inline-flex; }
 .gl-short { display: none; }
 .consent.agree a { color: inherit; text-decoration: underline; }
 @media (max-width: 700px) { .guest-login { padding: 6px 10px; font-size: 12px; } .gl-long { display: none; } .gl-short { display: inline; } body.guest #topMicBtn, body.guest #topCamBtn { display: none; } }
+/* "Continue with Google" on the log-in screen (only when it's turned on in config.js) */
+.google-btn { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 14px; padding: 12px; border-radius: 12px; border: 1px solid #dadce0; background: #fff; color: #3c4043; font-weight: 800; }
+.google-btn:hover { background: #f7f8fa; }
+.google-btn svg { width: 20px; height: 20px; }
+.google-btn.hidden { display: none; }

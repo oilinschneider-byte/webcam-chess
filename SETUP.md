@@ -72,6 +72,39 @@ Running `server/schema.sql` again later is safe. It updates the code and keeps e
 
 Push the changes to GitHub. GitHub Pages publishes the `main` branch, so merge your branch into `main` when you're happy. Everyone who opens the site uses the same server, so there's nothing else to set up.
 
+## 6. Log in with Google (optional)
+
+This adds a **Continue with Google** button to the log-in screen. It takes about 15 minutes. The button stays hidden until the last step.
+
+**A. Update the server code.** Open `server/schema.sql`, copy everything, paste it into Supabase → **SQL Editor** → **+ New query**, and press **Run**. (Running it again is safe: it keeps every player.)
+
+**B. Make a Google sign-in key.**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in with the Google account that should own this.
+2. At the top, press the project picker → **New project**. Name it `CamArcade` and press **Create**. Make sure it's selected.
+3. Open **APIs & Services** → **OAuth consent screen** (it may be called **Google Auth Platform** → **Branding**). Press **Get started**:
+   - **App name:** `CamArcade`, **User support email:** your email.
+   - **Audience:** **External**.
+   - **Contact email:** your email. Agree and press **Create**.
+   - In **Branding**, add the **App home page** `https://thecamarcade.com`, **Privacy policy** `https://thecamarcade.com/#/privacy`, **Terms** `https://thecamarcade.com/#/terms`, and under **Authorized domains** add `thecamarcade.com` and `supabase.co`. Save.
+   - In **Audience**, press **Publish app** (so anyone can use it, not just test users).
+4. Open **Clients** (or **Credentials** → **+ Create credentials** → **OAuth client ID**):
+   - **Application type:** **Web application**, **Name:** `CamArcade`.
+   - **Authorized JavaScript origins:** `https://thecamarcade.com`
+   - **Authorized redirect URIs:** `https://gcobykzdjjnrukbluqya.supabase.co/auth/v1/callback`
+   - Press **Create**. Copy the **Client ID** and the **Client secret** (keep the secret private: never put it in the website's files).
+
+**C. Turn Google on in Supabase.**
+
+1. Supabase → **Authentication** → **Sign In / Providers** → **Google**: switch it on, paste the **Client ID** and **Client secret**, and **Save**.
+2. Supabase → **Authentication** → **URL Configuration**:
+   - **Site URL:** `https://thecamarcade.com`
+   - **Redirect URLs:** press **Add URL** and add `https://thecamarcade.com/**` (and `http://localhost:8080/**` for testing on your computer).
+
+**D. Show the button.** In `config.js`, change `googleLogin: false` to `googleLogin: true`, and push it.
+
+How it works: Google tells Supabase who you are, Supabase sends you back to CamArcade with its proof, and the server (`ca_google`) logs you in. The first time, it asks for a username and the month and year you were born, the same rules as signing up. Google accounts have no CamArcade password: to delete one, you type your username.
+
 ## Running CamArcade
 
 Everything below is done in Supabase's **SQL Editor**: paste the line and press **Run**.
