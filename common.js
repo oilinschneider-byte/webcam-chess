@@ -958,6 +958,7 @@ const voice = {
   faceWanted() { return lsGet(FACE_KEY) === 'on'; },
   setFaceWanted(on) { lsSet(FACE_KEY, on ? 'on' : 'off'); },
   setCamWanted(on) {
+    if (on && guestGate()) { emitMedia(); return Promise.resolve(); }
     lsSet(CAMERA_KEY, on ? 'on' : 'off');
     emitMedia();
     return this.syncCamera();
@@ -1008,6 +1009,7 @@ const voice = {
 
   async startMic() {
     if (this.hasMic()) return true;
+    if (guestGate()) return false;
     const md = navigator.mediaDevices;
     if (!window.isSecureContext || !md || !md.getUserMedia) return false;
     try {
@@ -1254,13 +1256,54 @@ function showScreen(id) {
   window.scrollTo(0, 0);
 }
 
+// Opening the site goes straight to the lobby: if you're not logged in, the server makes you a guest (a funny name, for
+// this tab only), the same as pressing "Play as guest". Not for search engines' robots, or a browser where someone said
+// they're under 13; and if it doesn't work, you get the log-in screen instead.
+let guestTry = null; // (null: not tried yet · a promise: making one now · 'failed')
+function autoGuest() {
+  if (guestTry === 'failed') return false;
+  if (guestTry) return true;
+  if (lsGet('camarcade-age-block') === '1') return false;
+  if (/bot|crawl|spider|slurp|preview|lighthouse/i.test(navigator.userAgent || '')) return false;
+  guestTry = playAsGuest().then(() => {
+    guestTry = null;
+    toast('You are ' + profile.name + '! 🐱');
+    resume();
+  }).catch(err => {
+    console.warn('Could not start a guest:', err);
+    guestTry = 'failed';
+    render();
+  });
+  return true;
+}
+
+// Guests can't use the camera or the microphone: those need an account. This asks them to make one (true if it did).
+let gateAt = 0;
+function guestGate() {
+  if (!profile || !profile.guest) return false;
+  if (Date.now() - gateAt > 800) {
+    gateAt = Date.now();
+    modal({
+      title: '📷🎤 Make a free account to use your camera and mic',
+      text: 'Guests play as their cat. Sign up (it takes a few seconds) to talk with your microphone, show your face to other players, and play the camera games. You also keep your streak, fish and Streak Pass.',
+      buttons: [
+        { label: 'Sign up', primary: true, fn: () => { logOut(); go('auth', { mode: 'signup' }); } },
+        { label: 'Log in', fn: () => { logOut(); go('auth', { mode: 'login' }); } },
+        { label: 'Not now' },
+      ],
+    });
+  }
+  return true;
+}
+
 function render() {
   let { name, params } = parseHash();
   if (!routes[name]) name = 'menu';
   if (!user && !routes[name].public) {
     pending = location.hash;
+    if (autoGuest()) return; // (makes a guest, then carries on to where you were going)
     name = 'auth';
-  } else if (user && !voice.choice() && !routes[name].public && name !== 'perm') {
+  } else if (user && !voice.choice() && !routes[name].public && name !== 'perm' && !(profile && profile.guest)) {
     pending = location.hash;
     name = 'perm';
   } else if (user && profile && profile.guest && (name === 'pass' || name === 'cat')) {
@@ -1309,6 +1352,7 @@ window.CA = {
   restoring,
   ITEMS, ITEM, SLOTS, PASS, TIER_XP,
   catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest, setRecord,
+  guestGate,
   signUp, playAsGuest, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
   server: CAServer, deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
   register, go, render, resume, showScreen, requestLeave,

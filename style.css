@@ -2063,3 +2063,14 @@ body:has(#scr-games:not(.hidden)) .topbar {
 .g-potato.kitchen .pot-bomb.boom .pb-body { background: radial-gradient(circle, #fff 0 15%, #ffe14d 30%, #ff7a1a 55%, rgba(255, 60, 30, 0) 72%); box-shadow: none; animation: none; }
 .pot-bomb.boom .pb-steam { display: none; }
 @media (max-width: 600px) { .g-potato.kitchen .pot-row { margin-top: 90px; } .kit-bg { height: 240px; } }
+/* Hot Potato Bomb: type the answer */
+.pot-type { display: block; width: 150px; margin: 0 auto; padding: 10px 12px; border-radius: 14px; border: 3px solid #e0cfae; background: #fff; color: #3b2a1a; font-family: 'Bowlby One', var(--font); font-size: 40px; text-align: center; outline: none; }
+.pot-type:focus { border-color: #ff8a3c; box-shadow: 0 0 0 4px rgba(255, 138, 60, .25); }
+.pot-type.bad { border-color: #d63a2f; background: #ffe6e3; animation: pot-shake .18s linear 3; }
+.pot-hint { display: block; margin-top: 8px; color: #9a8466; font-weight: 800; font-size: 13px; }
+/* Straight into the lobby: the Log in button in the bar (guests only), and the "you agree" note for guests */
+.guest-login { display: none; white-space: nowrap; }
+body.guest .guest-login { display: inline-flex; }
+.gl-short { display: none; }
+.consent.agree a { color: inherit; text-decoration: underline; }
+@media (max-width: 700px) { .guest-login { padding: 6px 10px; font-size: 12px; } .gl-long { display: none; } .gl-short { display: inline; } body.guest #topMicBtn, body.guest #topCamBtn { display: none; } }

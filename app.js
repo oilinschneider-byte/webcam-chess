@@ -170,7 +170,8 @@ CA.register('auth', {
     CA.showScreen('scr-auth');
     $('authCat').innerHTML = CA.catSVG({ skin: 'skin-orange', bg: 'bg-space' }, { label: 'CamArcade cat' });
     fillBirthday();
-    setAuthMode(params.get('mode') === 'signup' || !CA.lastUser() ? 'signup' : 'login');
+    const want = params.get('mode');
+    setAuthMode(want === 'signup' || (want !== 'login' && !CA.lastUser()) ? 'signup' : 'login');
     if (authMode === 'login' && !$('authUser').value) $('authUser').value = CA.lastUser();
     setTimeout(() => ($('authUser').value ? $('authPass') : $('authUser')).focus(), 50);
   },
@@ -391,6 +392,25 @@ async function showOnline() {
 }
 
 
+// Guests who came straight in never pressed "Play as guest" on the log-in screen, so the first time, a note at the
+// bottom says what playing means (13 or older, the Terms and the Privacy Policy) until they press OK.
+const AGREE_KEY = 'camarcade-guest-agreed';
+function showAgree() {
+  let agreed = false;
+  try { agreed = localStorage.getItem(AGREE_KEY) === '1'; } catch (e) { /* ignore */ }
+  $('agreeBar').classList.toggle('hidden', agreed || !CA.profile || !CA.profile.guest);
+}
+$('agreeOk').addEventListener('click', () => {
+  try { localStorage.setItem(AGREE_KEY, '1'); } catch (e) { /* only for this visit, then */ }
+  showAgree();
+});
+window.addEventListener('ca:change', showAgree);
+window.addEventListener('ca:route', showAgree);
+$('topLogin').addEventListener('click', () => {
+  CA.logOut();
+  CA.go('auth', { mode: CA.lastUser() ? 'login' : 'signup' });
+});
+
 $('guestSignup').addEventListener('click', () => {
   CA.logOut();
   CA.go('auth', { mode: 'signup' });
@@ -503,6 +523,7 @@ $('practiceLevel').addEventListener('click', e => {
 /* ================= TOP BAR ================= */
 
 async function turnMicOn() {
+  if (CA.guestGate()) return; // (guests: the camera and the mic need an account)
   if (CA.voice.hasMic()) { CA.voice.setMic(true); return; }
   const ok = await CA.voice.startMic();
   if (ok) { CA.voice.setChoice('on'); CA.toast('Microphone on. Your cat can talk now! 🎤'); }

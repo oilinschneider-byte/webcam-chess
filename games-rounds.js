@@ -313,7 +313,7 @@ CA.games.add('potato', {
       '<div class="pot-cat them" id="potThem">' + CA.catSVG(ctx.oppEquip, { bg: false, anim: false, talker: 'opp' }) + '<b>' + esc(ctx.oppName) + '</b></div></div>' +
       '<div class="kit-counter"></div>' +
       '<div class="kit-cab"><p class="pot-who" id="potWho">Get ready…</p>' +
-      '<div class="pot-task" id="potTask"><b id="potQ"></b><div class="pot-choices" id="potChoices"></div></div>' +
+      '<div class="pot-task" id="potTask"><b id="potQ"></b><input class="pot-type" id="potIn" type="text" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="?" aria-label="Your answer"><small class="pot-hint">Type the answer (Enter)</small></div>' +
       '<p class="g-msg" id="potMsg"></p></div></div>';
     const host = ctx.isHost || !!ctx.bot;
     const me = host ? 0 : 1, them = 1 - me;
@@ -333,7 +333,10 @@ CA.games.add('potato', {
       if (live && mine) {
         task = newTask();
         setMsg('potQ', task.q + ' = ?');
-        $('potChoices').innerHTML = task.choices.map((c, k) => '<button data-v="' + c + '">' + c + '<kbd>' + (k + 1) + '</kbd></button>').join('');
+        const inp = $('potIn');
+        inp.value = '';
+        inp.classList.remove('bad');
+        inp.focus();
       }
     }
     function answer(v) {
@@ -344,15 +347,21 @@ CA.games.add('potato', {
       } else {
         sound('miss');
         locked = performance.now() + 1100;
+        const inp = $('potIn');
+        inp.classList.add('bad');
+        inp.disabled = true;
         setMsg('potMsg', '❌ Wrong! Frozen for a second…');
-        ctx.later(() => setMsg('potMsg', ''), 1100);
+        ctx.later(() => { setMsg('potMsg', ''); inp.disabled = false; inp.value = ''; inp.classList.remove('bad'); if (live && holder === me) inp.focus(); }, 1100);
       }
     }
-    ctx.listen($('potChoices'), 'click', e => { const b = e.target.closest('[data-v]'); if (b) answer(b.dataset.v); });
-    ctx.listen(document, 'keydown', e => {
-      const k = Number(e.key);
-      if (k >= 1 && k <= 3 && task && holder === me) answer(task.choices[k - 1]);
+    // type the answer: right, and it's thrown straight away; a wrong one is caught once it's as long as the answer (or on Enter)
+    ctx.listen($('potIn'), 'input', () => {
+      const inp = $('potIn');
+      inp.value = inp.value.replace(/[^0-9]/g, '');
+      if (!task || !inp.value) return;
+      if (Number(inp.value) === task.ans || inp.value.length >= String(task.ans).length) answer(inp.value);
     });
+    ctx.listen($('potIn'), 'keydown', e => { if (e.key === 'Enter' && $('potIn').value) answer($('potIn').value); });
 
     // ticking that speeds up the longer the bomb has been lit (it doesn't tell you when it'll go off)
     function tick() {

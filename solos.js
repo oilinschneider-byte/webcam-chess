@@ -2620,6 +2620,7 @@ $('cancelSearchBtn').addEventListener('click', () => CA.go('menu'));
 $('retryBtn').addEventListener('click', startSearch);
 $('skipBtn').addEventListener('click', skipPressed);
 $('micBtn').addEventListener('click', async () => {
+  if (CA.guestGate()) return;
   if (CA.voice.micOn()) CA.voice.setMic(false);
   else if (CA.voice.hasMic()) CA.voice.setMic(true);
   else if (await CA.voice.startMic()) CA.voice.setChoice('on');
@@ -2627,6 +2628,7 @@ $('micBtn').addEventListener('click', async () => {
 });
 $('muteThemBtn').addEventListener('click', () => { muteThem = !muteThem; updateTiles(); });
 $('faceBtn').addEventListener('click', async () => {
+  if (CA.guestGate()) return;
   if (!opp || opp.bot) { // against a bot: just your camera on or off
     const on = !(CA.voice.cameraOn() || CA.voice.camPending);
     CA.voice.setCamWanted(on);
