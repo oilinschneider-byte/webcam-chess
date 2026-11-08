@@ -2079,3 +2079,6 @@ body.guest .guest-login { display: inline-flex; }
 .google-btn:hover { background: #f7f8fa; }
 .google-btn svg { width: 20px; height: 20px; }
 .google-btn.hidden { display: none; }
+/* the rat's tail lying on the floor, and its shadow pooled there (the bottom of its body fades into it) */
+.lobby-rat .sc-rat-tail { fill: #06080c; }
+.lobby-rat .sc-rat-pool { fill: #06080c; opacity: .55; }
