@@ -55,7 +55,7 @@ const run = (q.get('run') || 'x').replace(/[^a-z0-9]/gi, '').slice(0, 8);
 const NAME = 'zt' + run + role;
 const PASS = 'test-pass-' + run;
 const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest || rulesTest || shotsTest;
-window.__introMs = 1500;   // (shorter face-to-face screens)
+window.__introMs = /[?&]intro=1\b/.test(location.search) ? 60000 : 1500;   // (shorter face-to-face screens)
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)

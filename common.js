@@ -472,6 +472,10 @@ function catSVG(equip, opts) {
   }
   const c = { uid, defs };
   const p = [];
+  if (o.bgOnly) { // just the background, stretched to fill a box of any shape (behind a cat drawn with bg: false)
+    const art = bg.art(c);
+    return '<svg class="cat-bg" viewBox="0 0 200 240" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>' + defs.join('') + '</defs>' + art + '</svg>';
+  }
   if (o.bg !== false) {
     p.push(bg.art(c));
     p.push('<ellipse cx="100" cy="233" rx="42" ry="5" fill="#000" opacity=".25"/>');

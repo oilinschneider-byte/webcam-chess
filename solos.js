@@ -1152,7 +1152,7 @@ function makeCtx(gameId, seed, extra) {
     record(key, label, value) { if (CA.setRecord(gameId, key, value)) newRecords.push(label + ': ' + Math.floor(value)); },
     score(a, b) { setMsg('scMe', a); setMsg('scThem', b); },
     note(text) { setMsg('scNote', text || ''); },
-    oppCheer() { if (opp && opp.bot) botTalk(700); },
+    oppCheer() {}, // (bots don't cheer: they talked too much)
     finish(outcome, opts) { if (ctx.alive()) endMatch(outcome, null, opts); }, // opts: { noRematch, text }
     finishSolo(score) { if (ctx.alive()) endSolo(score); },
     afk() { if (ctx.alive()) endMatch('win', 'afk'); },
@@ -1219,8 +1219,9 @@ function countdown(ctx, then) {
 
 function showFaces() {
   const p = CA.profile;
-  $('vsMeCat').innerHTML = CA.catSVG(p.equip, { label: p.name, talker: 'me' });
-  $('vsThemCat').innerHTML = opp ? CA.catSVG(opp.equip, { label: opp.name, talker: 'opp' }) : '';
+  // (the cat's background fills the whole box, and the cat stands in the middle of it)
+  $('vsMeCat').innerHTML = CA.catSVG(p.equip, { bgOnly: true }) + CA.catSVG(p.equip, { label: p.name, talker: 'me', bg: false });
+  $('vsThemCat').innerHTML = opp ? CA.catSVG(opp.equip, { bgOnly: true }) + CA.catSVG(opp.equip, { label: opp.name, talker: 'opp', bg: false }) : '';
   setMsg('vsMeName', p.name);
   setMsg('vsThemName', opp ? opp.name : '');
   setMsg('vsMeTag', looksPractice() ? '🎯 Practice' : '🔥 ' + p.streak);
@@ -1254,6 +1255,11 @@ function faceToFace(ctx, g, then) {
   setMsg('vsIcon', g.icon);
   setMsg('vsGame', g.name);
   setMsg('vsBlurb', g.blurb);
+  // (the top line says what you're trying to do, the bottom one the controls: see games-intro.js)
+  const intro = CA.gameIntro(match.gameId, g.blurb);
+  setMsg('vsGoal', intro.goal);
+  $('vsKeys').innerHTML = intro.keys.split('·').map(s => s.trim().split(/\s{2,}/)).filter(s => s[0])
+    .map(([k, what]) => '<span class="vk"><b>' + CA.esc(k) + '</b>' + (what ? ' ' + CA.esc(what) : '') + '</span>').join('');
   const note = mode === 'solos' && !match.counted ? '🤝 ' + friendlyText() : '';
   setMsg('vsNote', note);
   $('vsNote').classList.toggle('hidden', !note);
@@ -1265,7 +1271,6 @@ function faceToFace(ctx, g, then) {
   setMsg('vsCount', n);
   $('vs').classList.remove('hidden');
   sound('match');
-  if (opp.bot) botTalk(900);
   const step = () => {
     n--;
     if (n > 0) { setMsg('vsCount', n); sound('tick'); ctx.later(step, per); return; }
@@ -1387,7 +1392,7 @@ function endMatch(outcome, reason, opts) {
   send({ t: 'card', card: myCard() });
   showResult(outcome, reason, res, opts);
   sound(outcome === 'win' ? 'win' : outcome === 'lose' ? 'lose' : 'draw');
-  if (opp.bot && outcome === 'lose') botTalk(1400);
+  if (opp.bot && outcome === 'lose') botTalk(700);
   clearTimeout(mockTimer);
   if (opp.standIn) mock(outcome);
   if (mode === 'solos' || practiceMix) startReaction(outcome, res, opts); // react face to face, then Rematch or Next
