@@ -2109,3 +2109,8 @@ body.guest .guest-login { display: inline-flex; }
 @media (max-width: 700px) { #scr-games .sewer-hero { padding: 20px; } #scr-games .sewer-go, #scr-games .sewer-mix { padding: 15px 16px; font-size: 16px; } }
 #vsIntro .vs-word { color: #ffc94a; }
 #vsIntro .vs-count { color: #fff; }
+/* the rat blinks once in a while (a quick double blink now and then) */
+.lobby-rat .sc-eye, .lobby-rat .sc-pupil, .lobby-rat .sc-eyeglow { transform-box: fill-box; transform-origin: center; animation: rat-blink 7s linear infinite; }
+@keyframes rat-blink { 0%, 90%, 92.5%, 95%, 97%, 100% { transform: scaleY(1); } 91.2%, 96% { transform: scaleY(.05); } }
+@media (prefers-reduced-motion: reduce) { .lobby-rat .sc-eye, .lobby-rat .sc-pupil, .lobby-rat .sc-eyeglow { animation: none; } }
+.lobby-rat .sc-eyeglow { animation: sc-glare 2.6s ease-in-out infinite alternate, rat-blink 7s linear infinite; }
