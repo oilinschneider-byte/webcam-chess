@@ -957,7 +957,6 @@ function play(ctx) {
 
   const gymBack = makeGymBack();
   const gymFront = makeGymFront();
-  const crowd = makeCrowd();
   let shown = ball;   // the ball as drawn this frame
   let armAcc = 0;
 
@@ -970,7 +969,7 @@ function play(ctx) {
     return [c, b];
   }
 
-  // The wall, the windows and the bleachers (the crowd sits on them, in front of this).
+  // The wall, the windows and the bleachers (empty: no crowd).
   function makeGymBack() {
     const [c, b] = layer();
     const wall = b.createLinearGradient(0, 0, 0, 380);
@@ -1075,34 +1074,6 @@ function play(ctx) {
     return c;
   }
 
-  // The crowd: rows of cats in the bleachers (they jump up when someone scores).
-  function makeCrowd() {
-    const furs = ['#f7a14a', '#aeb6c4', '#f1f3f8', '#f6deb0', '#44475a', '#ff7b3a', '#8be36c', '#6cc8ff', '#ff96d2', '#b394ff', '#ffd23f'];
-    const shirts = ['#ff5a5a', '#4d8dff', '#ffd23f', '#1ed49b', '#b28cff', '#ff96d2', '#ffffff'];
-    const rows = [];
-    for (let r = 0; r < 4; r++) {
-      const c = document.createElement('canvas');
-      c.width = W * DPR;
-      c.height = 60 * DPR;
-      const b = c.getContext('2d');
-      b.scale(DPR, DPR);
-      for (let x = 20 + (r % 2) * 18; x < W; x += 36) {
-        if (Math.random() < 0.12) continue; // (an empty seat)
-        const fur = furs[Math.floor(Math.random() * furs.length)];
-        b.fillStyle = shirts[Math.floor(Math.random() * shirts.length)];
-        b.beginPath(); b.ellipse(x, 52, 13, 12, 0, 0, Math.PI * 2); b.fill();
-        b.fillStyle = fur;
-        b.beginPath(); b.moveTo(x - 11, 30); b.lineTo(x - 9, 15); b.lineTo(x - 2, 25); b.closePath(); b.fill();
-        b.beginPath(); b.moveTo(x + 11, 30); b.lineTo(x + 9, 15); b.lineTo(x + 2, 25); b.closePath(); b.fill();
-        b.beginPath(); b.arc(x, 33, 11, 0, Math.PI * 2); b.fill();
-        b.fillStyle = '#1c1714';
-        b.beginPath(); b.arc(x - 4, 32, 1.8, 0, Math.PI * 2); b.arc(x + 4, 32, 1.8, 0, Math.PI * 2); b.fill();
-      }
-      rows.push(c);
-    }
-    return rows;
-  }
-
   function render(now, dt) {
     updateShown(dt);
     for (const c of cats) {
@@ -1120,11 +1091,7 @@ function play(ctx) {
     for (let h = 0; h < 2; h++) { rimShake[h] = Math.max(0, rimShake[h] - dt * 3); netT[h] = Math.max(0, netT[h] - dt * 1.6); }
 
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
-    g.drawImage(gymBack, 0, 0, W, H);
-    crowd.forEach((row, r) => {
-      const hop = cheer > 0 ? -Math.abs(Math.sin(now / 90 + r * 1.3)) * 8 * cheer : 0;
-      g.drawImage(row, 0, 236 + r * 26 + hop, W, 60);
-    });
+    g.drawImage(gymBack, 0, 0, W, H); // (the bleachers are empty: no crowd)
     g.drawImage(gymFront, 0, 0, W, H);
     let ox = 0, oy = 0;
     if (shake > 0.4) {
