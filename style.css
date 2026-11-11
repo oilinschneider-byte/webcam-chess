@@ -2114,3 +2114,21 @@ body.guest .guest-login { display: inline-flex; }
 @keyframes rat-blink { 0%, 90%, 92.5%, 95%, 97%, 100% { transform: scaleY(1); } 91.2%, 96% { transform: scaleY(.05); } }
 @media (prefers-reduced-motion: reduce) { .lobby-rat .sc-eye, .lobby-rat .sc-pupil, .lobby-rat .sc-eyeglow { animation: none; } }
 .lobby-rat .sc-eyeglow { animation: sc-glare 2.6s ease-in-out infinite alternate, rat-blink 7s linear infinite; }
+
+/* Fish bets on the face-to-face screens (see BETS in common.js) */
+.bet-box { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(340px, 100%); padding: 12px; border-radius: 16px; background: rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .18); color: #fff; }
+.bet-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%; font-size: 15px; }
+.bet-top span { color: #ffd76a; font-size: 13px; font-weight: 800; }
+.bet-opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.bet-opts button { min-width: 52px; padding: 7px 10px; border: 2px solid rgba(255, 255, 255, .25); border-radius: 999px; background: rgba(255, 255, 255, .08); color: #fff; font: inherit; font-weight: 900; cursor: pointer; }
+.bet-opts button:hover:not(:disabled) { border-color: #ffd76a; }
+.bet-opts button.on { border-color: #ffd76a; background: #ffd76a; color: #3a2700; }
+.bet-opts button:disabled { opacity: .45; cursor: default; }
+.bet-line { min-height: 18px; font-size: 13px; font-weight: 800; color: rgba(255, 255, 255, .85); }
+.bet-line b { color: #ffd76a; }
+.bet-box.locked .bet-opts button:not(.on) { opacity: .3; }
+.bet-cash { background: #ffd76a; color: #3a2700; border: 0; font-weight: 900; }
+.bet-cash:hover { background: #ffe38f; }
+.rx-bet { display: flex; flex-direction: column; align-items: center; gap: 6px; font-weight: 900; }
+.rx-bet.up { color: #7ee07a; }
+.rx-bet.down { color: #ff8a8a; }

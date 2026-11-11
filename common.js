@@ -675,6 +675,7 @@ function fresh(name) {
   return {
     v: 3, name, fish: 30, xp: 0, streak: 0, best: 0, wins: 0, losses: 0, draws: 0, friendly: 0,
     owned: ['skin-orange', 'bg-space'], equip: { skin: 'skin-orange', bg: 'bg-space' }, claimed: [], mathBest: 0, records: {}, savedAt: 0,
+    run: { pot: 0, wins: 0 }, // (fish bets: the pot you're playing for, and the bets you've won in a row: see BETS)
     id: 0, adult: false, bannedUntil: null, banReason: null,
   };
 }
@@ -694,6 +695,10 @@ function normalize(p, name) {
   if (Array.isArray(p.claimed)) out.claimed = p.claimed.filter(n => Number.isInteger(n) && n >= 1 && n <= PASS.length);
   // (Season 1, Fear of Rats, changed some rewards: a tier you already claimed gives you its new reward too)
   for (const n of out.claimed) { const r = PASS[n - 1]; if (r && r.item && !out.owned.includes(r.item)) out.owned.push(r.item); }
+  if (p.run && typeof p.run === 'object') {
+    out.run = { pot: Math.min(1e7, Math.max(0, Math.floor(Number(p.run.pot) || 0))), wins: Math.min(1000, Math.max(0, Math.floor(Number(p.run.wins) || 0))) };
+    if (!out.run.pot) out.run.wins = 0;
+  }
   if (p.records && typeof p.records === 'object') { // ({ game id: { record name: the best so far } })
     for (const game of Object.keys(p.records).slice(0, 80)) {
       const r = p.records[game];
@@ -707,7 +712,7 @@ function normalize(p, name) {
 
 // The part of your profile your own browser saves to the server: only looks (cat, fish, items), never streaks.
 function looks(p) {
-  return { fish: p.fish, xp: p.xp, owned: p.owned, equip: p.equip, claimed: p.claimed, mathBest: p.mathBest, records: p.records, savedAt: p.savedAt || 0 };
+  return { fish: p.fish, xp: p.xp, owned: p.owned, equip: p.equip, claimed: p.claimed, mathBest: p.mathBest, records: p.records, run: p.run, savedAt: p.savedAt || 0 };
 }
 
 // me: your account as the server sends it ({ id, name, adult, streak, best, …, profile }).
@@ -738,7 +743,7 @@ function setStats(me) {
   applyStats(me);
   if (me.profile && Number(me.profile.savedAt) > profile.savedAt) { // (you changed your cat on another device since)
     const theirs = normalize(me.profile, profile.name);
-    for (const k of ['fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'records', 'savedAt']) profile[k] = theirs[k];
+    for (const k of ['fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'records', 'run', 'savedAt']) profile[k] = theirs[k];
   }
   writeCache();
   emitChange();
@@ -901,6 +906,69 @@ function buy(id) {
   save();
   return true;
 }
+
+/* ---------- BETS: fish bets on Classic Games ----------
+   Before a game against a real player, each of you can offer fish. The bet is the smaller offer (no bet if either of
+   you offers nothing). Your first bet comes out of your fish and starts your pot. Win, and the other player's bet goes
+   into your pot, minus a 10% cut (bet 10, win 9). Keep betting your pot to make it grow, or cash it out: from the
+   second win in a row, cashing out adds a bonus (10% more for each win after the first, up to 50%). Lose a bet, and the
+   whole pot is gone. A draw (or a game that doesn't count) changes nothing. */
+const BET_CUT = 0.1;
+const betBonus = wins => Math.min(0.5, 0.1 * Math.max(0, wins - 1));
+const cashValue = run => Math.floor(run.pot * (1 + betBonus(run.wins)));
+const bets = {
+  CUT: BET_CUT, bonus: betBonus,
+  run: () => Object.assign({}, profile.run),
+  canBet: () => !!profile && !profile.guest,
+  // The most you can offer: your pot while you have one, or your fish to start one.
+  most: () => (!profile || profile.guest ? 0 : profile.run.pot > 0 ? profile.run.pot : profile.fish),
+  cashValue: () => cashValue(profile.run),
+  // The bet is on: the first one of a pot comes out of your fish. Returns how things stood just after, to undo a result.
+  lock(stake) {
+    stake = Math.max(0, Math.floor(stake));
+    if (!stake || !bets.canBet()) return null;
+    if (profile.run.pot <= 0) {
+      stake = Math.min(stake, profile.fish);
+      if (!stake) return null;
+      profile.fish -= stake;
+      profile.run = { pot: stake, wins: 0 };
+    } else stake = Math.min(stake, profile.run.pot);
+    save();
+    return { stake, run: Object.assign({}, profile.run) };
+  },
+  // The game ended: returns what happened to your pot ({ won, lost, pot }).
+  settle(bet, outcome) {
+    if (!bet || !bets.canBet()) return null;
+    const before = profile.run.pot;
+    if (outcome === 'win') {
+      const won = Math.floor(bet.stake * (1 - BET_CUT));
+      profile.run = { pot: profile.run.pot + won, wins: profile.run.wins + 1 };
+      save();
+      return { won, pot: profile.run.pot, wins: profile.run.wins, cash: cashValue(profile.run) };
+    }
+    if (outcome === 'lose') {
+      profile.run = { pot: 0, wins: 0 };
+      save();
+      return { lost: before, pot: 0 };
+    }
+    return { pot: profile.run.pot, cash: cashValue(profile.run) };
+  },
+  // The server settled it differently (like a disputed game): back to how it was when the bet went on, then that result.
+  redo(bet, outcome) {
+    if (!bet || !bets.canBet()) return null;
+    profile.run = Object.assign({}, bet.run);
+    return bets.settle(bet, outcome);
+  },
+  // Your pot, plus the bonus, into your fish.
+  cashOut() {
+    if (!bets.canBet() || profile.run.pot <= 0) return 0;
+    const n = cashValue(profile.run);
+    profile.fish += n;
+    profile.run = { pot: 0, wins: 0 };
+    save();
+    return n;
+  },
+};
 
 function equip(id) {
   const it = ITEM[id];
@@ -1384,7 +1452,7 @@ window.CA = {
   get token() { return token; },
   get soundOn() { return soundOn; },
   restoring,
-  ITEMS, ITEM, SLOTS, PASS, TIER_XP,
+  ITEMS, ITEM, SLOTS, PASS, TIER_XP, bets,
   catSVG, previewSVG, setMouths, tierOf, rewardFor, applyResult, setStats, refresh, claimTier, buy, equip, unequip, setMathBest, setRecord,
   guestGate,
   googleStart, googleLogIn, get googleOn() { return CAServer.google; }, get googleError() { return googleError; },

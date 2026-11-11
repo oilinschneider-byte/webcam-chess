@@ -285,9 +285,9 @@ begin
          case when jsonb_typeof(value) = 'number' then to_jsonb(least(greatest(floor((value #>> '{}')::numeric), 0), 100000000)) else '0'::jsonb end
        else value end)
      from jsonb_each(p)
-     where key in ('fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'records', 'savedAt')
+     where key in ('fish', 'xp', 'owned', 'equip', 'claimed', 'mathBest', 'records', 'run', 'savedAt')
        and (key not in ('owned', 'claimed') or jsonb_typeof(value) = 'array')
-       and (key <> 'equip' or jsonb_typeof(value) = 'object')
+       and (key not in ('equip', 'run') or jsonb_typeof(value) = 'object')  -- (run: your fish-bet pot, see BETS in common.js)
        and (key <> 'records' or jsonb_typeof(value) = 'object')),
     '{}'::jsonb);
 end $$;

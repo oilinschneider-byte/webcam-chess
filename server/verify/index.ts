@@ -66,8 +66,8 @@ Deno.serve(async req => {
     const match = Number(body.match), no = Number(body.game_no);
     if (!Number.isInteger(match) || match < 1 || !Number.isInteger(no) || no < 1 || no > 200) return reply({ error: 'bad request' }, 400);
     let row = await rpc('ca_verify_get', { p_match: match, p_game_no: no });
+    if (row && row.verdict && row.verdict !== 'partial') return reply({ status: 'done', verdict: row.verdict }); // (checked already: its records are gone)
     if (!row || !row.host_log) return reply({ status: 'waiting for the host\'s record' });
-    if (row.verdict && row.verdict !== 'partial') return reply({ status: 'done', verdict: row.verdict });
     if (!row.guest_log) { // (give the guest's record a moment to arrive)
       await sleep(5000);
       row = await rpc('ca_verify_get', { p_match: match, p_game_no: no });

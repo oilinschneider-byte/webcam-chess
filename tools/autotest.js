@@ -85,11 +85,21 @@ CAServer.call = async function (fn, args, opts) {
     if (fn === 'ca_mm_poll' && r && r.match) seen.match = r.match;
     if (fn === 'ca_report') { seen.report = r; seen.reportArgs = args; }
     if (fn === 'ca_report_player') seen.reported = r;
+    if (fn === 'ca_game_log') seen.gameLog = 'sent';
     return r;
   } catch (err) {
+    if (fn === 'ca_game_log') seen.gameLog = err.code + ': ' + err.message;
     if (fn !== 'ca_visit' && fn !== 'ca_stats') log('server call ' + fn, false, err.code + ': ' + err.message);
     throw err;
   }
+};
+
+// ...and what the replay check's checker says.
+const realFetch = window.fetch;
+window.fetch = async function (url, opts) {
+  const res = await realFetch.call(window, url, opts);
+  if (String(url).includes('/functions/v1/verify')) res.clone().json().then(j => { seen.verify = j; }, e => { seen.verify = { error: String(e) }; });
+  return res;
 };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -191,6 +201,8 @@ async function main() {
       location.hash = '#/' + q.get('page');
       await sleep(2500);
       if (q.get('dbg')) { const sc = document.querySelector('.lobby-scene'); const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:70px;z-index:99;background:#fff;color:#000;font:14px monospace;padding:6px'; d.textContent = 'h=' + getComputedStyle(sc).height + ' inline=' + sc.style.height + ' vb=' + sc.querySelector('svg').getAttribute('viewBox') + ' main=' + Math.round(document.getElementById('scr-menu').getBoundingClientRect().bottom) + ' route=' + CA.route; document.body.appendChild(d); }
+      if (q.get('betlook') && CA.route === 'perm') { $('permSkip').click(); await sleep(3000); }
+      if (q.get('betlook')) { CA.profile.fish = 120; CA.profile.run = { pot: 19, wins: 2 }; window.__betShow(25, 10); await sleep(300); } // (the fish-bet box)
       if (q.get('scroll')) { document.body.style.transform = 'translateY(-' + Number(q.get('scroll')) + 'px)'; await sleep(400); } // (as if scrolled down: a headless screenshot doesn't scroll)
       return;
     }
@@ -731,6 +743,8 @@ async function perf() {
 // One online game, on a good connection and then on a bad one: everything has to keep arriving, without a single error.
 async function netRound() {
   if (q.get('revenge')) { await revengeRound(); return; }
+  if (q.get('verify')) { await verifyRound(); return; }
+  if (q.get('bet')) { await betRound(); return; }
   location.hash = '#/solos';
   await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
   clickModal('find a match');
@@ -770,6 +784,94 @@ async function netRound() {
   await check(DUEL_ONLINE + ': the game is still going', !$('stage').querySelector('.result'), $('scGame').textContent);
   if (role === 'b') await sleep(6000); // (a got here later: it stopped to check the camera limit, and b leaving ends a's game)
   if ($('skipBtn') && !$('skipBtn').closest('.hidden')) { $('skipBtn').click(); try { clickModal('Skip'); } catch (e) { /* no question this time */ } }
+  await sleep(1500);
+  location.hash = '#/menu';
+  await sleep(1000);
+  if (!$('caModal').classList.contains('hidden')) { $('caModalBtns').querySelector('button:last-child').click(); await sleep(800); }
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
+}
+
+// The replay check, for real: both play a whole game online (pressing random keys) until it ends by its own rules. Then
+// both apps send their records, and the server's checker replays it with the live site's code: it must say "ok".
+async function verifyRound() {
+  location.hash = '#/solos';
+  await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
+  clickModal('find a match');
+  await until(() => seen.match, 90000, 'the server to pair the two browsers');
+  const d = await until(() => window.__duel && window.__duel.id === DUEL_ONLINE && window.__duel, 40000, 'the game');
+  await until(() => d.phase() === 'play', 10000, 'the countdown');
+  const host = d.api.host;
+  const stop = Date.now() + 240000;
+  while (Date.now() < stop && $('vsReact').classList.contains('hidden')) { mash(d); await sleep(120); }
+  letGo(d);
+  await check(DUEL_ONLINE + ': the game ended by its own rules', !$('vsReact').classList.contains('hidden'));
+  if (host) {
+    const rec = d.rec();
+    await check('the host recorded the game', !!(rec && rec.end && rec.in[1].length), rec && { end: rec.end, hostInputs: rec.in[0].length, guestInputs: rec.in[1].length, ver: rec.ver });
+    await until(() => seen.gameLog, 20000, 'the record to be sent');
+    await check('the host sent its record to the server', seen.gameLog === 'sent', seen.gameLog);
+    const r = await until(() => seen.verify, 40000, "the server's checker to answer");
+    await check('the server replayed the game and says it was played straight: ' + r.verdict, r.verdict === 'ok', r);
+  } else {
+    await check('the guest recorded what it sent', d.sent().length > 0, d.sent().length);
+    await sleep(25000); // (the host is asking the server)
+  }
+  location.hash = '#/menu';
+  await sleep(1000);
+  if (!$('caModal').classList.contains('hidden')) { $('caModalBtns').querySelector('button:last-child').click(); await sleep(800); }
+  await until(() => CA.route === 'menu', 8000, 'the menu');
+  await leave();
+  await log('done', true);
+}
+
+// Fish bets (BETS in common.js, FISH BETS in solos.js): the host offers 25, the other 10, so the bet is 10. The host wins
+// twice: its pot goes 10 → 19 → 28, worth 30 to cash out (2 wins in a row: +10%). The other player's first bet is gone.
+async function betRound() {
+  window.__introMs = 7000; // (time to pick a bet)
+  const B = CA.bets;
+  CA.profile.fish = 100;
+  CA.profile.run = { pot: 0, wins: 0 };
+  location.hash = '#/solos';
+  await until(() => !$('caModal').classList.contains('hidden'), 5000, 'the safety tip');
+  clickModal('find a match');
+  await until(() => seen.match, 90000, 'the server to pair the two browsers');
+  const host = seen.match.role === 'host';
+  const pick = async amt => {
+    await until(() => !$('betBox').classList.contains('hidden') && $('betOpts').querySelector('[data-amt="' + amt + '"]'), 20000, 'the bet buttons');
+    $('betOpts').querySelector('[data-amt="' + amt + '"]').click();
+  };
+  await pick(host ? 25 : 10);
+  await until(() => /Bet: 10 🐟/.test($('betLine').textContent), 6000, 'both offers to arrive');
+  await check('each offers fish, and the bet is the smaller offer: ' + $('betLine').textContent, true);
+  const d = await until(() => window.__duel && window.__duel.id === DUEL_ONLINE && window.__duel, 20000, 'the game');
+  await until(() => d.phase() === 'play', 10000, 'the countdown');
+  await until(() => B.run().pot > 0, 8000, 'the bet to go on');
+  await check('the first bet comes out of your fish and starts your pot', B.run().pot === 10 && CA.profile.fish === 90, { run: B.run(), fish: CA.profile.fish });
+  await sleep(1500);
+  if (host) d.end(0, 'TEST');
+  await until(() => !$('vsReact').classList.contains('hidden') && $('vsReact').offsetParent !== null, 12000, 'the screen after the game');
+  if (host) await check('the winner gets the bet minus 10%: pot 10 → 19', B.run().pot === 19 && B.run().wins === 1, { run: B.run(), text: $('rxBetText').textContent });
+  else await check('the loser\'s pot is gone', B.run().pot === 0 && CA.profile.fish === 90, { run: B.run(), fish: CA.profile.fish, text: $('rxBetText').textContent });
+  await sleep(6000); // (the server settles it: the bet must stay as it is)
+  await check('the server agrees, and the bet stays', host ? B.run().pot === 19 : B.run().pot === 0, B.run());
+
+  window.__duel = null;
+  $('rematchBtn').click();
+  const d2 = await until(() => window.__duel && window.__duel !== d && window.__duel.id === DUEL_ONLINE && window.__duel, 15000, 'the next game');
+  await until(() => d2.phase() === 'play', 15000, 'the countdown');
+  await until(() => $('scMode').textContent.includes('🎲'), 8000, 'the second bet');
+  await check('the next bet: the host bets its pot, up to the other\'s offer', host ? B.run().pot === 19 : B.run().pot === 10 && CA.profile.fish === 80, { run: B.run(), fish: CA.profile.fish });
+  await sleep(1000);
+  if (host) d2.end(0, 'TEST');
+  await until(() => !$('vsReact').classList.contains('hidden') && $('vsReact').offsetParent !== null, 12000, 'the screen after the game');
+  if (host) {
+    await check('two wins in a row: pot 28, and cashing out adds 10% (30)', B.run().pot === 28 && B.run().wins === 2 && B.cashValue() === 30 && !$('rxCash').classList.contains('hidden'), { run: B.run(), cash: B.cashValue(), text: $('rxBetText').textContent });
+    const fish = CA.profile.fish;
+    $('rxCash').click();
+    await check('cashing out puts it into your fish and empties the pot', CA.profile.fish === fish + 30 && B.run().pot === 0 && $('rxCash').classList.contains('hidden'), { fish: CA.profile.fish, run: B.run() });
+  } else await check('lost again: that pot is gone too', B.run().pot === 0 && CA.profile.fish === 80, { run: B.run(), fish: CA.profile.fish });
   await sleep(1500);
   location.hash = '#/menu';
   await sleep(1000);

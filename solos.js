@@ -129,6 +129,10 @@ const MIX_GAMES = ['barrel', 'hoops', 'walls', 'climb', 'speedchess', 'simon', '
   'trails', 'box', 'sumo', 'pond', 'hockey', 'paint', 'cannons', 'golf', 'mouse', 'kart', 'swords', 'stare', 'boxing', 'parkour', 'poop'];
 let nextTimer = null;    // the countdown to the next opponent after a game
 let recentName = '';
+// Fish bets (see BETS in common.js and FISH BETS below): what you offer (kept from game to game), and what the other
+// player offered and the host settled on, by game number (a message can arrive before that game starts here).
+let betPick = 0;
+const betNet = { offers: {}, stakes: {} };
 
 /* ================= SMALL HELPERS ================= */
 
@@ -1179,7 +1183,7 @@ function beginMatch(gameId, seed, extra) {
   const solo = !!(extra && extra.solo);
   const online = mode === 'solos' && !!pairing && !!opp && !opp.bot;
   if (online) pairing.gameNo++; // (both players count the games of a match the same way: the server checks the numbers)
-  match = { ctx, gameId, started: false, over: false, solo, gameNo: online ? pairing.gameNo : 0, counted: online && counts() };
+  match = { ctx, gameId, started: false, over: false, solo, gameNo: online ? pairing.gameNo : 0, counted: online && counts(), betOk: online, bet: null };
   const g = GAMES[gameId];
   CA.voice.setInGame(true); // your camera turns on for every game (if you allowed it)
   CA.showScreen('scr-play');
@@ -1267,7 +1271,10 @@ function faceToFace(ctx, g, then) {
   $('vsNote').classList.toggle('hidden', !note);
   $('vsIntro').classList.remove('hidden');
   $('vsReact').classList.add('hidden');
-  const len = window.__introMs != null ? window.__introMs : 5000; // (the tests make this shorter)
+  const betting = !!match.betOk;
+  betSetup(betting);
+  // (a few seconds longer against a real player, to pick a bet; the tests make this shorter)
+  const len = window.__introMs != null ? window.__introMs : betting ? 9000 : 5000;
   let n = Math.max(1, Math.round(len / 1000));
   const per = len / n;
   setMsg('vsCount', n);
@@ -1276,10 +1283,180 @@ function faceToFace(ctx, g, then) {
   const step = () => {
     n--;
     if (n > 0) { setMsg('vsCount', n); sound('tick'); ctx.later(step, per); return; }
+    if (betting) betLock();
     $('vs').classList.add('hidden');
     then();
   };
   ctx.later(step, per);
+}
+
+/* ================= FISH BETS ================= */
+// On the face-to-face screen before a game against a real player, each of you picks how many fish to bet (or none).
+// The bet is the smaller of the two. When the countdown ends, the host's app settles on it and tells the other app.
+// How pots, wins and cashing out work: see BETS in common.js. A loss shows (and costs your pot) right away; the server's
+// result fixes it if it settles the game differently (like a disputed game, which changes nothing).
+
+const BET_STEPS = [5, 10, 25, 50, 100, 250, 500, 1000];
+const betKey = no => (pairing ? pairing.id : 0) + ':' + no; // (offers and stakes are kept by match and game number)
+
+function betSetup(on) {
+  const box = $('betBox');
+  box.classList.toggle('hidden', !on);
+  box.classList.remove('locked');
+  if (!on) return;
+  betPick = Math.min(betPick, CA.bets.most());
+  betRender();
+  sendOffer();
+}
+
+function sendOffer() {
+  if (match && match.betOk && !match.betLocked) send({ t: 'bet', no: match.gameNo, amt: CA.bets.canBet() ? betPick : 0 });
+}
+
+function betRender() {
+  if (!match || !match.betOk) return;
+  const B = CA.bets, run = B.run(), most = B.most(), locked = !!match.betLocked;
+  if (!B.canBet()) {
+    setMsg('betPot', '');
+    $('betOpts').innerHTML = '';
+    $('betLine').textContent = '👤 Sign up to bet fish.';
+    $('betCash').classList.add('hidden');
+    return;
+  }
+  const fmt = n => n.toLocaleString();
+  setMsg('betPot', run.pot > 0 ? '💰 Pot ' + fmt(run.pot) + ' 🐟' + (run.wins ? ' · 🔥' + run.wins : '') : 'You have ' + fmt(CA.profile.fish) + ' 🐟');
+  const steps = BET_STEPS.filter(n => n < most);
+  if (most > 0) steps.push(most); // (everything: your whole pot, or all your fish)
+  $('betOpts').innerHTML = '<button data-amt="0">No bet</button>' + steps.map(n =>
+    '<button data-amt="' + n + '">' + (n === most && !BET_STEPS.includes(n) ? 'All ' + fmt(n) : fmt(n)) + '</button>').join('');
+  $('betOpts').querySelectorAll('button').forEach(b => {
+    const n = Number(b.dataset.amt);
+    b.classList.toggle('on', n === betPick);
+    b.disabled = locked;
+    b.addEventListener('click', () => {
+      if (!match || match.betLocked) return;
+      betPick = n;
+      sendOffer();
+      betRender();
+      sound('tick');
+    });
+  });
+  const theirs = betNet.offers[betKey(match.gameNo)];
+  const name = opp ? esc(opp.name) : 'They';
+  let line;
+  if (betPick === 0) line = theirs > 0 ? name + ' offers <b>' + fmt(theirs) + ' 🐟</b>. Pick an amount to bet.' : 'Pick an amount, or play without a bet.';
+  else if (theirs == null) line = 'Waiting for ' + name + '…';
+  else if (!theirs) line = name + " isn't betting this time.";
+  else {
+    const s = Math.min(betPick, theirs);
+    line = 'Bet: <b>' + fmt(s) + ' 🐟</b> · win <b>+' + fmt(Math.floor(s * (1 - B.CUT))) + '</b>' +
+      (run.pot > 0 ? ' · lose and your pot is gone' : '');
+  }
+  if (locked) line = match.bet ? '🔒 <b>' + fmt(match.bet.stake) + ' 🐟</b> on this game!' : '🔒 No bet this game.';
+  $('betLine').innerHTML = line;
+  const cash = $('betCash');
+  cash.classList.toggle('hidden', locked || run.pot <= 0);
+  cash.textContent = '💰 Cash out ' + fmt(B.cashValue()) + ' 🐟';
+}
+
+function cashOutPressed() {
+  const n = CA.bets.cashOut();
+  if (!n) return;
+  betPick = Math.min(betPick, CA.bets.most());
+  CA.toast('💰 You cashed out ' + n.toLocaleString() + ' 🐟!');
+  sound('win');
+  sendOffer();
+  betRender();
+  renderRxBet();
+}
+$('betCash').addEventListener('click', cashOutPressed);
+$('rxCash').addEventListener('click', cashOutPressed);
+
+// The countdown ended: no more changes. The host settles on the bet; the other app waits for the host to say it.
+function betLock() {
+  const m = match;
+  if (!m || !m.betOk || m.betLocked) return;
+  m.betLocked = true;
+  m.betOffer = CA.bets.canBet() ? Math.min(betPick, CA.bets.most()) : 0;
+  $('betBox').classList.add('locked');
+  if (isHost) {
+    const s = Math.min(m.betOffer, betNet.offers[betKey(m.gameNo)] || 0);
+    m.bet = s > 0 ? CA.bets.lock(s) : null;
+    send({ t: 'stake', no: m.gameNo, amt: m.bet ? m.bet.stake : 0 });
+    betOn(m);
+  } else if (betNet.stakes[betKey(m.gameNo)] != null) applyStake(m);
+  betRender();
+}
+
+function applyStake(m) {
+  if (m.betApplied || m.over) return;
+  m.betApplied = true;
+  const s = Math.min(betNet.stakes[betKey(m.gameNo)] || 0, m.betOffer || 0); // (never more than you offered)
+  m.bet = s > 0 ? CA.bets.lock(s) : null;
+  betOn(m);
+  betRender();
+}
+
+function betOn(m) {
+  if (!m.bet) return;
+  setMsg('scMode', '⚡ Classic Games · 🎲 ' + m.bet.stake.toLocaleString() + ' 🐟');
+  CA.toast('🎲 ' + m.bet.stake.toLocaleString() + ' 🐟 bet on this game!');
+}
+
+function betMsg(msg) {
+  const no = msg.no | 0, amt = Math.max(0, Math.floor(Number(msg.amt) || 0));
+  if (no < 1) return;
+  if (msg.t === 'bet') {
+    betNet.offers[betKey(no)] = amt;
+    if (match && match.gameNo === no && !match.betLocked) betRender();
+  } else if (!isHost) { // ('stake': the host settled on the bet)
+    betNet.stakes[betKey(no)] = amt;
+    if (match && match.gameNo === no && !match.bet) {
+      if (!match.betLocked) betLock(); else applyStake(match);
+    }
+  }
+}
+
+// The game ended (outcome: win | lose | draw).
+function betEnd(m, outcome) {
+  if (!m || !m.bet || m.betOutcome) return;
+  m.betOutcome = outcome;
+  m.betRes = CA.bets.settle(m.bet, outcome);
+}
+
+// The server settled the game: if it says something else than this app did, the bet follows the server.
+function betFix(m, result, name) {
+  if (!m || !m.bet || !m.betOutcome) return;
+  const server = result === 'win' || result === 'lose' ? result : 'draw'; // (draw, disputed or void: the bet is off)
+  if (server === m.betOutcome) return;
+  m.betOutcome = server;
+  m.betRes = CA.bets.redo(m.bet, server);
+  CA.toast(server === 'draw' ? '🎲 That game didn\'t count, so your bet is off: your pot is back.' : '🎲 The server settled your bet with ' + name + ' differently.');
+  renderRxBet();
+}
+
+// (For pictures of the bet box in the tests: shows it on the current face-to-face screen, as if the other player offered `theirs`.)
+if (/[?&]autotest=/.test(location.search)) {
+  window.__betShow = (theirs, pick) => { if (!match) return; match.betOk = true; betNet.offers[betKey(match.gameNo)] = theirs; betPick = pick; betSetup(true); };
+}
+
+// After a game: what the bet did, and your pot with its Cash out button.
+function renderRxBet() {
+  const box = $('rxBet');
+  if (!match || !match.betOk || !CA.bets.canBet()) { box.classList.add('hidden'); return; }
+  const run = CA.bets.run(), r = match.betRes, fmt = n => n.toLocaleString();
+  let text = '';
+  box.classList.remove('up', 'down');
+  if (r && r.won != null) { text = '🎲 +' + fmt(r.won) + ' 🐟 → pot ' + fmt(r.pot) + ' 🐟'; box.classList.add('up'); }
+  else if (r && r.lost != null) { text = '🎲 Bet lost: your pot of ' + fmt(r.lost) + ' 🐟 is gone'; box.classList.add('down'); }
+  else if (r) text = '🎲 No result: your pot stays ' + fmt(run.pot) + ' 🐟';
+  else if (run.pot > 0) text = '💰 Your pot: ' + fmt(run.pot) + ' 🐟';
+  if (run.pot > 0 && run.wins > 1) text += ' · 🔥 ' + run.wins + ' wins: +' + Math.round(CA.bets.bonus(run.wins) * 100) + '% to cash out';
+  $('rxBetText').textContent = text;
+  const cash = $('rxCash');
+  cash.classList.toggle('hidden', run.pot <= 0);
+  cash.textContent = '💰 Cash out ' + fmt(CA.bets.cashValue()) + ' 🐟';
+  box.classList.toggle('hidden', !text);
 }
 
 let react = null; // the few seconds after a round: { mine, theirs, due, iv } (did you / they press Rematch?)
@@ -1310,6 +1487,7 @@ function startReaction(outcome, res, opts) {
     reward = '🤝 Friendly game: nothing is counted';
   }
   $('rxReward').innerHTML = reward + newRecords.map(r => '<span class="rx-record">🏅 New record! ' + esc(r) + '</span>').join('');
+  renderRxBet();
   setMsg('rxVs', h2hText());
   const rb = $('rematchBtn');
   const gone = online && (!conn || !conn.open || !opp || opp.gone);
@@ -1383,6 +1561,7 @@ function endMatch(outcome, reason, opts) {
   }
   const online = mode === 'solos' && !opp.bot;
   const res = match.counted ? CA.applyResult(outcome) : null; // (shown right away; the server settles the real streak)
+  betEnd(match, outcome);
   if (outcome === 'win') h2h.me++; else if (outcome === 'lose') h2h.them++;
   if (online) {
     if (match.counted) {
@@ -1572,6 +1751,7 @@ function forfeitIfPlaying(keepalive) {
       CA.applyResult('lose');
       CA.toast('You left the match, so it counted as a loss.');
     }
+    betEnd(match, 'lose');
     reportResult(match, 'lose', keepalive);
   }
 }
@@ -1611,6 +1791,7 @@ function reportResult(m, outcome, keepalive) {
   if (!pr || !m.gameNo || !CA.token) return;
   const args = { p_token: CA.token, p_match: pr.id, p_game_no: m.gameNo, p_game: m.gameId, p_outcome: outcome };
   const name = opp ? opp.name : 'the other player';
+  m.reportArgs = args;
   const attempt = n => CA.server.call('ca_report', args, { keepalive }).then(r => settled(r, m, name)).catch(err => {
     if (err.code === 'offline' && n < 3) setTimeout(() => attempt(n + 1), 1500 * n);
     else console.warn('Could not report the result:', err.message);
@@ -1643,9 +1824,14 @@ function seedFor(matchId, no) {
 function settled(r, m, name) {
   if (r.status !== 'done') { // (the other player's report is on its way: get the settled streak in a moment)
     setTimeout(() => CA.refresh(), 4000);
+    // (with a bet on it, ask again until the server has settled it: asking again changes nothing else)
+    if (m.bet && m.reportArgs && (m.betAsks = (m.betAsks || 0) + 1) <= 15) {
+      setTimeout(() => CA.server.call('ca_report', m.reportArgs).then(r2 => settled(r2, m, name), () => {}), 5000);
+    }
     return;
   }
   if (r.me) CA.setStats(r.me);
+  betFix(m, r.result, name);
   if (r.result === 'disputed') CA.toast('You and ' + name + " reported different results, so that game didn't count.");
   else if (m.counted && !r.ranked && r.result !== 'void') {
     CA.toast(r.why === 'pair_limit' ? "You've played " + name + ' ' + PAIR_LIMIT + " times today, so that game didn't count."
@@ -2239,6 +2425,10 @@ function onNet(msg) {
         if (msg.no > 0) pairing.gameNo = (msg.no | 0) - 1;
         beginMatch(msg.game, msg.seed >>> 0);
       }
+      return;
+    case 'bet': // (their bet offer, or the bet the host settled on: see FISH BETS)
+    case 'stake':
+      betMsg(msg);
       return;
     case 'card': // (their cat's outfit; their name and streak come from the server)
       if (opp) {
