@@ -1113,7 +1113,9 @@ function makeCtx(gameId, seed, extra) {
   const enders = [];
   const ctx = Object.assign({
     stage: $('stage'),
+    seed,
     rng: mulberry32(seed),
+    gameLog(rec) { if (match && match.ctx === ctx) match.log = rec; }, // (the record of the game: see sendLog)
     isHost,
     bot: opp && opp.bot ? { level: opp.level, hidden: !!opp.glingus } : null,
     oppName: opp ? opp.name : '',
@@ -1347,7 +1349,7 @@ const rxWon = () => $('vsReact').classList.contains('win');
 function maybeRematch() {
   if (!react || !react.mine || !react.theirs || !isHost || (opp && opp.blocked)) return;
   const game = pickGame({ camera: CA.voice.cameraOn() && !!opp && opp.cam });
-  const seed = randSeed();
+  const seed = pairing ? seedFor(pairing.id, pairing.gameNo + 1) : randSeed();
   send({ t: 'start', game, seed, no: pairing ? pairing.gameNo + 1 : 0 });
   beginMatch(game, seed);
 }
@@ -1614,6 +1616,28 @@ function reportResult(m, outcome, keepalive) {
     else console.warn('Could not report the result:', err.message);
   });
   attempt(1);
+  sendLog(m);
+}
+
+// The replay check (see verify-replay.js and "The replay check" in games-duel.js): the record of the game goes to the
+// server, and then the server's checker (the "verify" Edge Function) replays it with the same code.
+function sendLog(m) {
+  const pr = pairing, log = m.log;
+  if (!pr || !m.gameNo || !CA.token || !log || m.logSent) return;
+  m.logSent = true;
+  CA.server.call('ca_game_log', { p_token: CA.token, p_match: pr.id, p_game_no: m.gameNo, p_log: log })
+    .then(() => fetch(CAServer.url + '/functions/v1/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ match: pr.id, game_no: m.gameNo }),
+    }))
+    .catch(err => console.warn('Could not send the record of the game:', err && err.message));
+}
+
+// The seed of a game between two players: worked out from the match and the game's number, so the host can't pick one
+// that suits them (the server checks it). The same as in verify-replay.js.
+function seedFor(matchId, no) {
+  let h = 0x811c9dc5;
+  for (const ch of 'ca:' + matchId + ':' + no) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193);
+  return h >>> 0;
 }
 
 function settled(r, m, name) {
@@ -2047,7 +2071,7 @@ function onIncoming(c, p) {
       pr.conn = c;
       pr.card = readCard(msg.card);
       pr.game = pickGame({ camera: CA.voice.cameraOn() && pr.card.cam });
-      pr.seed = randSeed();
+      pr.seed = seedFor(pr.id, 1);
       c.send({ t: 'welcome', match: pr.id, card: myCard(), game: pr.game, seed: pr.seed });
       return;
     }

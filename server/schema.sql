@@ -194,10 +194,35 @@ union select created_net from camarcade.players where created_net is not null
 union select last_net from camarcade.players where last_net is not null
 on conflict (net) do nothing;
 
+-- The replay check (see "THE REPLAY CHECK" below): each player's app's record of an online game, until it's checked.
+create table if not exists camarcade.game_logs (
+  match_id bigint not null references camarcade.matches on delete cascade,
+  game_no int not null,
+  role text not null,                       -- host | guest
+  log jsonb not null,
+  at timestamptz not null default now(),
+  primary key (match_id, game_no, role)
+);
+-- ...and what the check found.
+create table if not exists camarcade.verdicts (
+  match_id bigint not null references camarcade.matches on delete cascade,
+  game_no int not null,
+  host bigint references camarcade.players on delete set null,
+  game text,
+  verdict text not null,                    -- ok | partial | cheat | inputs | unsure | unverified | error
+  note text,
+  at timestamptz not null default now(),
+  primary key (match_id, game_no)
+);
+create index if not exists verdicts_host on camarcade.verdicts (host, at);
+alter table camarcade.players add column if not exists cheats int not null default 0;  -- times caught cheating
+alter table camarcade.players add column if not exists unsure int not null default 0;  -- games that didn't replay the same, on a browser that may round differently
+alter table camarcade.players add column if not exists last_cheat_at timestamptz;
+
 do $$
 declare t text;
 begin
-  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits', 'nets'] loop
+  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits', 'nets', 'game_logs', 'verdicts'] loop
     execute format('alter table camarcade.%I enable row level security', t);
   end loop;
 end $$;
@@ -649,11 +674,17 @@ begin
      and coalesce(g.host_at, g.guest_at) < g.started_at + interval '12 seconds' then
     v_res := 'void';
   end if;
+  -- (the replay check already caught the host's app cheating in this game: it doesn't count. See verify_put.)
+  if exists (select 1 from camarcade.verdicts where match_id = p_match and game_no = p_no and verdict in ('cheat', 'inputs')) then
+    v_res := 'void';
+    v_why := 'cheat';
+  end if;
 
   -- (Lock both players in id order, so two games settling at once can't deadlock.)
   perform 1 from camarcade.players where id in (m.host, m.guest) order by id for update;
 
-  if v_res = 'void' then v_why := 'void';
+  if v_why = 'cheat' then null;
+  elsif v_res = 'void' then v_why := 'void';
   elsif m.same_net then v_why := 'same_net';
   elsif exists (select 1 from camarcade.players where id in (m.host, m.guest) and is_test) then v_why := 'test';
   elsif camarcade.pair_ranked(m.host, m.guest) >= camarcade.pair_limit() then v_why := 'pair_limit';
@@ -798,6 +829,50 @@ begin
     delete from camarcade.queue where player_id = v_other;
   end if;
   return jsonb_build_object('ok', true);
+end $$;
+
+/* ================= THE REPLAY CHECK ================= */
+-- In an online Classic Game, the host's app runs the game. A hacked one could make its own player win. So after the
+-- game, both apps send their record of it (ca_game_log; see "The replay check" in games-duel.js), and the server's
+-- checker (the "verify" Edge Function, server/verify/index.ts) replays the game with the same code (verify-replay.js).
+-- If it doesn't come out the same, the host's app cheated: the game doesn't count, the host's streak ends, and they sit
+-- out Classic Games for a day (a week the second time, a month after that). See camarcade.suspects.
+
+-- What the check found. Only a game's first final verdict counts ('partial', no record from the guest yet, can still change).
+create or replace function camarcade.verify_put(p_match bigint, p_no int, p_verdict text, p_note text) returns void
+language plpgsql set search_path = '' as $$
+declare
+  m camarcade.matches;
+  g camarcade.games;
+  old text;
+  n int;
+begin
+  if p_verdict is null or p_verdict not in ('ok', 'partial', 'cheat', 'inputs', 'unsure', 'unverified', 'error') then raise exception 'bad_verdict'; end if;
+  select * into m from camarcade.matches where id = p_match;
+  if not found then return; end if;
+  select verdict into old from camarcade.verdicts where match_id = p_match and game_no = p_no for update;
+  if old is not null and old <> 'partial' then return; end if;
+  insert into camarcade.verdicts (match_id, game_no, host, game, verdict, note)
+  values (p_match, p_no, m.host, (select log->>'game' from camarcade.game_logs where match_id = p_match and game_no = p_no and role = 'host'), p_verdict, left(p_note, 500))
+  on conflict (match_id, game_no) do update set verdict = excluded.verdict, note = excluded.note, at = now();
+  if p_verdict <> 'partial' then delete from camarcade.game_logs where match_id = p_match and game_no = p_no; end if;
+  if p_verdict = 'unsure' then update camarcade.players set unsure = unsure + 1 where id = m.host; end if;
+  if p_verdict not in ('cheat', 'inputs') then return; end if;
+  -- Caught: the host's streak ends, and they sit out Classic Games for a while.
+  update camarcade.players
+  set cheats = cheats + 1, last_cheat_at = now(), streak = 0, week_streak = 0, streak_disputes = 0,
+      banned_until = greatest(coalesce(banned_until, now()), now() + case when cheats = 0 then interval '1 day' when cheats = 1 then interval '7 days' else interval '30 days' end),
+      ban_reason = 'cheating'
+  where id = m.host
+  returning cheats into n;
+  delete from camarcade.queue where player_id = m.host;
+  -- If the game had already counted as the host's win, take that win back, and the other player's loss.
+  select * into g from camarcade.games where match_id = p_match and game_no = p_no;
+  if g.resolved_at is not null and g.ranked and g.result = 'host' then
+    update camarcade.players set wins = greatest(0, wins - 1) where id = m.host;
+    update camarcade.players set losses = greatest(0, losses - 1) where id = m.guest;
+    update camarcade.games set ranked = false, note = 'cheat' where match_id = p_match and game_no = p_no;
+  end if;
 end $$;
 
 /* ================= LEADERBOARD + STATS ================= */
@@ -1055,6 +1130,43 @@ begin
   return camarcade.report_player(camarcade.auth(p_token), p_match, p_reason, p_note);
 end $$;
 
+-- The replay check: your app's record of an online game you played (see THE REPLAY CHECK).
+create or replace function public.ca_game_log(p_token text, p_match bigint, p_game_no int, p_log jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_id bigint := camarcade.auth(p_token);
+  m camarcade.matches;
+begin
+  perform camarcade.limit_rate('log:' || v_id, 60, interval '1 hour');
+  if p_log is null or jsonb_typeof(p_log) <> 'object' then raise exception 'bad_log'; end if;
+  if octet_length(p_log::text) > 800000 then raise exception 'log_too_big'; end if;
+  select * into m from camarcade.matches where id = p_match and (host = v_id or guest = v_id);
+  if not found or m.created_at < now() - interval '12 hours' then raise exception 'no_such_match'; end if;
+  if p_game_no is null or p_game_no < 1 or p_game_no > 200 then raise exception 'bad_game_no'; end if;
+  if random() < 0.02 then delete from camarcade.game_logs where at < now() - interval '2 days'; end if;
+  insert into camarcade.game_logs (match_id, game_no, role, log)
+  values (p_match, p_game_no, case when m.host = v_id then 'host' else 'guest' end, p_log)
+  on conflict do nothing;
+end $$;
+
+-- (Only the server's checker can call these two, with the secret key.)
+create or replace function public.ca_verify_get(p_match bigint, p_game_no int) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'host_log', (select log from camarcade.game_logs where match_id = p_match and game_no = p_game_no and role = 'host'),
+    'guest_log', (select log from camarcade.game_logs where match_id = p_match and game_no = p_game_no and role = 'guest'),
+    'verdict', (select verdict from camarcade.verdicts where match_id = p_match and game_no = p_game_no))
+$$;
+create or replace function public.ca_verify_put(p_match bigint, p_game_no int, p_verdict text, p_note text default null) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform camarcade.verify_put(p_match, p_game_no, p_verdict, p_note);
+end $$;
+revoke all on function public.ca_verify_get(bigint, int) from public, anon, authenticated;
+revoke all on function public.ca_verify_put(bigint, int, text, text) from public, anon, authenticated;
+grant execute on function public.ca_verify_get(bigint, int) to service_role;
+grant execute on function public.ca_verify_put(bigint, int, text, text) to service_role;
+
 create or replace function public.ca_leaderboard(p_token text default null) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -1142,7 +1254,7 @@ begin
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
-    'ca_turn(text)', 'ca_guest()', 'ca_google(text, int, int, jsonb)', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)'
+    'ca_turn(text)', 'ca_guest()', 'ca_google(text, int, int, jsonb)', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)', 'ca_game_log(text, bigint, int, jsonb)'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);
@@ -1488,6 +1600,30 @@ begin
     v_log := v_log || camarcade.t((camarcade.prize_json()->>'on')::boolean and (camarcade.prize_json()->>'total')::int = camarcade.prize_need(),
       'the visitor who reaches the goal switches the prize on');
 
+    -- ---------- the replay check ----------
+    x := camarcade.t_player('vc', true, 'netVC');
+    y := camarcade.t_player('vd', true, 'netVD');
+    c := camarcade.t_player('ve', true, 'netVE');
+    d := camarcade.t_player('vf', true, 'netVF');
+    m := camarcade.t_match(c, d, 'netVE', 'netVF');
+    perform camarcade.verify_put(m, 1, 'cheat', 'test');
+    perform camarcade.report(c, m, 1, 'sumo', 'win');
+    j := camarcade.report(d, m, 1, 'sumo', 'lose');
+    v_log := v_log || camarcade.t(j->>'why' = 'cheat' and not (j->>'ranked')::boolean and (camarcade.me_json(c)->>'wins')::int = 0,
+      'a game the replay check caught the host cheating in doesn''t count');
+    m := camarcade.t_match(x, y, 'netVC', 'netVD');
+    update camarcade.players set streak = 4, best = 4 where id = x;
+    perform camarcade.verify_put(m, 1, 'ok', null);
+    v_log := v_log || camarcade.t((camarcade.me_json(x)->>'streak')::int = 4, 'a game that replays exactly changes nothing');
+    perform camarcade.verify_put(m, 2, 'cheat', 'test');
+    j := camarcade.me_json(x);
+    v_log := v_log || camarcade.t((j->>'streak')::int = 0 and (j->>'best')::int = 4 and j->>'banned_until' is not null
+      and (select cheats from camarcade.players where id = x) = 1, 'a host caught cheating loses their streak and sits out Classic Games');
+    perform camarcade.verify_put(m, 2, 'ok', null);
+    v_log := v_log || camarcade.t((select verdict from camarcade.verdicts where match_id = m and game_no = 2) = 'cheat', 'a verdict can''t be changed afterwards');
+    perform camarcade.verify_put(m, 3, 'inputs', 'test');
+    v_log := v_log || camarcade.t((select banned_until from camarcade.players where id = x) > now() + interval '6 days', 'caught a second time: a week');
+
     raise exception using errcode = 'CAOK0', message = 'done';
   exception
     when sqlstate 'CAOK0' then
@@ -1596,3 +1732,24 @@ from (select p.id, p.name, p.created_at, p.banned_until,
 where x.streak > 0
 order by x.streak desc, x.reached_at, x.id
 limit 20;
+
+-- The replay check (see THE REPLAY CHECK): players it caught, or nearly caught, and their latest checked games.
+-- (select * from camarcade.suspects;) cheats: caught cheating (the game replayed differently, or they claimed the other
+-- player pressed things they never sent). unsure: games that replayed differently on a Safari or Firefox host, whose
+-- maths can round a little differently, so on their own they don't prove anything (lots of them are suspicious).
+create or replace view camarcade.suspects as
+select p.name, p.cheats, p.unsure, p.last_cheat_at, p.banned_until, p.ban_reason, p.best, p.streak, p.wins, p.losses, p.disputes,
+       (select count(*) from camarcade.reports r where r.reported = p.id) as times_reported,
+       (select string_agg(v.game || ' ' || v.verdict || ': ' || coalesce(v.note, ''), E'\n' order by v.at desc)
+        from (select * from camarcade.verdicts v where v.host = p.id and v.verdict in ('cheat', 'inputs', 'unsure') order by v.at desc limit 5) v) as latest
+from camarcade.players p
+where p.cheats > 0 or p.unsure > 0
+order by p.cheats desc, p.unsure desc, p.last_cheat_at desc nulls last
+limit 100;
+
+-- How the replay check is going (select * from camarcade.replay_checks;): how many games got each verdict, by game.
+create or replace view camarcade.replay_checks as
+select game, verdict, count(*) as games, max(at) as latest
+from camarcade.verdicts
+group by game, verdict
+order by game, verdict;

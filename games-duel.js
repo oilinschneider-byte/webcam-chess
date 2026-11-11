@@ -50,6 +50,27 @@ const TEAM = [
 ];
 const NO_INPUT = { mx: 0, my: 0, ax: 0, ay: 0, held: {}, hit: {} };
 
+/* The replay check (see verify-replay.js). In an online game, the host's app writes down everything that goes into
+   the game: the seed, both players' controls tick by tick, the camera walls' size, and how it ended. The guest's app
+   writes down every set of controls it sent. After the game, the server replays it with the same code and checks the
+   host's app played it straight. For that, the game itself must not depend on anything else: while the game's rules
+   run (init and step), Math.random gives the game's own seeded numbers, and effects and the end wait until after. */
+function seeded(a) { // (mulberry32, the same as in solos.js and verify-replay.js)
+  a >>>= 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Controls, packed small for the record: [mx, my, ax, ay, held, counts].
+const pack = raw => (raw ? [raw.mx, raw.my, raw.ax, raw.ay, raw.h || '', raw.c || {}] : null);
+// Does this browser run JavaScript with V8 (Chrome, Edge, Brave, Opera, Samsung Internet, Android)? The server replays
+// with V8 too, so those replay exactly; Safari and Firefox can differ in the last digit of some maths.
+const V8 = /Chrome\/|Chromium\//.test(navigator.userAgent) && !/CriOS|EdgiOS|FxiOS|Firefox/.test(navigator.userAgent);
+const siteVersion = () => { const s = document.querySelector('script[src*="games-duel.js"]'); const m = s && /[?&]v=(\d+)/.exec(s.getAttribute('src')); return m ? m[1] : ''; };
+
 // A cat's picture (with its arms), looking right or left, mouth closed or open: pics[1 or -1][0 or 1].
 function pictures(eq) {
   const pics = { 1: [null, null], '-1': [null, null] };
@@ -159,7 +180,16 @@ function run(ctx, def) {
   const release = k => { held[k] = false; sendInput(); };
   // (guest) A press goes to the host right away, not when the next regular update is due.
   function sendInput() {
-    if (online && !host && !own && !auto) ctx.stream({ t: 'i', i: readInput() });
+    if (online && !host && !own && !auto) sendRaw(readInput());
+  }
+  // (guest) Sends a set of controls to the host, and writes it down for the replay check (see "The replay check").
+  let lastSent = '';
+  function sendRaw(raw) {
+    if (sent && phase !== 'ko') {
+      const p = pack(raw), k = JSON.stringify(p);
+      if (k !== lastSent && sent.length < 60000) { lastSent = k; sent.push(p); }
+    }
+    ctx.stream({ t: 'i', i: raw });
   }
   ctx.listen(document, 'keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -260,21 +290,50 @@ function run(ctx, def) {
   let guestRaw = null;                // (host) the guest's latest controls
   const T = () => (host || off === null ? simT : simT + off);
 
+  // The game's own random numbers, and running its rules with them (see "The replay check" above).
+  const simRand = seeded(Number.isFinite(ctx.seed) ? ctx.seed : (Math.random() * 4294967296) >>> 0);
+  let inSim = false;
+  const after = [];
+  function sim(fn) {
+    const real = Math.random;
+    Math.random = simRand;
+    inSim = true;
+    try { return fn(); } finally { Math.random = real; inSim = false; after.splice(0).forEach(f => f()); }
+  }
+  // What the host's app writes down (and the guest's: every set of controls it sent). Practice games too, for the tests.
+  const rec = host && !own && (online || window.__testHooks)
+    ? { v: 1, role: 'host', game: def.id, ver: siteVersion(), seed: Number.isFinite(ctx.seed) ? ctx.seed >>> 0 : null, skill, eng: V8 ? 'v8' : 'other', bot: !!ctx.bot, W, H, walls: [], in: [[], []], ticks: 0, end: null }
+    : null;
+  const sent = online && !host && !own ? [] : null;
+  let tick = 0, recN = 0;
+  const lastRec = ['', '', ''];
+  function note(slot, t, k, v) {
+    if (lastRec[slot] === k) return;
+    lastRec[slot] = k;
+    if (++recN > 60000) { rec.overflow = true; return; } // (far more than any real game: stop writing)
+    if (slot < 2) rec.in[slot].push([t, v]); else rec.walls.push([t].concat(v));
+  }
+
   const api = {
-    rng: ctx.rng, skill, bot: !!ctx.bot, names, W, H, host, me: meI,
+    rng: () => Math.random(), // (inside the game's rules, Math.random is the game's own: see sim())
+    skill, bot: !!ctx.bot, names, W, H, host, me: meI,
     get t() { return simT; },
     T,
     ev(type, data) {
       const e = Object.assign({ type }, data || {});
-      runEvent(e);
-      if (online && host) ctx.send({ t: 'e', e });
+      const go = () => { runEvent(e); if (online && host) ctx.send({ t: 'e', e }); };
+      if (inSim) after.push(go); else go();
     },
     score(a, b) {
       score = [a, b];
       ctx.score(score[meI], score[themI]);
     },
     note(text) { api.ev('note', { text }); },
-    end(w, text) { if (host) endGame(w, text || ''); },
+    end(w, text) {
+      if (!host) return;
+      if (rec && !rec.end && phase !== 'ko') rec.end = { tick, w, sc: score.slice() };
+      if (inSim) after.push(() => endGame(w, text || '')); else endGame(w, text || '');
+    },
     toOther: null, // ('own' games: set for each player below)
   };
 
@@ -301,7 +360,7 @@ function run(ctx, def) {
     api.theirs = apiFor(themI);
     mine = def.initMine(api.mine, meI);
     if (ctx.bot) botP = def.initMine(api.theirs, themI);
-  } else if (host) S = def.init(api);
+  } else if (host) S = sim(() => def.init(api));
 
   function endGame(w, text) {
     if (phase === 'ko') return;
@@ -309,6 +368,9 @@ function run(ctx, def) {
     winner = w;
     endText = text;
     if (host && online) ctx.send({ t: 'end', w, x: text });
+    // (the record of this game, for the replay check: solos.js sends it to the server with the result)
+    if (rec && ctx.gameLog) { rec.ticks = tick; ctx.gameLog(rec); }
+    if (sent && ctx.gameLog) ctx.gameLog({ v: 1, role: 'guest', game: def.id, ver: siteVersion(), sent });
     sound(w === meI ? 'point' : w < 0 ? 'draw' : 'miss');
     ctx.note(w < 0 ? "It's a draw!" : w === meI ? 'You win!' : names[themI] + ' wins!');
     ctx.later(() => ctx.finish(w < 0 ? 'draw' : w === meI ? 'win' : 'lose'), 2600);
@@ -344,9 +406,19 @@ function run(ctx, def) {
       return;
     }
     const inp = [];
-    inp[meI] = auto ? autoInput() : toStep(readInput(), meI);
+    const raw = auto ? null : readInput();
+    inp[meI] = auto ? autoInput() : toStep(raw, meI);
     inp[themI] = ctx.bot ? Object.assign({}, NO_INPUT, def.bot(S, themI, DT, api) || {}) : toStep(guestRaw, themI);
-    def.step(S, inp, DT, api);
+    if (rec && !rec.end && !rec.overflow) {
+      // (controls as they came in, or for the test player and the bot, as the game got them)
+      const p0 = auto ? { s: inp[meI] } : pack(raw), p1 = ctx.bot ? { s: inp[themI] } : pack(guestRaw);
+      note(0, tick, JSON.stringify(p0), p0);
+      note(1, tick, JSON.stringify(p1), p1);
+      const cw = [CA.camWalls.CAM_W, CA.camWalls.CAM_H];
+      note(2, tick, cw.join(), cw);
+    }
+    sim(() => def.step(S, inp, DT, api));
+    tick++;
   }
 
   /* ---------- online ---------- */
@@ -548,7 +620,7 @@ function run(ctx, def) {
   if (online) {
     if (own) ctx.every(() => ctx.stream({ t: 'o', p: def.snapMine(mine), T: host ? Math.round(simT * 1000) / 1000 : undefined, sc: host ? score : undefined }), def.sendMs || SEND_MS);
     else if (host) ctx.every(() => { if (S) ctx.stream({ t: 's', g: def.snap(S), T: Math.round(simT * 1000) / 1000, sc: score }); }, def.sendMs || SEND_MS);
-    else ctx.every(() => ctx.stream({ t: 'i', i: auto ? autoRaw() : readInput() }), INPUT_MS);
+    else ctx.every(() => sendRaw(auto ? autoRaw() : readInput()), INPUT_MS);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
@@ -559,6 +631,7 @@ function run(ctx, def) {
       state: () => (own ? { mine, theirs: botP || theirs } : host ? S : guestView(performance.now())),
       snaps: () => sbuf.length, guestInput: () => guestRaw, end: (w, x) => endGame(w, x || 'TEST'),
       snapBytes: () => JSON.stringify(own ? def.snapMine(mine) : def.snap(S)).length,
+      rec: () => rec, sent: () => sent,
     };
   }
 }

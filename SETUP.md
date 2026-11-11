@@ -105,6 +105,26 @@ This adds a **Continue with Google** button to the log-in screen. It takes about
 
 How it works: Google tells Supabase who you are, Supabase sends you back to CamArcade with its proof, and the server (`ca_google`) logs you in. The first time, it asks for a username and the month and year you were born, the same rules as signing up. Google accounts have no CamArcade password: to delete one, you type your username.
 
+## 7. The replay check (catches hacked games)
+
+In an online Classic Game, the host's browser runs the game. Someone who changes the game's code in their browser could make themselves win. The replay check catches that: after each game, the server replays it with the real game code and checks it comes out the same.
+
+1. Paste `server/schema.sql` into the **SQL Editor** and press **Run** (it adds the replay check's tables).
+2. Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**.
+3. Name it exactly `verify`. Delete the example code, paste in everything from `server/verify/index.ts`, and press **Deploy function**.
+4. Open the new `verify` function → **Details** (or Settings) → turn **off** "Enforce JWT verification" (or "Verify JWT") → **Save**. (The players' browsers call it without a login. It only ever replays games: it can't change anything else.)
+
+To see it working (in the SQL Editor):
+
+```sql
+select * from camarcade.replay_checks;   -- how many games got each verdict
+select * from camarcade.suspects;        -- players it caught
+```
+
+The verdicts: **ok** (it replayed exactly), **partial** (it replayed exactly, but the guest's record never came), **cheat** (it replayed differently: the host's game was changed), **inputs** (the host claimed the other player pressed things they never pressed), **unsure** (it replayed differently on a Safari or Firefox host, whose maths can round slightly differently: only a pattern of these means something), **unverified** (a game that can't be replayed, or one played on an older version of the site).
+
+A host caught cheating loses their streak, the game doesn't count, and they can't play Classic Games for a day (a week the second time, a month after that).
+
 ## Running CamArcade
 
 Everything below is done in Supabase's **SQL Editor**: paste the line and press **Run**.
@@ -165,5 +185,5 @@ update camarcade.players set pass_hash = extensions.crypt('their-new-password', 
 
 - **Free plan limits:** Supabase pauses a free project after a week with no visitors at all. Press **Restore** in the dashboard to wake it. 500 MB of database is plenty for many thousands of players.
 - **Ages are what people type in.** Nobody checks an ID. The protection is that under-18 accounts never send or receive video or voice, a 13-year-old can't change that, and an under-13 answer blocks sign-ups from that browser.
-- **Cheating can be made hard, not impossible.** Someone with two devices on two different internet connections (like a phone on mobile data and a laptop on Wi-Fi) could still play against themselves. The server limits that to 3 counted games a day per pair of accounts. Look at `top_players` before you pay a prize.
+- **Cheating can be made hard, not impossible.** Someone with two devices on two different internet connections (like a phone on mobile data and a laptop on Wi-Fi) could still play against themselves. The server limits that to 3 counted games a day per pair of accounts. Look at `top_players` and `suspects` before you pay a prize.
 - **Video connections** between players go through the free PeerJS service. Very rarely two players' networks can't reach each other. Then the app calls the match off and finds someone else.

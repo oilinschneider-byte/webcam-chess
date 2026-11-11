@@ -46,6 +46,7 @@ const perfTest = q.get('mode') === 'perf';
 const rulesTest = q.get('mode') === 'rules'; // (the rules of Turf War, Cheese Heist, Pond War and Panic Chess, one by one)
 const shotsTest = q.get('mode') === 'shots'; // (pictures of the games, for the home screen: see homeShots)
 const lookTest = q.get('mode') === 'look'; // (just stops at the home screen, for a screenshot)
+const replayTest = q.get('mode') === 'replay'; // (the replay check: every replayable game against the bot, replayed: see replays)
 const netTest = q.get('mode') === 'net'; // (one online game, chosen with &online=, on a good and then on a bad connection)
 const withCam = camTest || !!q.get('cam');
 if (q.get('nofast') === role) window.__noFast = true;
@@ -59,7 +60,7 @@ window.__introMs = /[?&]intro=1\b/.test(location.search) ? 60000 : 1500;   // (s
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
-if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest || shotsTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
+if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest || shotsTest || replayTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
 if (netTest) window.__forceGame = DUEL_ONLINE;
 if (duelTest) {
   window.__forceGame = DUEL_ONLINE;
@@ -116,6 +117,15 @@ async function leave() {
 }
 
 async function main() {
+  if (q.get('offline')) { // (&offline=1: a pretend guest that never asks the server, for practice games when the guest limit is used up)
+    const real = CAServer.call, me = { id: 1, name: 'TestCat12', adult: false, guest: true, profile: {} };
+    CAServer.call = async (fn, args, o) => {
+      if (fn === 'ca_guest') return { token: '0'.repeat(64), me };
+      if (fn === 'ca_me') return me;
+      if (/^ca_(save_profile|log_out|visit|consent)$/.test(fn)) return null;
+      return real(fn, args, o);
+    };
+  }
   await until(() => CA.route, 15000, 'the page to load');
   if (CA.user) CA.logOut();
   if (CA.route !== 'auth') { location.hash = '#/auth'; await until(() => CA.route === 'auth', 5000, 'the sign-up page'); }
@@ -218,6 +228,7 @@ async function main() {
     await check('...and it still works after coming back', !!shown());
     return;
   }
+  if (replayTest) { await replays(); return; }
   if (shotsTest) { await homeShots(); return; }
   if (perfTest) { await perf(); return; }
   if (netTest) { await netRound(); return; }
@@ -844,6 +855,77 @@ async function homeShots() {
   location.hash = '#/menu';
   await until(() => CA.route === 'menu', 8000, 'the menu');
   await leave();
+  await log('done', true);
+}
+
+/* ---------- the replay check (verify-replay.js) ---------- */
+
+// Plays each replayable game against the bot, then replays the host's record of it with the server's checker: a
+// straight game must replay exactly. Then the same record, doctored, must not.
+async function replays() {
+  new Function(await (await fetch('verify-replay.js?nc=' + Date.now())).text())();
+  const cache = {};
+  const src = async n => cache[n] || (cache[n] = await (await fetch(n + '?nc=' + Date.now())).text());
+  const games = q.get('games') ? q.get('games').split(',') : Object.keys(CAReplay.FILES);
+  // the guest's controls: every one the host says it applied must be one the guest sent, in order
+  const A = [0.5, 0, 480, 270, 'r', { r: 1 }], B = [0, 0, 480, 270, '', { r: 1, a: 1 }], X = [-1, 0, 480, 270, 'l', { r: 1, l: 1 }];
+  const hostSaw = [[0, null], [5, A], [9, B]];
+  await check('replay check: the guest really sent what the host applied', CAReplay.checkInputs(hostSaw, [A, X, B]).ok);
+  await check('replay check: controls the guest never sent are caught', !CAReplay.checkInputs(hostSaw, [A, X]).ok);
+  await check('replay check: the guest\'s controls in the wrong order are caught', !CAReplay.checkInputs(hostSaw, [B, A]).ok);
+  await check('replay check: the right seed comes from the match and game number', CAReplay.seedFor(123, 2) === CAReplay.seedFor(123, 2) && CAReplay.seedFor(123, 2) !== CAReplay.seedFor(123, 3));
+  for (const id of games) {
+    location.hash = '#/menu';
+    await until(() => CA.route === 'menu', 8000, 'the menu');
+    const lvl = document.querySelector('#practiceLevel [data-level="hard"]');
+    if (lvl) lvl.click();
+    window.__duel = null;
+    location.hash = '#/practice?game=' + id;
+    const d = await until(() => window.__duel && window.__duel.id === id && window.__duel, 15000, id + ' to start').catch(() => null);
+    if (!d) { await check(id + ': starts', false); continue; }
+    await until(() => d.phase() === 'play', 8000, id + ': the countdown');
+    window.__duelSpeed = 8;
+    const stop = Date.now() + 120000;
+    while (Date.now() < stop && !(d.rec() && d.rec().end)) { if (d.phase() === 'play') mash(d); await sleep(120); }
+    window.__duelSpeed = 1;
+    letGo(d);
+    const rec = d.rec() && JSON.parse(JSON.stringify(d.rec()));
+    if (!rec || !rec.end) { await check(id + ': the game ended by its rules', false, rec && rec.ticks); continue; }
+    rec.ticks = rec.end.tick + 1;
+    const sources = {};
+    for (const n of CAReplay.files(id)) sources[n] = await src(n);
+    const go = r => { try { return CAReplay.run(sources, r, null, { practice: true }); } catch (e) { return { verdict: 'error', note: String((e && e.stack) || e).slice(0, 400) }; } };
+    const r = go(rec);
+    await check(id + ': a straight game replays exactly (' + r.verdict + ', ' + rec.ticks + ' steps, ' + JSON.stringify(rec).length + ' bytes)', r.verdict === 'ok', r);
+    const bad = JSON.parse(JSON.stringify(rec));
+    bad.end.w = bad.end.w === 0 ? 1 : 0;
+    const r2 = go(bad);
+    await check(id + ': a record with the winner changed is caught (' + r2.verdict + ')', r2.verdict === 'cheat', r2.note);
+  }
+  // A hacked host: Sumo, with the other cat secretly nudged towards the edge all game long. The record is honest about
+  // the controls, but the game it describes didn't happen by the rules: the replay must catch it.
+  if (games.includes('sumo')) {
+    location.hash = '#/menu';
+    await until(() => CA.route === 'menu', 8000, 'the menu');
+    window.__duel = null;
+    location.hash = '#/practice?game=sumo';
+    const d = await until(() => window.__duel && window.__duel.id === 'sumo' && window.__duel, 15000, 'sumo to start');
+    await until(() => d.phase() === 'play', 8000, 'sumo: the countdown');
+    window.__duelSpeed = 4;
+    const stop = Date.now() + 90000;
+    while (Date.now() < stop && !(d.rec() && d.rec().end)) {
+      const s = d.state();
+      if (s && s.cats && s.phase === 'fight') { const o = s.cats[1]; o.x += o.x > 480 ? 4 : -4; } // (the hack)
+      await sleep(60);
+    }
+    window.__duelSpeed = 1;
+    const rec = JSON.parse(JSON.stringify(d.rec()));
+    const sources = {};
+    for (const n of CAReplay.files('sumo')) sources[n] = await src(n);
+    const r = CAReplay.run(sources, rec, null, { practice: true });
+    await check('a hacked host (the other cat pushed out by the hack, not by the game) is caught (' + r.verdict + ')', r.verdict === 'cheat', r.note);
+  }
+  location.hash = '#/menu';
   await log('done', true);
 }
 
