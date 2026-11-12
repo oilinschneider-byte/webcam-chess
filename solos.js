@@ -1133,6 +1133,7 @@ function makeCtx(gameId, seed, extra) {
     stream(msg) { if (opp && !opp.bot) sendFast({ t: 'g', m: msg }); },
     netAt,       // when the update being handled would have arrived with no hold-ups on the way (use it to time smoothing)
     viewDelay,   // how many ms in the past to draw what the other player sends every sendMs, so it moves smoothly
+    netStarved,  // the next update was late: what was drawn ran out (viewDelay then gives the next one more time)
     on(fn) { handlers.push(fn); },
     deliver(msg) {
       if (!ctx.alive()) return;
@@ -1183,6 +1184,7 @@ function beginMatch(gameId, seed, extra) {
   const solo = !!(extra && extra.solo);
   const online = mode === 'solos' && !!pairing && !!opp && !opp.bot;
   if (online) pairing.gameNo++; // (both players count the games of a match the same way: the server checks the numbers)
+  if (online) Object.assign(net, { lost: 0, starves: 0, jitterMax: 0, starveRun: 0 }); // (the connection report is per game: see netReport)
   match = { ctx, gameId, started: false, over: false, solo, gameNo: online ? pairing.gameNo : 0, counted: online && counts(), betOk: online, bet: null };
   const g = GAMES[gameId];
   CA.voice.setInGame(true); // your camera turns on for every game (if you allowed it)
@@ -1798,6 +1800,7 @@ function reportResult(m, outcome, keepalive) {
   });
   attempt(1);
   sendLog(m);
+  if (!keepalive) netReport(m);
 }
 
 // The replay check (see verify-replay.js and "The replay check" in games-duel.js): the record of the game goes to the
@@ -2165,7 +2168,7 @@ function pairingFailed(pr, why) {
   if (!pr || pairing !== pr || pr.live) return; // (once the match has started, a closed connection is handled by onConnClosed)
   clearTimeout(pr.timer);
   pairing = null;
-  const pc = pr.conn && pr.conn.peerConnection;
+  const pc = conn && conn.peerConnection;
   const detail = (why || 'no reason') + ' | ' + pr.role + ' ice=' + (pc ? pc.iceConnectionState : 'none') + ' gather=' + (pc ? pc.iceGatheringState : 'none') +
     ' signal=' + (pc ? pc.signalingState : 'none') + ' relay=' + (relay ? 'yes' : 'no') + ' peer=' + (!peer ? 'gone' : peer.disconnected ? 'lost' : 'ok') + ' v=' + PROTOCOL;
   if (pr.conn && pr.conn !== conn) { try { pr.conn.close(); } catch (e) { /* ignore */ } }
@@ -2305,14 +2308,15 @@ function commit(c, asHost, card, game, seed) {
 const FAST_ID = 73;     // (both apps make the channel themselves with this number, so there's nothing to agree on first)
 const FAST_MAX = 16000; // (bigger updates take the normal connection: if one piece of a big message is lost, all of it is)
 let fast = null, fastOk = false, fastSeq = 0, fastSeen = Object.create(null);
-const net = { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0 };
+const net = { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0, lost: 0, starves: 0, starveAt: -1e9, jitterMax: 0, warned: false, starveRun: 0 };
+const NET_FRESH = { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0, lost: 0, starves: 0, starveAt: -1e9, jitterMax: 0, warned: false, starveRun: 0 };
 
 function openFast(c) {
   fast = null;
   fastOk = false;
   fastSeq = 0;
   fastSeen = Object.create(null);
-  Object.assign(net, { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0 });
+  Object.assign(net, NET_FRESH);
   if (window.__testHooks) window.__net = () => ({ fast: fastOk, jitter: Math.round(net.jitter), delay: Math.round(net.delay), lossy: performance.now() - net.lossAt < 5000, got: net.got, used: net.delayAt > 0 });
   if (window.__noFast) return; // (the tests can check that everything still works on the normal connection)
   let d;
@@ -2363,12 +2367,54 @@ function noteUpdate(q, s) {
   net.jitter = late > net.jitter ? net.jitter + (late - net.jitter) * 0.25 : net.jitter * Math.pow(0.5, (now - net.seenAt) / 3000);
   net.seenAt = now;
   net.at = s + net.base;
-  if (q > net.lastQ + 1) net.lossAt = now;
+  net.jitterMax = Math.max(net.jitterMax, net.jitter);
+  if (q > net.lastQ + 1) { net.lossAt = now; if (net.lastQ) net.lost += q - net.lastQ - 1; }
   net.lastQ = Math.max(q, net.lastQ);
   net.got++;
 }
 
 function netAt() { return net.base === null ? performance.now() : net.at; }
+
+// What was drawn of the other player ran out before the next update came (see guestView in games-duel.js): from now on,
+// draw a bit further in the past (as on a connection that's losing updates), so the next late one has time to arrive.
+// If it keeps happening, say so once: it's the connection, not the game.
+function netStarved() {
+  const now = performance.now();
+  if (now - net.starveAt < 400) return; // (one late update, counted once)
+  net.starves++;
+  net.lossAt = now;
+  if (now - net.starveAt < 6000 && (net.starveRun = (net.starveRun || 0) + 1) >= 4 && !net.warned && opp && !opp.bot) {
+    net.warned = true;
+    CA.toast('📶 The connection to ' + opp.name + ' is slow right now, so things may jump a little.');
+  } else if (now - net.starveAt >= 6000) net.starveRun = 0;
+  net.starveAt = now;
+}
+
+// After an online game: how good the connection was, for the server (see camarcade.connection_quality). The round trip
+// and whether it goes through a relay come from the browser's own connection stats.
+async function netReport(m) {
+  const pr = pairing;
+  if (!pr || !m || !m.gameNo || !CA.token || m.netSent) return;
+  m.netSent = true;
+  const st = { fast: fastOk, got: net.got, lost: net.lost, starves: net.starves, jitter: Math.round(net.jitter), jitterMax: Math.round(net.jitterMax),
+    delay: Math.round(net.delay), game: m.gameId, host: isHost };
+  try {
+    const pc = conn && conn.peerConnection;
+    if (pc && pc.getStats) {
+      const rep = await pc.getStats();
+      let pair = null;
+      rep.forEach(r => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = rep.get(r.selectedCandidatePairId); });
+      if (!pair) rep.forEach(r => { if (!pair && r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected)) pair = r; });
+      if (pair) {
+        if (Number.isFinite(pair.currentRoundTripTime)) st.rtt = Math.round(pair.currentRoundTripTime * 1000);
+        const lc = rep.get(pair.localCandidateId), rc = rep.get(pair.remoteCandidateId);
+        st.local = lc && lc.candidateType; st.remote = rc && rc.candidateType;
+        st.relay = st.local === 'relay' || st.remote === 'relay';
+      }
+    }
+  } catch (e) { /* (no stats: send the rest) */ }
+  CA.server.call('ca_net_note', { p_token: CA.token, p_match: pr.id, p_game_no: m.gameNo, p_stats: st }).catch(() => {});
+}
 
 // Drawing the other player in the past gives the next update time to arrive. It only needs the time between updates, plus
 // however late they tend to be (and one more update if some are getting lost). It changes gradually so nothing visibly jumps.

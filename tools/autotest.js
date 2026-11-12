@@ -809,13 +809,13 @@ async function verifyRound() {
   await check(DUEL_ONLINE + ': the game ended by its own rules', !$('vsReact').classList.contains('hidden'));
   if (host) {
     const rec = d.rec();
-    await check('the host recorded the game', !!(rec && rec.end && rec.in[1].length), rec && { end: rec.end, hostInputs: rec.in[0].length, guestInputs: rec.in[1].length, ver: rec.ver });
+    await check('the host recorded the game' + (rec ? ' (' + JSON.stringify(rec).length + ' bytes, ' + (rec.end ? rec.end.tick : 0) + ' steps, ' + rec.in[0].length + '+' + rec.in[1].length + ' inputs)' : ''), !!(rec && rec.end && rec.in[1].length), rec && { end: rec.end, hostInputs: rec.in[0].length, guestInputs: rec.in[1].length, ver: rec.ver, bytes: JSON.stringify(rec).length, ticks: rec.end.tick });
     await until(() => seen.gameLog, 20000, 'the record to be sent');
     await check('the host sent its record to the server', seen.gameLog === 'sent', seen.gameLog);
     const r = await until(() => seen.verify, 40000, "the server's checker to answer");
     await check('the server replayed the game and says it was played straight: ' + r.verdict, r.verdict === 'ok', r);
   } else {
-    await check('the guest recorded what it sent', d.sent().length > 0, d.sent().length);
+    await check('the guest recorded what it sent (' + d.sent().length + ' sends, ' + JSON.stringify(d.sent()).length + ' bytes)', d.sent().length > 0, { n: d.sent().length, bytes: JSON.stringify(d.sent()).length });
     await sleep(25000); // (the host is asking the server)
   }
   location.hash = '#/menu';

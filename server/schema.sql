@@ -219,10 +219,22 @@ alter table camarcade.players add column if not exists cheats int not null defau
 alter table camarcade.players add column if not exists unsure int not null default 0;  -- games that didn't replay the same, on a browser that may round differently
 alter table camarcade.players add column if not exists last_cheat_at timestamptz;
 
+-- How good the connection between the two players was, after each online game, as each player's app saw it (see
+-- netReport in solos.js, and the view connection_quality). Kept for 2 weeks.
+create table if not exists camarcade.net_stats (
+  match_id bigint not null references camarcade.matches on delete cascade,
+  game_no int not null,
+  player bigint references camarcade.players on delete cascade,
+  stats jsonb not null,
+  at timestamptz not null default now(),
+  primary key (match_id, game_no, player)
+);
+create index if not exists net_stats_at on camarcade.net_stats (at);
+
 do $$
 declare t text;
 begin
-  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits', 'nets', 'game_logs', 'verdicts'] loop
+  foreach t in array array['settings', 'players', 'sessions', 'login_fails', 'signups', 'queue', 'matches', 'games', 'blocks', 'reports', 'visits', 'hits', 'nets', 'game_logs', 'verdicts', 'net_stats'] loop
     execute format('alter table camarcade.%I enable row level security', t);
   end loop;
 end $$;
@@ -1149,6 +1161,18 @@ begin
   on conflict do nothing;
 end $$;
 
+-- How good the connection was in a game you played (see camarcade.net_stats).
+create or replace function public.ca_net_note(p_token text, p_match bigint, p_game_no int, p_stats jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_id bigint := camarcade.auth(p_token);
+begin
+  if not camarcade.throttle('net:' || v_id, 60, interval '1 hour') then return; end if;
+  if p_stats is null or jsonb_typeof(p_stats) <> 'object' or octet_length(p_stats::text) > 2000 then return; end if;
+  if not exists (select 1 from camarcade.matches where id = p_match and (host = v_id or guest = v_id) and created_at > now() - interval '12 hours') then return; end if;
+  if random() < 0.02 then delete from camarcade.net_stats where at < now() - interval '14 days'; end if;
+  insert into camarcade.net_stats (match_id, game_no, player, stats) values (p_match, p_game_no, v_id, p_stats) on conflict do nothing;
+end $$;
+
 -- (Only the server's checker can call these two, with the secret key.)
 create or replace function public.ca_verify_get(p_match bigint, p_game_no int) returns jsonb
 language sql stable security definer set search_path = '' as $$
@@ -1254,7 +1278,7 @@ begin
     'ca_save_profile(text, jsonb)', 'ca_delete_account(text, text)', 'ca_mm_poll(text, text, bigint)',
     'ca_mm_leave(text)', 'ca_mm_fail(text, bigint, text)', 'ca_report(text, bigint, int, text, text)', 'ca_block(text, bigint)',
     'ca_report_player(text, bigint, text, text)', 'ca_leaderboard(text)', 'ca_stats()', 'ca_visit(text)', 'ca_net_check()',
-    'ca_turn(text)', 'ca_guest()', 'ca_google(text, int, int, jsonb)', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)', 'ca_game_log(text, bigint, int, jsonb)'
+    'ca_turn(text)', 'ca_guest()', 'ca_google(text, int, int, jsonb)', 'ca_today()', 'ca_consent(boolean)', 'ca_versus(text, bigint)', 'ca_game_log(text, bigint, int, jsonb)', 'ca_net_note(text, bigint, int, jsonb)'
   ] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated, service_role', f);
@@ -1753,3 +1777,18 @@ select game, verdict, count(*) as games, max(at) as latest
 from camarcade.verdicts
 group by game, verdict
 order by game, verdict;
+
+-- How good the connections between players are (select * from camarcade.connection_quality;): the latest online games,
+-- as each player's app saw them. rtt_ms: the time there and back (under 100 is great, over 250 feels slow).
+-- late: times the other player's moves ran out before the next update came (the ones you'd see as a jump).
+-- lost: updates that never came. relay: the connection went through a relay server (slower, but it works when the
+-- two can't reach each other directly). fast: the quick channel for moves worked (if not, lost ones hold up the rest).
+create or replace view camarcade.connection_quality as
+select n.at, p.name as player, n.stats->>'game' as game, case when (n.stats->>'host')::boolean then 'host' else 'guest' end as role,
+       (n.stats->>'rtt')::int as rtt_ms, (n.stats->>'starves')::int as late, (n.stats->>'lost')::int as lost,
+       (n.stats->>'got')::int as updates, (n.stats->>'jitterMax')::int as worst_jitter_ms, (n.stats->>'delay')::int as view_delay_ms,
+       (n.stats->>'relay')::boolean as relay, (n.stats->>'fast')::boolean as fast
+from camarcade.net_stats n
+left join camarcade.players p on p.id = n.player
+order by n.at desc
+limit 200;

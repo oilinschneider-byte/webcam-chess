@@ -94,6 +94,7 @@ function pictures(eq) {
 // short way round; anything that jumped further than `jump` (like a respawn) just snaps there.
 function deepLerp(a, b, f, angles, jump, key) {
   if (typeof a === 'number' && typeof b === 'number') {
+    if (f > 1 && Number.isInteger(a) && Number.isInteger(b)) return b; // (looking ahead: only smooth things like positions, never counts)
     if (angles && angles.includes(key)) {
       let d = b - a;
       while (d > Math.PI) d -= Math.PI * 2;
@@ -461,7 +462,15 @@ function run(ctx, def) {
     let k = sbuf.length - 1;
     while (k > 0 && sbuf[k].at > rt) k--;
     const a = sbuf[k], b = sbuf[k + 1];
-    if (!b) return a.g;
+    if (!b) {
+      // The next snap is late. Rather than freezing and then jumping when it comes, keep things moving the way they were
+      // going, for up to a tenth of a second, and draw a little further in the past from now on (see viewDelay).
+      const p = sbuf[k - 1];
+      if (rt > a.at + 5 && ctx.netStarved) ctx.netStarved();
+      if (!p || def.lerp || rt <= a.at) return a.g;
+      const f = 1 + Math.min(2, Math.min(100, rt - a.at) / Math.max(1, a.at - p.at));
+      return deepLerp(p.g, a.g, f, def.angles, def.jump || 80);
+    }
     const f = clamp((rt - a.at) / Math.max(1, b.at - a.at), 0, 1);
     return def.lerp ? def.lerp(a.g, b.g, f) : deepLerp(a.g, b.g, f, def.angles, def.jump || 80);
   }
