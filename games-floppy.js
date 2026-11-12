@@ -222,6 +222,9 @@ function sample(buf, rt, keys, optional) {
   while (k > 0 && buf[k].at > rt) k--;
   const a = buf[k], b = buf[k + 1];
   if (!b) {
+    // (the next state is late: keep it moving the way it was going for a moment, and tell the connection code, so it
+    // draws further in the past for a while and the next late one has time to arrive: see netStarved in solos.js)
+    if (rt > a.at + 5 && CA.netStarved) CA.netStarved();
     const e = clamp((rt - a.at) / 1000, 0, 0.1);
     return Object.assign({}, a, { x: a.x + a.vx * e, y: a.y + a.vy * e });
   }

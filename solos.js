@@ -2389,6 +2389,7 @@ function netStarved() {
   } else if (now - net.starveAt >= 6000) net.starveRun = 0;
   net.starveAt = now;
 }
+CA.netStarved = netStarved; // (for the games with their own connection code: see sample in games-floppy.js)
 
 // After an online game: how good the connection was, for the server (see camarcade.connection_quality). The round trip
 // and whether it goes through a relay come from the browser's own connection stats.
