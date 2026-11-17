@@ -37,7 +37,7 @@ const GREEN = 0.52, GREEN_HALF = 0.06; // the green part of the bar
 const SWAT_REACH = 46, SLAP_REACH = 84;
 const DASH_SPEED = 780, DASH_TIME = 0.17, DASH_WAIT = 0.7;
 const READY = 1.8;               // the 3-2-1 countdown
-const SEND_MS = 33;
+const SEND_MS = 17;              // each app sends where its cat is this often: after every frame's physics (see advance)
 
 CA.games.add('hoops', {
   name: 'Cat Hoops', icon: '🏀',
@@ -110,6 +110,7 @@ function play(ctx) {
   let timeLeft = GAME_LEN;
   let evN = 0, evText = '', evHoop = 0, seenEv = 0; // hoop events ("SWISH! +3"), so the guest sees them too
   let shake = 0, cheer = 0, lastMsg = performance.now(), lastBounce = 0, otAt = -1e9;
+  const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
   const rimShake = [0, 0], netT = [0, 0];
   const fx = [];
   const playing = () => phase === 'play' || phase === 'ot';
@@ -544,6 +545,7 @@ function play(ctx) {
     const scorer = goal(0) === h ? 0 : 1;
     const pts = b.by === scorer ? b.pts : 2;
     score[scorer] += pts;
+    party.point(scorer === meI);
     run[scorer]++;
     run[1 - scorer] = 0;
     bv++;
@@ -620,6 +622,7 @@ function play(ctx) {
     if (phase === 'over') return;
     phase = 'over';
     winner = w;
+    party.end(w === meI ? 1 : -1);
     if (host && online) ctx.send({ t: 'end', w });
     sound([[200, 0, 0.6], [203, 0, 0.6]]);
     ctx.note(w === meI ? 'Final: you win!' : 'Final');
@@ -728,6 +731,7 @@ function play(ctx) {
       const a = num(m.sc[0], 0), b2 = num(m.sc[1], 0);
       if (a !== score[0] || b2 !== score[1]) {
         if (a > score[0]) { run[0]++; run[1] = 0; } else if (b2 > score[1]) { run[1]++; run[0] = 0; }
+        if (a > score[0] || b2 > score[1]) party.point((a > score[0] ? 0 : 1) === meI);
         score[0] = a; score[1] = b2; showScore(); }
     }
     if (Number.isFinite(m.tm)) timeLeft = clamp(m.tm, 0, GAME_LEN);
@@ -874,11 +878,21 @@ function play(ctx) {
     else stepPred(dt);
   }
 
-  let simAt = performance.now(), acc = 0, lastFrame = performance.now();
+  let simAt = performance.now(), acc = 0, lastFrame = performance.now(), sentAt = 0;
+  // What this app sends goes out right after its physics, saying how old that already is (see netAt in solos.js): the
+  // other app then plays it back at exactly the moments it happened, so it moves evenly.
+  function sendState(now) {
+    sentAt = now;
+    ctx.stream(host
+      ? { t: 's', c: packCat(me), b: packBall(ball), k: ack, v: av, n: bv, sc: score, tm: r1(timeLeft), ph: phase, ev: [evN, evText, evHoop] }
+      : { t: 's', c: packCat(me) }, Math.max(0, performance.now() - now) + acc * 1000);
+  }
   function advance(now, cap) {
     acc += Math.min(cap, Math.max(0, (now - simAt) / 1000));
     simAt = now;
-    while (acc >= DT) { acc -= DT; step(DT); }
+    let n = 0;
+    while (acc >= DT) { acc -= DT; step(DT); n++; }
+    if (online && n && now - sentAt >= SEND_MS - 3) sendState(now);
   }
 
   function updateViews(now) {
@@ -907,9 +921,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
-    ctx.every(() => ctx.stream(host
-      ? { t: 's', c: packCat(me), b: packBall(ball), k: ack, v: av, n: bv, sc: score, tm: r1(timeLeft), ph: phase, ev: [evN, evText, evHoop] }
-      : { t: 's', c: packCat(me) }), SEND_MS);
+    ctx.every(() => { const now = performance.now(); if (now - sentAt > 80) sendState(now); }, 50); // (in case the frames stop for a moment)
     ctx.every(() => { if (phase !== 'over' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
@@ -1114,6 +1126,7 @@ function play(ctx) {
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
     drawHud(now);
+    party.draw(g, dt);
     updateMsg();
   }
 

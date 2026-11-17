@@ -154,7 +154,7 @@ function gauss(mean, sd) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function setMsg(id, text) { const el = $(id); if (el) el.textContent = text; }
 function esc(s) { return CA.esc(s); }
-function sound(kind) { CA.sound(kind); }
+function sound(kind, rate) { CA.sound(kind, rate); }
 function practiceLevel() { try { return localStorage.getItem('camarcade-practice-level') || 'medium'; } catch (e) { return 'medium'; } }
 
 // (The bar shrinks with a transform, not its width: changing a width makes the browser lay out the page again on every frame.)
@@ -1130,8 +1130,9 @@ function makeCtx(gameId, seed, extra) {
     send(msg) { if (opp && !opp.bot) send({ t: 'g', m: msg }); },
     // For updates where only the newest one matters, many times a second, like "here's where everything is": the fast
     // lane (see below). They can get lost, so each one has to say everything, not just what changed since the last one.
-    stream(msg) { if (opp && !opp.bot) sendFast({ t: 'g', m: msg }); },
-    netAt,       // when the update being handled would have arrived with no hold-ups on the way (use it to time smoothing)
+    // (age: how many ms old what it shows already is, if it isn't brand new: like a game's last step)
+    stream(msg, age) { if (opp && !opp.bot) sendFast({ t: 'g', m: msg }, age); },
+    netAt,       // the moment the update being handled shows, on this app's clock (use it to time smoothing)
     viewDelay,   // how many ms in the past to draw what the other player sends every sendMs, so it moves smoothly
     netStarved,  // the next update was late: what was drawn ran out (viewDelay then gives the next one more time)
     on(fn) { handlers.push(fn); },
@@ -1157,7 +1158,19 @@ function makeCtx(gameId, seed, extra) {
     onEnd(fn) { enders.push(fn); }, // runs when the match ends, however it ends (like stopping a voice that's talking)
     // A personal record: kept if it's your best at this game, and shown after the game.
     record(key, label, value) { if (CA.setRecord(gameId, key, value)) newRecords.push(label + ': ' + Math.floor(value)); },
-    score(a, b) { setMsg('scMe', a); setMsg('scThem', b); },
+    // (the number that changed gives a little hop, unless the game asks for quiet: a score that's a clock, say)
+    score(a, b, quiet) {
+      [['scMe', a], ['scThem', b]].forEach(([id, v]) => {
+        const el = $(id), text = String(v);
+        if (!el || el.textContent === text) return;
+        const hop = !quiet && ctx.started && el.textContent !== '';
+        el.textContent = text;
+        if (!hop) return;
+        el.classList.remove('sc-hop');
+        void el.offsetWidth; // (so the hop starts again if it was still going)
+        el.classList.add('sc-hop');
+      });
+    },
     note(text) { setMsg('scNote', text || ''); },
     oppCheer() {}, // (bots don't cheer: they talked too much)
     finish(outcome, opts) { if (ctx.alive()) endMatch(outcome, null, opts); }, // opts: { noRematch, text }
@@ -1477,7 +1490,8 @@ function startReaction(outcome, res, opts) {
   setMsg('rxTitle', outcome === 'win' ? 'You win!' : outcome === 'lose' ? 'You lost' : "It's a draw");
   let reward = '';
   if (res) {
-    reward = '🔥 ' + res.before.streak + ' → ' + res.after.streak + (res.fish ? ' · +' + res.fish + ' 🐟' : '') + (res.xp ? ' · +' + res.xp + ' XP' : '') +
+    reward = '🔥 ' + res.before.streak + ' → ' + (outcome === 'win' ? cu(res.before.streak, res.after.streak) : res.after.streak) +
+      (res.fish ? ' · +' + cu(0, res.fish, 'coin') + ' 🐟' : '') + (res.xp ? ' · +' + cu(0, res.xp) + ' XP' : '') +
       (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
   } else if (opp.glingus) {
     reward = '🤝 Friendly game: nothing is counted';
@@ -1579,6 +1593,7 @@ function endMatch(outcome, reason, opts) {
   clearTimeout(mockTimer);
   if (opp.standIn) mock(outcome);
   if (mode === 'solos' || practiceMix) startReaction(outcome, res, opts); // react face to face, then Rematch or Next
+  celebrate(outcome, res);
 }
 
 function endSolo(score) {
@@ -1624,7 +1639,7 @@ function showResult(outcome, reason, res, opts) {
   } else {
     let streakLine;
     if (outcome === 'win') {
-      streakLine = '<div class="streak-change up">🔥 ' + res.before.streak + ' → <b>' + res.after.streak + '</b>' +
+      streakLine = '<div class="streak-change up">🔥 ' + res.before.streak + ' → ' + cu(res.before.streak, res.after.streak) +
         (res.newBest ? ' <span class="best-tag">New best!</span>' : '') + '</div>';
     } else if (outcome === 'lose') {
       streakLine = res.before.streak > 0
@@ -1636,11 +1651,14 @@ function showResult(outcome, reason, res, opts) {
     const tier = res.after.tier;
     const maxed = tier >= CA.PASS.length;
     const into = maxed ? CA.TIER_XP : res.after.xp - tier * CA.TIER_XP;
+    // (the bar starts where it was before this game, then fills up to where it is now: see celebrate)
+    const pct = Math.round(into / CA.TIER_XP * 100);
+    const pctWas = maxed ? 100 : Math.max(0, Math.min(pct, Math.round((res.before.xp - tier * CA.TIER_XP) / CA.TIER_XP * 100)));
     body = streakLine +
-      '<div class="rewards">' + (res.fish ? '<span class="reward fish">+' + res.fish + ' 🐟</span>' : '') + '<span class="reward xp">+' + res.xp + ' XP</span></div>' +
+      '<div class="rewards">' + (res.fish ? '<span class="reward fish">+' + cu(0, res.fish, 'coin') + ' 🐟</span>' : '') + '<span class="reward xp">+' + cu(0, res.xp) + ' XP</span></div>' +
       '<div class="pass-mini"><div class="pass-mini-top"><span>🎟️ Streak Pass · Tier ' + tier + '</span><span>' +
       (maxed ? 'All tiers unlocked!' : into + ' / ' + CA.TIER_XP + ' XP') + '</span></div>' +
-      '<div class="bar"><i style="width:' + Math.round(into / CA.TIER_XP * 100) + '%"></i></div>' +
+      '<div class="bar"><i style="width:' + pctWas + '%" data-w="' + pct + '"></i></div>' +
       (res.after.tier > res.before.tier ? '<a class="tier-up" href="#/pass">🎁 You reached tier ' + tier + '! Claim your reward</a>' : '') +
       '</div>';
     if (CA.profile.guest) body = streakLine + '<div class="streak-change">👤 Sign up to catch fish and earn XP.</div>';
@@ -1660,6 +1678,37 @@ function showResult(outcome, reason, res, opts) {
 
 function recordsHtml() {
   return newRecords.map(r => '<div class="streak-change up">🏅 New record! ' + esc(r) + '</div>').join('');
+}
+
+// A number on a result screen that counts up from `from` to `to` (see celebrate). kind 'coin': fish, with a coin sound.
+function cu(from, to, kind) {
+  return '<b class="cu' + (kind ? ' ' + kind : '') + '" data-from="' + (from | 0) + '" data-to="' + (to | 0) + '">' + (to | 0) + '</b>';
+}
+
+// The fun part of a result: the numbers count up, the Streak Pass bar fills, and a win gets confetti.
+// (Just for show: everything is already counted, and the screen reads the same once it's done.)
+function celebrate(outcome, res) {
+  const over = !$('vs').classList.contains('hidden'); // (the face-to-face screen is on top: its numbers are the ones you see)
+  const root = over ? $('rxReward') : $('stage');
+  let k = 0;
+  root.querySelectorAll('.cu').forEach(el => {
+    const from = +el.dataset.from || 0, to = +el.dataset.to || 0, coin = el.classList.contains('coin');
+    if (to === from || CA.calmMotion()) return;
+    el.textContent = String(from);
+    setTimeout(() => {
+      if (!el.isConnected) return;
+      if (coin) sound('coin');
+      CA.countUp(el, from, to, Math.max(300, Math.min(1100, 300 + Math.abs(to - from) * 45)), null,
+        f => sound([[coin ? 1319 : 880, 0, 0.05, { w: coin ? 'square' : 'sine', g: coin ? 0.22 : 0.4 }]], 0.8 + f * 0.45));
+    }, 250 + 260 * k++);
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('.pass-mini .bar i[data-w]').forEach(el => { el.style.width = el.dataset.w + '%'; });
+  }));
+  if (outcome !== 'win') return;
+  CA.confetti({ n: res && res.newBest ? 220 : res ? 150 : 90 });
+  CA.buzz([40, 60, 40, 60, 110]);
+  if (res && res.newBest) setTimeout(() => sound('sparkle'), 700);
 }
 
 // You against this opponent, like "You 2 – 3 Them".
@@ -2308,8 +2357,8 @@ function commit(c, asHost, card, game, seed) {
 const FAST_ID = 73;     // (both apps make the channel themselves with this number, so there's nothing to agree on first)
 const FAST_MAX = 16000; // (bigger updates take the normal connection: if one piece of a big message is lost, all of it is)
 let fast = null, fastOk = false, fastSeq = 0, fastSeen = Object.create(null);
-const net = { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0, lost: 0, starves: 0, starveAt: -1e9, jitterMax: 0, warned: false, starveRun: 0 };
-const NET_FRESH = { base: null, seenAt: 0, at: 0, jitter: 0, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0, lost: 0, starves: 0, starveAt: -1e9, jitterMax: 0, warned: false, starveRun: 0 };
+const NET_FRESH = { base: null, seenAt: 0, at: 0, jitter: 0, off: null, lastQ: 0, lossAt: -1e9, delay: 100, delayAt: 0, got: 0, lost: 0, starves: 0, starveAt: -1e9, jitterMax: 0, warned: false, starveRun: 0 };
+const net = Object.assign({}, NET_FRESH);
 
 function openFast(c) {
   fast = null;
@@ -2342,9 +2391,11 @@ function openFast(c) {
   }, 150);
 }
 
-function sendFast(msg) {
+// age (optional): how many ms old what the update shows already is, like a game's last step. The update is stamped
+// with the moment it shows (on this app's clock), not the moment it leaves: see netAt.
+function sendFast(msg, age) {
   msg.q = ++fastSeq;
-  msg.s = Math.round(performance.now());
+  msg.s = Math.round((performance.now() - (age > 0 ? Math.min(500, age) : 0)) * 10) / 10;
   if (fast && fastOk && fast.readyState === 'open') {
     const text = JSON.stringify(msg);
     if (text.length <= FAST_MAX) {
@@ -2360,29 +2411,36 @@ function sendFast(msg) {
 // An update has come in: how late was it?
 function noteUpdate(q, s) {
   const now = performance.now(), d = now - s; // (the time on the way, plus however far apart the two apps' clocks are)
+  const gap = net.base === null ? 0 : now - net.seenAt;
   // The quickest one is the best guess of an update with no hold-ups; it creeps up slowly in case the route got longer.
-  net.base = net.base === null ? d : Math.min(d, net.base + (now - net.seenAt) * 0.01);
+  net.base = net.base === null ? d : Math.min(d, net.base + gap * 0.02);
   const late = Math.max(0, d - net.base);
   // How late they tend to be: goes up fast (but one odd one only moves it a bit), and comes down over a few seconds.
-  net.jitter = late > net.jitter ? net.jitter + (late - net.jitter) * 0.25 : net.jitter * Math.pow(0.5, (now - net.seenAt) / 3000);
+  net.jitter = late > net.jitter ? net.jitter + (late - net.jitter) * 0.25 : net.jitter * Math.pow(0.5, gap / 3000);
+  // What smoothing goes by follows that best guess gently, never in a jump: so when the guess changes, nothing skips.
+  net.off = net.off === null ? net.base : net.base < net.off ? Math.max(net.base, net.off - gap * 0.03) : net.base;
   net.seenAt = now;
-  net.at = s + net.base;
+  net.at = s + net.off;
   net.jitterMax = Math.max(net.jitterMax, net.jitter);
   if (q > net.lastQ + 1) { net.lossAt = now; if (net.lastQ) net.lost += q - net.lastQ - 1; }
   net.lastQ = Math.max(q, net.lastQ);
   net.got++;
 }
 
+// The moment (on this app's clock) that the update being handled shows: its stamp, plus the time on the way with no
+// hold-ups. Smoothing by this plays things back exactly as they happened on the other app, however unevenly they arrive.
 function netAt() { return net.base === null ? performance.now() : net.at; }
 
 // What was drawn of the other player ran out before the next update came (see guestView in games-duel.js): from now on,
-// draw a bit further in the past (as on a connection that's losing updates), so the next late one has time to arrive.
-// If it keeps happening, say so once: it's the connection, not the game.
-function netStarved() {
+// draw a bit further in the past, so the next late one has time to arrive. If it keeps happening, say so once: it's the
+// connection, not the game. (gap: how many ms it ran out by so far, if known.)
+function netStarved(gap) {
   const now = performance.now();
+  if (gap > 0) net.jitter = Math.max(net.jitter, Math.min(100, gap) / 1.5 + 2); // (as if the updates had been this late)
+  if (gap < 30) return;                 // (too short to see: giving the next ones more time is enough)
+  net.lossAt = now;                     // (a real gap: as on a connection that's losing updates)
   if (now - net.starveAt < 400) return; // (one late update, counted once)
   net.starves++;
-  net.lossAt = now;
   if (now - net.starveAt < 6000 && (net.starveRun = (net.starveRun || 0) + 1) >= 4 && !net.warned && opp && !opp.bot) {
     net.warned = true;
     CA.toast('📶 The connection to ' + opp.name + ' is slow right now, so things may jump a little.');
@@ -2418,14 +2476,15 @@ async function netReport(m) {
 }
 
 // Drawing the other player in the past gives the next update time to arrive. It only needs the time between updates, plus
-// however late they tend to be (and one more update if some are getting lost). It changes gradually so nothing visibly jumps.
+// however late they tend to be (and one more update if some are getting lost). It changes gradually, so nothing visibly
+// jumps: while it grows, the other player moves a little slower for a moment; while it shrinks, a touch faster.
 function viewDelay(sendMs) {
   const now = performance.now();
   const lossy = now - net.lossAt < 5000;
   const want = Math.min(350, sendMs * (lossy ? 2.2 : 1.4) + net.jitter * 1.5 + 6);
   const dt = Math.min(0.1, (now - net.delayAt) / 1000);
   net.delayAt = now;
-  net.delay = want > net.delay ? Math.min(want, net.delay + 400 * dt) : Math.max(want, net.delay - 40 * dt);
+  net.delay = want > net.delay ? Math.min(want, net.delay + 200 * dt) : Math.max(want, net.delay - 30 * dt);
   return net.delay;
 }
 

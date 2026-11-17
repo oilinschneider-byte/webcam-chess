@@ -1215,41 +1215,181 @@ function emitMedia() { window.dispatchEvent(new CustomEvent('ca:media')); }
 /* ================= SOUND EFFECTS ================= */
 
 let soundOn = lsGet('wc-sound') !== '0';
-let sfx = null;
+let sfx = null, sfxOut = null, sfxNoise = null, sfxVoices = 0;
+// A sound is a list of notes: [frequency, start (s), length (s), options]. The options are all optional:
+// { w: the wave ('triangle' if not given, 'sine', 'square', 'sawtooth', or 'noise' for a hiss),
+//   g: how loud (1 is normal), to: the frequency it slides to by the end, q: how sharp a hiss's tone is }
 const SOUNDS = {
   move: [[330, 0, 0.07]], capture: [[260, 0, 0.08], [196, 0.05, 0.1]], castle: [[330, 0, 0.06], [392, 0.08, 0.07]],
-  check: [[660, 0, 0.08], [880, 0.09, 0.12]], tick: [[520, 0, 0.05]], go: [[880, 0, 0.12]],
-  point: [[660, 0, 0.08], [880, 0.08, 0.12]], miss: [[300, 0, 0.14]], notify: [[587, 0, 0.1], [784, 0.1, 0.14]],
+  check: [[660, 0, 0.08], [880, 0.09, 0.12]], tick: [[520, 0, 0.05]],
+  go: [[880, 0, 0.14], [1320, 0, 0.16, { w: 'sine', g: 0.45 }]],
+  point: [[660, 0, 0.08], [880, 0.08, 0.14], [1760, 0.08, 0.16, { w: 'sine', g: 0.3 }]],
+  miss: [[300, 0, 0.14]], notify: [[587, 0, 0.1], [784, 0.1, 0.14]],
   found: [[523, 0, 0.08], [659, 0.08, 0.08], [784, 0.16, 0.14]], match: [[392, 0, 0.1], [523, 0.12, 0.16]],
-  start: [[392, 0, 0.1], [523, 0.1, 0.16]], correct: [[784, 0, 0.06]],
-  win: [[523, 0, 0.12], [659, 0.12, 0.12], [784, 0.24, 0.12], [1047, 0.36, 0.3]],
+  start: [[392, 0, 0.1], [523, 0.1, 0.16]], correct: [[784, 0, 0.06], [1568, 0, 0.08, { w: 'sine', g: 0.3 }]],
+  win: [[523, 0, 0.12], [659, 0.12, 0.12], [784, 0.24, 0.12], [1047, 0.36, 0.42], [1319, 0.36, 0.42, { w: 'sine', g: 0.6 }],
+    [1568, 0.5, 0.36, { w: 'sine', g: 0.5 }], [2093, 0.62, 0.42, { w: 'sine', g: 0.4 }]],
   lose: [[392, 0, 0.16], [330, 0.16, 0.16], [262, 0.32, 0.3]], draw: [[440, 0, 0.14], [440, 0.2, 0.14]],
-  boom: [[110, 0, 0.35], [82, 0.08, 0.45], [55, 0.2, 0.6]], flip: [[620, 0, 0.04]],
+  boom: [[110, 0, 0.35], [82, 0.08, 0.45], [55, 0.2, 0.6], [900, 0, 0.32, { w: 'noise', to: 120, g: 1.3 }]], flip: [[620, 0, 0.04]],
+  // (the ones below are for the celebrations: see the effects in games-duel.js and the result screen in solos.js)
+  coin: [[988, 0, 0.07, { w: 'square', g: 0.4 }], [1319, 0.07, 0.24, { w: 'square', g: 0.4 }]],
+  pop: [[420, 0, 0.09, { w: 'sine', to: 900 }]],
+  whoosh: [[400, 0, 0.24, { w: 'noise', to: 2600, q: 1.2, g: 1 }]],
+  thud: [[150, 0, 0.18, { w: 'sine', to: 45, g: 1.7 }], [1000, 0, 0.07, { w: 'noise', to: 300, g: 0.9 }]],
+  sparkle: [[1568, 0, 0.07, { w: 'sine', g: 0.6 }], [2093, 0.05, 0.07, { w: 'sine', g: 0.6 }], [2637, 0.1, 0.1, { w: 'sine', g: 0.55 }], [3136, 0.16, 0.2, { w: 'sine', g: 0.45 }]],
+  cheer: [[523, 0, 0.07], [659, 0.06, 0.07], [784, 0.12, 0.07], [1047, 0.18, 0.22], [1568, 0.18, 0.26, { w: 'sine', g: 0.45 }]],
+  ouch: [[220, 0, 0.12, { w: 'sawtooth', to: 110, g: 0.45 }], [160, 0.1, 0.22, { w: 'sawtooth', to: 70, g: 0.45 }]],
+  count: [[440, 0, 0.1, { w: 'square', g: 0.4 }], [880, 0, 0.06, { w: 'sine', g: 0.4 }]],
+  fanfare: [[523, 0, 0.1], [523, 0.1, 0.1], [523, 0.2, 0.1], [698, 0.3, 0.3], [659, 0.3, 0.3, { w: 'sine', g: 0.6 }], [880, 0.3, 0.3, { w: 'sine', g: 0.5 }],
+    [784, 0.62, 0.5], [1047, 0.62, 0.5, { w: 'sine', g: 0.6 }], [1568, 0.62, 0.55, { w: 'sine', g: 0.4 }], [3000, 0.62, 0.5, { w: 'noise', to: 6000, q: 2, g: 0.35 }]],
 };
 
-function sound(kind) { // a name from SOUNDS, or your own notes: [[frequency, start (s), length (s)], …]
+function sfxSetup() {
+  sfx = new (window.AudioContext || window.webkitAudioContext)();
+  // (a limiter: a lot of sounds at once get a little quieter instead of crackling)
+  const comp = sfx.createDynamicsCompressor();
+  comp.threshold.value = -12;
+  comp.knee.value = 10;
+  comp.ratio.value = 8;
+  comp.attack.value = 0.003;
+  comp.release.value = 0.15;
+  comp.connect(sfx.destination);
+  sfxOut = comp;
+  sfxNoise = sfx.createBuffer(1, sfx.sampleRate, sfx.sampleRate); // (a second of hiss, for booms and whooshes)
+  const d = sfxNoise.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+
+// kind: a name from SOUNDS, or your own notes. rate (optional): plays it higher (1.1) or lower (0.9), like for a combo.
+function sound(kind, rate) {
   if (!soundOn) return;
   try {
-    sfx = sfx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!sfx) sfxSetup();
     if (sfx.state === 'suspended') sfx.resume();
-    const now = sfx.currentTime;
-    for (const [freq, at, len] of Array.isArray(kind) ? kind : SOUNDS[kind] || SOUNDS.tick) {
-      const osc = sfx.createOscillator();
+    const now = sfx.currentTime, k = rate > 0 ? rate : 1;
+    for (const [freq, at, len, o] of Array.isArray(kind) ? kind : SOUNDS[kind] || SOUNDS.tick) {
+      if (sfxVoices >= 48) break; // (plenty: more than this at once is just noise)
       const g = sfx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, now + at);
-      g.gain.exponentialRampToValueAtTime(0.16, now + at + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + at + len);
-      osc.connect(g);
-      g.connect(sfx.destination);
-      osc.start(now + at);
-      osc.stop(now + at + len + 0.02);
+      const t0 = now + at, t1 = t0 + len;
+      let src;
+      if (o && o.w === 'noise') {
+        src = sfx.createBufferSource();
+        src.buffer = sfxNoise;
+        src.loop = true;
+        const f = sfx.createBiquadFilter();
+        f.type = o.q ? 'bandpass' : 'lowpass';
+        if (o.q) f.Q.value = o.q;
+        f.frequency.setValueAtTime(freq * k, t0);
+        if (o.to) f.frequency.exponentialRampToValueAtTime(Math.max(20, o.to * k), t1);
+        src.connect(f);
+        f.connect(g);
+      } else {
+        src = sfx.createOscillator();
+        src.type = (o && o.w) || 'triangle';
+        src.frequency.setValueAtTime(freq * k, t0);
+        if (o && o.to) src.frequency.exponentialRampToValueAtTime(Math.max(20, o.to * k), t1);
+        src.connect(g);
+      }
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.16 * ((o && o.g) || 1), t0 + Math.min(0.01, len / 3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t1);
+      g.connect(sfxOut);
+      src.start(t0);
+      src.stop(t1 + 0.02);
+      sfxVoices++;
+      src.onended = () => { sfxVoices--; };
     }
   } catch (e) { /* sound is optional */ }
 }
 
 function setSound(on) { soundOn = on; lsSet('wc-sound', on ? '1' : '0'); }
+
+// A little buzz on phones that can (it goes with the sound setting). ms: how long, or a pattern like [20, 30, 40].
+function buzz(ms) {
+  if (!soundOn) return;
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* optional */ }
+}
+
+/* ================= CELEBRATIONS ================= */
+
+const calmMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+// Confetti over the whole page for a moment (a win, a new best, cashing out). o: { n: how many pieces, ms: how long }.
+let confettiOn = null;
+function confetti(o) {
+  o = o || {};
+  if (calmMotion() || document.visibilityState !== 'visible') return null;
+  if (confettiOn) confettiOn.stop();
+  const c = document.createElement('canvas');
+  c.className = 'ca-confetti';
+  const W = c.width = window.innerWidth, H = c.height = window.innerHeight;
+  document.body.appendChild(c);
+  const g = c.getContext('2d');
+  const colors = ['#ffd23f', '#ff5a8a', '#3ddc84', '#4da3ff', '#b98cff', '#ff8a1f', '#ffffff'];
+  const n = Math.min(260, o.n || 130), ms = o.ms || 2600;
+  const ps = [];
+  for (let i = 0; i < n; i++) { // two cannons, from the bottom corners up and inward
+    const left = i % 2 === 0, a = -Math.PI / 2 + (left ? 0.3 : -0.3) + (Math.random() - 0.5) * 0.9;
+    const v = (0.55 + Math.random() * 0.75) * Math.min(1500, H * 1.55);
+    ps.push({ x: left ? -10 : W + 10, y: H * (0.72 + Math.random() * 0.2), vx: Math.cos(a) * v + (left ? 260 : -260), vy: Math.sin(a) * v,
+      w: 6 + Math.random() * 7, h: 4 + Math.random() * 5, r: Math.random() * 6, vr: (Math.random() - 0.5) * 16, ph: Math.random() * 6, c: colors[i % colors.length], d: Math.random() * 0.25 });
+  }
+  const t0 = performance.now();
+  let last = t0, raf = 0, done = false;
+  const me = { stop() { if (done) return; done = true; cancelAnimationFrame(raf); c.remove(); if (confettiOn === me) confettiOn = null; } };
+  confettiOn = me;
+  const frame = now => {
+    if (done) return;
+    const t = (now - t0) / 1000, dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    last = now;
+    if (now - t0 > ms) { me.stop(); return; }
+    g.clearRect(0, 0, W, H);
+    g.globalAlpha = Math.max(0, Math.min(1, (ms - (now - t0)) / 500));
+    for (const p of ps) {
+      if (t < p.d) continue;
+      p.vy += 1500 * dt;
+      const drag = Math.pow(0.22, dt);
+      p.vx *= drag;
+      p.vy = p.vy > 0 ? Math.min(p.vy, 330) : p.vy * drag; // (they shoot up fast, then flutter down slowly)
+      p.x += p.vx * dt + Math.sin(t * 5 + p.ph) * 40 * dt;
+      p.y += p.vy * dt;
+      p.r += p.vr * dt;
+      g.fillStyle = p.c;
+      g.save();
+      g.translate(p.x, p.y);
+      g.rotate(p.r);
+      g.scale(1, Math.cos(t * 9 + p.ph)); // (flipping over as it falls)
+      g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      g.restore();
+    }
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
+  return me;
+}
+
+// Counts a number up on the page: el's text goes from `from` to `to` over ms. fmt(v) makes the text, and tick(f) is called
+// as it changes (for a little sound), with f going from 0 to 1.
+function countUp(el, from, to, ms, fmt, tick) {
+  if (!el) return;
+  const show = v => { el.textContent = fmt ? fmt(v) : String(v); };
+  if (calmMotion() || from === to || !(ms > 0)) { show(to); return; }
+  const t0 = performance.now();
+  let shown = from, lastTick = 0;
+  show(from);
+  const step = now => {
+    if (!el.isConnected) return;
+    const f = Math.min(1, Math.max(0, (now - t0) / ms)), e = 1 - Math.pow(1 - f, 3);
+    const v = Math.round(from + (to - from) * e);
+    if (v !== shown) {
+      shown = v;
+      show(v);
+      if (tick && now - lastTick > 45) { lastTick = now; tick(f); }
+    }
+    if (f < 1) requestAnimationFrame(step); else show(to);
+  };
+  requestAnimationFrame(step);
+}
 
 /* ================= POPUPS ================= */
 
@@ -1457,7 +1597,7 @@ window.CA = {
   guestGate,
   googleStart, googleLogIn, get googleOn() { return CAServer.google; }, get googleError() { return googleError; },
   signUp, playAsGuest, logIn, logOut, sessionLost, deleteAccount, checkUsername, cleanName, canVideoChat, lastUser: () => lsGet(LAST_USER_KEY) || '',
-  server: CAServer, deviceId, voice, sound, setSound, modal, closeModal, modalLocked, confirmBox, toast, esc,
+  server: CAServer, deviceId, voice, sound, setSound, buzz, confetti, countUp, calmMotion, modal, closeModal, modalLocked, confirmBox, toast, esc,
   register, go, render, resume, showScreen, requestLeave,
   get route() { return current ? current.name : null; },
 };

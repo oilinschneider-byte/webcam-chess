@@ -47,7 +47,7 @@ const TEAM = [
   { main: '#2f7bff', light: '#a9cbff', dark: '#163f99' }, // the host: blue
   { main: '#ff8a1f', light: '#ffd0a1', dark: '#9a4700' }, // the guest: orange
 ];
-const SEND_MS = 33;
+const SEND_MS = 17; // each app sends where its cat is this often: after every frame's physics (see advance)
 const HELP = 'WASD move · mouse aim · click or hold to shoot · Space build · enemy walls hurt · shoot the DOTS when they flash open (only dots break) · pick up crates · stay in the zone';
 const HELP_TOUCH = 'Stick moves · Shoot aims at the other cat · Build drops a dot · enemy walls hurt · shoot the DOTS when they flash open (only dots break) · pick up crates · stay in the zone';
 
@@ -143,6 +143,7 @@ function play(ctx) {
   const T = () => (host || off === null ? t : t + off);
   const playT = () => T() - READY;
   let shake = 0, lastBounce = 0, lastMsg = performance.now();
+  const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
   const fx = [];
 
   // The space inside the hedge around the arena.
@@ -537,6 +538,7 @@ function play(ctx) {
     fx.push({ k: 'ring', x: v.x, y: v.y, vx: 0, vy: 0, life: 0.45, max: 0.45, r: CR + 9, c: '#7dd3ff' });
     pop(v.x, v.y - 40, 'SHIELD BROKEN!', '#7dd3ff');
     shake = Math.max(shake, 8);
+    party.point(c !== me);
     sound([[1800, 0, 0.04], [1200, 0.03, 0.06], [700, 0.07, 0.12]]);
     showScore();
   }
@@ -571,6 +573,7 @@ function play(ctx) {
     if (phase === 'ko') return;
     phase = 'ko';
     winner = w;
+    party.end(w < 0 ? 0 : w === meI ? 1 : -1);
     if (host && online) ctx.send({ t: 'end', w });
     showScore();
     ctx.note(w < 0 ? "It's a draw!" : w === meI ? 'K.O.! You win!' : 'K.O.!');
@@ -972,11 +975,19 @@ function play(ctx) {
     }
   }
 
-  let simAt = performance.now(), acc = 0, lastFrame = performance.now();
+  let simAt = performance.now(), acc = 0, lastFrame = performance.now(), sentAt = 0;
+  // What this app sends goes out right after its physics, saying how old that already is (see netAt in solos.js): the
+  // other app then plays it back at exactly the moments it happened, so it moves evenly.
+  function sendState(now) {
+    sentAt = now;
+    ctx.stream(host ? { t: 's', c: packCat(me), T: r3(t) } : { t: 's', c: packCat(me) }, Math.max(0, performance.now() - now) + acc * 1000);
+  }
   function advance(now, cap) {
     acc += Math.min(cap, Math.max(0, (now - simAt) / 1000)) * (phase === 'ko' ? 0.45 : 1); // (slow motion for the K.O.)
     simAt = now;
-    while (acc >= DT) { acc -= DT; step(DT); }
+    let n = 0;
+    while (acc >= DT) { acc -= DT; step(DT); n++; }
+    if (online && n && now - sentAt >= SEND_MS - 3) sendState(now);
   }
 
   function updateViews(now) {
@@ -997,7 +1008,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
-    ctx.every(() => ctx.stream(host ? { t: 's', c: packCat(me), T: r3(t) } : { t: 's', c: packCat(me) }), SEND_MS);
+    ctx.every(() => { const now = performance.now(); if (now - sentAt > 80) sendState(now); }, 50); // (in case the frames stop for a moment)
     ctx.every(() => { if (host) ctx.send({ t: 'pk', l: picks.map(p => [p.id, Math.round(p.x), Math.round(p.y), p.type]) }); }, 300);
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
@@ -1143,6 +1154,7 @@ function play(ctx) {
     CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
     drawHud();
     drawOverlay(now);
+    party.draw(g, dt);
     updateMsg(now);
   }
 

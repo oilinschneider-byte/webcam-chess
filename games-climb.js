@@ -47,7 +47,7 @@ const FISH_LEN = 112, FISH_USES = 3, SLAP_SPEED = 950; // a slap needs the fish 
 const TIME_LIMIT = 240;          // seconds; then whoever got further wins
 const READY = 2.4;               // the 3-2-1 countdown
 const GHOST_AFTER = 1.1, GHOST_FOR = 2.5; // stuck against each other this long: slip through each other this long
-const SEND_MS = 33;
+const SEND_MS = 17;              // each app sends where its cat is this often: after every frame's physics (see advance)
 const START_X = [150, 265];      // where the cats start (the host's on the left)
 
 CA.games.add('climb', {
@@ -730,10 +730,12 @@ function play(ctx) {
     const a = progress(me), b = progress(theirView(performance.now()));
     endGame(Math.abs(a - b) < 0.004 ? -1 : a > b ? meI : 1 - meI, true);
   }
+  const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
   function endGame(w, timeout) { // w: the winner (0 or 1), or -1 for a draw
     if (phase === 'over') return;
     phase = 'over';
     winner = { w, timeout: !!timeout };
+    party.end(w < 0 ? 0 : w === meI ? 1 : -1);
     if (host && online) ctx.send({ t: 'end', w, o: timeout ? 1 : 0 });
     if (document.pointerLockElement === cv) document.exitPointerLock();
     ctx.score(w === meI ? 1 : 0, w === 1 - meI ? 1 : 0);
@@ -925,7 +927,13 @@ function play(ctx) {
     }
   }
 
-  let simAt = performance.now(), acc = 0, lastFrame = performance.now();
+  let simAt = performance.now(), acc = 0, lastFrame = performance.now(), sentAt = 0;
+  // What this app sends goes out right after its physics, saying how old that already is (see netAt in solos.js): the
+  // other app then plays it back at exactly the moments it happened, so it moves evenly.
+  function sendState(now) {
+    sentAt = now;
+    ctx.stream(packMe(), Math.max(0, performance.now() - now) + acc * 1000);
+  }
   // (The mouse moves once a frame, but the physics runs in smaller steps: the aim slides over to where the mouse put
   // it during those steps, so your cat moves smoothly instead of in jerks.)
   function advance(now, cap) {
@@ -946,6 +954,7 @@ function play(ctx) {
     acc -= n * DT;
     me.aim.x = a1.x; me.aim.y = a1.y;
     me.fishAim.x = f1.x; me.fishAim.y = f1.y;
+    if (online && n && now - sentAt >= SEND_MS - 3) sendState(now);
   }
 
   function frame(now) {
@@ -960,7 +969,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) advance(now, 1.5); }, 250);
   if (online) {
-    ctx.every(() => ctx.stream(packMe()), SEND_MS);
+    ctx.every(() => { const now = performance.now(); if (now - sentAt > 80) sendState(now); }, 50); // (in case the frames stop for a moment)
     ctx.every(() => { if (phase !== 'over' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
@@ -1009,6 +1018,7 @@ function play(ctx) {
     drawFx();
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     drawHud(now, mv, tv);
+    party.draw(g, dt);
     $('ccLock').classList.toggle('hidden', !fine || locked || phase === 'over');
     updateMsg(now);
   }

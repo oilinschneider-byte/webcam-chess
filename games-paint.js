@@ -36,7 +36,7 @@ CA.games.add('paint', {
   blurb: 'Hold the mouse button to spray! You run faster on your own color. Spray the other cat to burst them, and paint a closed loop to claim all the land inside. In the last 10 seconds the middle counts triple. 45 seconds.',
   start(ctx) {
     CA.duel.run(ctx, {
-      id: 'paint', mouse: true, sendMs: 66,
+      id: 'paint', mouse: true, heavy: ['g'], heavyMs: 66, // (the floor is big: it goes 15 times a second, the cats after every step)
       pad: { stick: true, buttons: [{ k: 'a', label: '💣 Throw bomb' }, { k: 'fire', label: '🎨 Spray', main: true }] },
       help: 'WASD move · aim with the mouse · hold the button to spray: floor and the other cat · paint a closed loop to claim the land inside · 💣 (Space throws it), 🛡️ and 🪣 help',
       helpTouch: 'Stick moves · touch the floor to spray there · spray the other cat to burst them',

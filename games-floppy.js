@@ -224,7 +224,7 @@ function sample(buf, rt, keys, optional) {
   if (!b) {
     // (the next state is late: keep it moving the way it was going for a moment, and tell the connection code, so it
     // draws further in the past for a while and the next late one has time to arrive: see netStarved in solos.js)
-    if (rt > a.at + 5 && CA.netStarved) CA.netStarved();
+    if (rt > a.at + 4 && CA.netStarved) CA.netStarved(rt - a.at);
     const e = clamp((rt - a.at) / 1000, 0, 0.1);
     return Object.assign({}, a, { x: a.x + a.vx * e, y: a.y + a.vy * e });
   }
@@ -235,6 +235,80 @@ function sample(buf, rt, keys, optional) {
     for (const key of optional || []) if (a[key] >= 0 && b[key] >= 0) o[key] = a[key] + (b[key] - a[key]) * f;
   }
   return o;
+}
+
+/* ---------- a little party ---------- */
+
+// Confetti and a flash of colour over an arena W wide and H tall, for a point or a win (just for show). Call
+// draw(g, dt) at the end of every frame, in the arena's own coordinates. Players who asked their device for less
+// motion get none of it.
+const PARTY = ['#ffd23f', '#ff5a8a', '#3ddc84', '#4da3ff', '#b98cff', '#ff8a1f', '#ffffff'];
+function party(W, H) {
+  const bits = [];
+  const calm = !!(CA.calmMotion && CA.calmMotion());
+  let flashA = 0, flashC = '#ffffff';
+  const me = {
+    // Paper thrown up from (x, y), or (with no place given) falling from the top of the arena.
+    confetti(n, x, y) {
+      if (calm) return;
+      const up = x != null;
+      for (let k = 0; k < n && bits.length < 400; k++) {
+        const life = 1.5 + Math.random() * 0.9;
+        bits.push({ x: up ? x : Math.random() * W, y: up ? y : -10 - Math.random() * 70, vx: (Math.random() - 0.5) * (up ? 520 : 140), vy: up ? -260 - Math.random() * 420 : 80 + Math.random() * 180,
+          life, max: life, r: 3 + Math.random() * 3, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 12, ph: Math.random() * 6, c: PARTY[(Math.random() * PARTY.length) | 0] });
+      }
+    },
+    // A flash of colour over everything, gone in a blink (a: how strong, up to 0.6).
+    flash(color, a) { if (!calm && a >= flashA) { flashA = Math.min(0.6, a); flashC = color || '#ffffff'; } },
+    // A point: yours (confetti, and a buzz on a phone) or theirs (a red flash).
+    point(mine) {
+      if (!mine) { me.flash('#ff3b3b', 0.13); return; }
+      me.confetti(22);
+      me.flash('#ffffff', 0.14);
+      if (CA.buzz) CA.buzz([18, 30, 30]);
+    },
+    // The end of the game: result 1 (you won), 0 (a draw) or -1 (you lost).
+    end(result) {
+      if (result > 0) {
+        me.confetti(70);
+        setTimeout(() => me.confetti(45), 450);
+        CA.sound('fanfare');
+        if (CA.buzz) CA.buzz([30, 40, 30, 40, 70]);
+      } else if (result < 0) {
+        CA.sound('thud');
+        if (CA.buzz) CA.buzz(120);
+      }
+    },
+    draw(g, dt) {
+      for (let k = bits.length - 1; k >= 0; k--) {
+        const p = bits[k];
+        p.life -= dt;
+        if (p.life <= 0) { bits.splice(k, 1); continue; }
+        p.vy = Math.min(230, p.vy + 620 * dt); // (it shoots up, then flutters down slowly)
+        p.vx *= Math.pow(0.3, dt);
+        p.x += (p.vx + Math.sin(p.life * 5 + p.ph) * 34) * dt;
+        p.y += p.vy * dt;
+        p.rot += p.vr * dt;
+        g.globalAlpha = Math.min(1, p.life / p.max * 3);
+        g.fillStyle = p.c;
+        g.save();
+        g.translate(p.x, p.y);
+        g.rotate(p.rot);
+        g.scale(1, Math.cos(p.life * 9 + p.ph)); // (flipping over as it falls)
+        g.fillRect(-p.r, -p.r * 0.6, p.r * 2, p.r * 1.2);
+        g.restore();
+      }
+      g.globalAlpha = 1;
+      if (flashA > 0.012) {
+        g.globalAlpha = flashA;
+        g.fillStyle = flashC;
+        g.fillRect(0, 0, W, H);
+        g.globalAlpha = 1;
+        flashA *= Math.pow(0.0006, dt);
+      } else flashA = 0;
+    },
+  };
+  return me;
 }
 
 /* ---------- drawing helpers ---------- */
@@ -310,6 +384,6 @@ function painter(g, w) {
   return { dot, star, heart, roundRect, label, bigText, speedLines, dizzy };
 }
 
-CA.floppy = { IMG_W, IMG_H, IMG_FEET, ARM_N, FONT, fur, pictures, mouth, drawBody, stepArms, whip, drawArms, controls, sample, painter };
+CA.floppy = { IMG_W, IMG_H, IMG_FEET, ARM_N, FONT, fur, pictures, mouth, drawBody, stepArms, whip, drawArms, controls, sample, party, painter };
 
 })();

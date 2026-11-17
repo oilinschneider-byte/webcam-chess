@@ -39,7 +39,7 @@ const LIVES = 3;
 const HOME = [200, W - 200];     // where the cats start (cat 0 is the host's, on the left)
 const CRACK = 1.3;               // seconds a tile shakes before it falls
 const READY = 1.8;               // the 3-2-1 countdown
-const SEND_MS = 33;
+const SEND_MS = 17;              // each app sends where its cat is this often: after every frame's physics (see advance)
 const BANNERS = {
   crack: '⚠️ The lava is creeping in from the sides!', quake: '💥 EARTHQUAKE!', last: '🌋 The ground holds… for now!', fewer: '🌋 The lava creeps in a little more!',
 };
@@ -113,6 +113,7 @@ function play(ctx) {
   const taken = new Set();                           // (crates this app already picked up, until the host has removed them)
   const powerBits = c => (c.pSpd > 0 ? 1 : 0) | (c.pBig > 0 ? 2 : 0) | (c.pShd > 0 ? 4 : 0);
   let shake = 0, lastThud = 0, lastMsg = performance.now();
+  const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
   const fx = [];
   const chunks = [];
 
@@ -461,6 +462,7 @@ function play(ctx) {
 
   function lifeLost(c) {
     shake = Math.max(shake, 12);
+    party.point(c !== me);
     sound(c === me ? 'miss' : 'point');
     if (c === me && ctx.bot) ctx.oppCheer();
     ctx.score(LIVES - them.lives, LIVES - me.lives);
@@ -567,6 +569,7 @@ function play(ctx) {
     if (phase === 'ko') return;
     phase = 'ko';
     winner = w;
+    party.end(w < 0 ? 0 : w === meI ? 1 : -1);
     if (host && online) ctx.send({ t: 'end', w });
     ctx.note(w < 0 ? "It's a draw!" : w === meI ? 'K.O.! You win!' : 'K.O.!');
     ctx.later(() => ctx.finish(w < 0 ? 'draw' : w === meI ? 'win' : 'lose'), 2400);
@@ -910,11 +913,21 @@ function play(ctx) {
     if (host && phase === 'play' && (me.out || them.out)) endGame(me.out && them.out ? -1 : me.out ? themI : meI);
   }
 
-  let simAt = performance.now(), acc = 0, lastFrame = performance.now();
+  let simAt = performance.now(), acc = 0, lastFrame = performance.now(), sentAt = 0;
+  // What this app sends goes out right after its physics, saying how old that already is (see netAt in solos.js): the
+  // other app then plays it back at exactly the moments it happened, so it moves evenly.
+  function sendState(now) {
+    sentAt = now;
+    ctx.stream(host
+      ? { t: 's', c: packCat(me), b: packBarrel(barrel), g: tiles.join(''), k: ack, v: av, n: bv, bn: bannerN, bt: bannerKey, cr: crates.map(c => [c.id, Math.round(c.x), c.type]) }
+      : { t: 's', c: packCat(me) }, Math.max(0, performance.now() - now) + acc * 1000);
+  }
   function advance(now, cap) {
     acc += Math.min(cap, Math.max(0, (now - simAt) / 1000)) * (phase === 'ko' ? 0.45 : 1); // (slow motion for the K.O.)
     simAt = now;
-    while (acc >= DT) { acc -= DT; step(DT); }
+    let n = 0;
+    while (acc >= DT) { acc -= DT; step(DT); n++; }
+    if (online && n && now - sentAt >= SEND_MS - 3) sendState(now);
   }
 
   function updateViews(now) {
@@ -941,9 +954,7 @@ function play(ctx) {
   // (Browsers stop drawing in a hidden tab: the game keeps going anyway, just without the drawing.)
   ctx.every(() => { const now = performance.now(); if (now - lastFrame > 300) { updateViews(now); advance(now, 1.5); } }, 250);
   if (online) {
-    ctx.every(() => ctx.stream(host
-      ? { t: 's', c: packCat(me), b: packBarrel(barrel), g: tiles.join(''), k: ack, v: av, n: bv, bn: bannerN, bt: bannerKey, cr: crates.map(c => [c.id, Math.round(c.x), c.type]) }
-      : { t: 's', c: packCat(me) }), SEND_MS);
+    ctx.every(() => { const now = performance.now(); if (now - sentAt > 80) sendState(now); }, 50); // (in case the frames stop for a moment)
     ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
@@ -1120,6 +1131,7 @@ function play(ctx) {
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
     drawOverlay(now);
+    party.draw(g, dt);
     updateMsg(now);
   }
 

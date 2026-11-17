@@ -319,21 +319,34 @@ function drawCat(v, s, i, c) {
   v.label(poopoo ? '💩 POOPOO' : '💦 PEEPEE', c.x, c.y - 150, 11, poopoo ? '#b9e98a' : '#ffe14d');
 }
 
+// One puff of smoke, painted once: every puff on the screen is this picture, bigger or smaller and more or less faded.
+// (Painting each puff from scratch on every frame, a hundred of them, is what made slower computers stutter.)
+let puffPic = null;
+function puffPicture() {
+  if (puffPic) return puffPic;
+  const c = document.createElement('canvas');
+  c.width = c.height = 96;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(48, 48, 1, 48, 48, 48);
+  gr.addColorStop(0, 'rgba(160, 235, 90, .62)');
+  gr.addColorStop(0.6, 'rgba(110, 195, 60, .4)');
+  gr.addColorStop(1, 'rgba(90, 160, 50, 0)');
+  x.fillStyle = gr;
+  x.fillRect(0, 0, 96, 96);
+  return (puffPic = c);
+}
+
 function drawPuffs(v) {
-  const g = v.g, dt = Math.min(v.dt, 0.05);
+  const g = v.g, dt = Math.min(v.dt, 0.05), pic = puffPicture();
   for (let k = puffs.length - 1; k >= 0; k--) {
     const p = puffs[k];
     p.life -= dt;
     if (p.life <= 0) { puffs.splice(k, 1); continue; }
     p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= Math.pow(0.25, dt); p.vy = p.vy * Math.pow(0.4, dt) - 18 * dt;
     const a = p.life / p.max, r = p.r + (1 - a) * 22;
-    const gr = g.createRadialGradient(p.x, p.y, 1, p.x, p.y, r);
-    gr.addColorStop(0, 'rgba(160, 235, 90, ' + (0.62 * a) + ')');
-    gr.addColorStop(0.6, 'rgba(110, 195, 60, ' + (0.4 * a) + ')');
-    gr.addColorStop(1, 'rgba(90, 160, 50, 0)');
-    g.fillStyle = gr;
-    g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = a;
+    g.drawImage(pic, p.x - r, p.y - r, r * 2, r * 2);
   }
+  g.globalAlpha = 1;
 }
 
 function draw(v, s) {

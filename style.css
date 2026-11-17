@@ -2132,3 +2132,17 @@ body.guest .guest-login { display: inline-flex; }
 .rx-bet { display: flex; flex-direction: column; align-items: center; gap: 6px; font-weight: 900; }
 .rx-bet.up { color: #7ee07a; }
 .rx-bet.down { color: #ff8a8a; }
+
+/* ================= CELEBRATIONS ================= */
+/* (the confetti is drawn by confetti() in common.js; the numbers count up with countUp(): see celebrate in solos.js) */
+.ca-confetti { position: fixed; inset: 0; z-index: 900; width: 100%; height: 100%; pointer-events: none; }
+.sc-hop { animation: sc-hop .5s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes sc-hop { 30% { transform: scale(1.6) rotate(-5deg); color: #ffd23f; text-shadow: 0 0 18px rgba(255, 210, 63, .8); } }
+.result.win .result-badge, .f2f-react.win .result-badge { animation: badge-win .9s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes badge-win { 0% { transform: scale(0) rotate(-30deg); } 55% { transform: scale(1.35) rotate(8deg); } }
+.result .streak-change, .result .rewards, .result .pass-mini { animation: rise .45s ease both; }
+.result .rewards { animation-delay: .12s; }
+.result .pass-mini { animation-delay: .22s; }
+@keyframes rise { from { transform: translateY(14px); opacity: 0; } }
+.cu { display: inline-block; min-width: 1ch; font-variant-numeric: tabular-nums; }
+.pass-mini .bar i { transition: width .9s cubic-bezier(.2, .8, .2, 1); }

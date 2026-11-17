@@ -70,6 +70,7 @@ function Run-Round($mode, $title, $whoA, $whoB, $limit = $TimeoutSec, $extra = '
       if ($s.ok) {
         $script:passed++
         Write-Host "  [OK]   $who  $($s.step)" -ForegroundColor Green
+        if ($s.step -like 'feel:*' -and $s.detail) { Write-Host "         $(($s.detail | ConvertTo-Json -Compress -Depth 6))" -ForegroundColor DarkGray }
       } else {
         $script:failed++
         Write-Host "  [FAIL] $who  $($s.step)" -ForegroundColor Red
@@ -103,6 +104,7 @@ foreach ($game in $games) {
   elseif ($game -eq 'revenge') { Run-Round 'net' 'Round 6: the Revenge button and the score between two players' 'A' 'B' 120 '&online=sumo&revenge=1' }
   elseif ($game -eq 'verify') { Run-Round 'net' 'Round 6: a whole Sumo game online, then the server replays it (the replay check)' 'A' 'B' 330 '&online=sumo&verify=1' }
   elseif ($game -eq 'bet') { Run-Round 'net' 'Round 6: fish bets (the smaller offer, a pot that grows, cashing out)' 'A' 'B' 180 '&online=sumo&bet=1' }
+  elseif ($game -eq 'feel') { Run-Round 'net' 'Round 6: how Poop Showdown feels online (how evenly the other cat moves, and how fast your own keys show)' 'A' 'B' 150 '&online=poop&feel=1' }
   elseif ($game -eq 'nofast') { Run-Round 'net' "Round 6: when one player's fast lane doesn't work" 'A' 'B' 120 '&online=sumo&nofast=b' }
   else { Run-Round 'net' "Round 6: $game online, on a good and then a bad connection" 'A' 'B' 120 "&online=$game" }
 }

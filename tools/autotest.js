@@ -60,7 +60,7 @@ window.__introMs = /[?&]intro=1\b/.test(location.search) ? 60000 : 1500;   // (s
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
-if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest || shotsTest || replayTest) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
+if (wallTest || duelTest || perfTest || netTest || camTest || rulesTest || shotsTest || replayTest || (lookTest && q.get('fx'))) window.__testHooks = true; // (the games then let the test look inside: window.__wd, window.__duel)
 if (netTest) window.__forceGame = DUEL_ONLINE;
 if (duelTest) {
   window.__forceGame = DUEL_ONLINE;
@@ -195,6 +195,33 @@ async function main() {
     if (q.get('theme') === 'dark') $('themeToggle').click();
     if (q.get('skin')) { CA.profile.owned.push(q.get('skin')); CA.profile.equip.skin = q.get('skin'); CA.render(); await sleep(300); } // (wearing a skin)
     if (q.get('acct')) { CA.profile.guest = false; document.body.classList.remove('guest'); CA.render(); await sleep(300); } // (as a player with an account)
+    if (q.get('fx')) { // (a picture of a game's effects, frozen: &fx=poop&fxk=count, point, ko or result)
+      const kind = q.get('fxk') || 'point', freeze = () => { window.requestAnimationFrame = () => 0; const top = setTimeout(() => {}, 0); for (let k = 0; k <= top; k++) { clearTimeout(k); clearInterval(k); } }; // (nothing moves on after this)
+      location.hash = '#/practice?game=' + q.get('fx');
+      await until(() => $('stage').children.length && !$('stage').querySelector('.stage-wait') && window.__duel, 30000, 'the game');
+      const d = window.__duel;
+      if (kind === 'count') { await sleep(Number(q.get('fxms')) || 700); freeze(); return; }
+      await until(() => d.phase() === 'play', 8000, 'the game to begin');
+      await sleep(500);
+      if (kind === 'point') {
+        d.api.score(1, 0);
+        d.api.score(2, 0);
+        d.view.burst(480, 300, '#ffd23f', 26, 380);
+        d.view.ring(480, 300, '#ffffff', 20);
+        d.view.pop(480, 230, 'SPLAT!', '#c8864a');
+        d.view.shake(14);
+        await check('fx after two points in a row', d.fx().some(k => k.startsWith('banner:2 IN A ROW')) && d.fx().includes('glow') && d.fx().includes('spark'), d.fx().filter((k, i, a) => a.indexOf(k) === i));
+        await sleep(Number(q.get('fxms')) || 170);
+        freeze();
+        return;
+      }
+      d.end(0, 'SPLAT!');
+      if (kind === 'ko') { await sleep(Number(q.get('fxms')) || 650); freeze(); return; }
+      await until(() => $('stage').querySelector('.result'), 8000, 'the result');
+      await sleep(Number(q.get('fxms')) || 900);
+      freeze();
+      return;
+    }
     if (q.get('page')) { // (a picture of another screen)
       if (q.get('page') === 'auth') await leave();
       if (q.get('page') === 'cat' || q.get('page') === 'pass') CA.profile.guest = false; // (guests can't open these)
@@ -740,6 +767,63 @@ async function perf() {
   await log('done', true);
 }
 
+// How an online game feels, in numbers (see "Smoothness" in games-duel.js). The host's cat walks back and forth. The guest
+// measures how evenly it sees that cat move from frame to frame, and then how long its own key presses take to show on
+// its own screen (they go to the host, into the game, and back). (For a game with cats in s.c that walk with l and r.)
+async function feelCheck() {
+  const d = window.__duel;
+  if (!d || !d.view.online) { await check('feel: an online arcade duel', false, DUEL_ONLINE); return; }
+  const me = d.view.me, raf = () => new Promise(r => requestAnimationFrame(r));
+  await until(() => d.phase() === 'play', 9000, 'the game to begin');
+  const over = performance.now() + 14000; // (both browsers go on from here at the same moment)
+  if (d.view.host) {
+    let dir = 'r';
+    while (performance.now() < over - 1000) { d.press(dir); await sleep(900); d.release(dir); dir = dir === 'r' ? 'l' : 'r'; }
+    await sleep(Math.max(0, over - performance.now()));
+    return;
+  }
+  await sleep(1300);
+  const xs = [], t0 = performance.now();
+  while (performance.now() - t0 < 5200) {
+    await raf();
+    const t = performance.now(), s = d.state(); // (the same clock the game draws by)
+    if (s && s.c) xs.push([t, s.c[1 - me].x]);
+  }
+  const sp = [];
+  for (let k = 1; k < xs.length; k++) { const dt = xs[k][0] - xs[k - 1][0]; if (dt > 0) sp.push(Math.abs(xs[k][1] - xs[k - 1][1]) / dt * 1000); }
+  let steady = 0, hitches = 0, worst = 0;
+  for (let k = 4; k < sp.length - 4; k++) {
+    const near = sp.slice(k - 4, k).concat(sp.slice(k + 1, k + 5)).sort((a, b) => a - b);
+    if (near[0] < 180) continue; // (turning round or standing still: not a steady stretch)
+    const usual = (near[3] + near[4]) / 2, off = Math.abs(sp[k] - usual) / usual;
+    steady++;
+    worst = Math.max(worst, off);
+    if (off > 0.3) hitches++;
+  }
+  const uneven = steady ? Math.round(hitches / steady * 1000) / 10 : 100;
+  const gaps = [];
+  for (let k = 1; k < xs.length; k++) gaps.push(Math.round((xs[k][0] - xs[k - 1][0]) * 10) / 10);
+  gaps.sort((a, b) => a - b);
+  await check('feel: the other cat moves evenly (' + uneven + '% of ' + steady + ' steady frames were off by over 30%; the worst by ' + Math.round(worst * 100) + '%)', steady > 60 && uneven <= 3,
+    { frames: sp.length, steady, hitches, frameMs: { min: gaps[0], mid: gaps[gaps.length >> 1], p95: gaps[Math.floor(gaps.length * 0.95)], max: gaps[gaps.length - 1] }, net: window.__net() });
+  const lat = [];
+  for (let n = 0; n < 7; n++) {
+    const dir = n % 2 ? 'r' : 'l', x0 = d.state().c[me].x, tp = performance.now();
+    d.press(dir);
+    while (performance.now() - tp < 700) {
+      await raf();
+      const s = d.state();
+      if (s && Math.abs(s.c[me].x - x0) >= 1) { lat.push(performance.now() - tp); break; }
+    }
+    d.release(dir);
+    await sleep(450 + Math.random() * 120);
+  }
+  lat.sort((a, b) => a - b);
+  const mid = lat.length ? Math.round(lat[lat.length >> 1]) : 999;
+  await check('feel: my own cat moves ' + mid + ' ms after I press a key (the other player is drawn ' + window.__net().delay + ' ms in the past)', lat.length >= 5 && mid <= 90, { all: lat.map(Math.round), net: window.__net() });
+  await sleep(Math.max(0, over - performance.now()));
+}
+
 // One online game, on a good connection and then on a bad one: everything has to keep arriving, without a single error.
 async function netRound() {
   if (q.get('revenge')) { await revengeRound(); return; }
@@ -750,7 +834,8 @@ async function netRound() {
   clickModal('find a match');
   await until(() => seen.match, 90000, 'the server to pair the two browsers');
   await until(() => $('vs').classList.contains('hidden') && $('stage').children.length && !$('stage').querySelector('.stage-wait'), 40000, 'the game to start');
-  if (role === 'a') await videoLimit();
+  if (q.get('feel')) await feelCheck();
+  else if (role === 'a') await videoLimit();
   await sleep(6000);
   if (DUEL_ONLINE === 'speedchess') { // both move a pawn: each checks the other's move shows up
     const P = window.__panic, mine = P.pieces().filter(p => p.c === P.meC && p.t === 'p').sort((x, y) => x.id - y.id)[role === 'a' ? 2 : 5];
@@ -782,7 +867,7 @@ async function netRound() {
   }
   await sleep(1000);
   await check(DUEL_ONLINE + ': the game is still going', !$('stage').querySelector('.result'), $('scGame').textContent);
-  if (role === 'b') await sleep(6000); // (a got here later: it stopped to check the camera limit, and b leaving ends a's game)
+  if (role === 'b' || q.get('feel')) await sleep(6000); // (a got here later: it stopped to check the camera limit, and b leaving ends a's game)
   if ($('skipBtn') && !$('skipBtn').closest('.hidden')) { $('skipBtn').click(); try { clickModal('Skip'); } catch (e) { /* no question this time */ } }
   await sleep(1500);
   location.hash = '#/menu';
