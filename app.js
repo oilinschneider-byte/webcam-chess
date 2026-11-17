@@ -604,26 +604,15 @@ function renderBar() {
   renderMicBtn();
 }
 
-// Line icons for the top bar's buttons (drawn, not emoji, so they match the rest of the page).
-const ICON_PATHS = {
-  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
-  micOff: '<path d="M15 9.5V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.6 2.5M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18"/>',
-  cam: '<rect x="3" y="7" width="13" height="10" rx="2"/><path d="m16 11 5-3v8l-5-3"/>',
-  camOff: '<path d="M10.5 7H14a2 2 0 0 1 2 2v3.5m0 3.5a2 2 0 0 1-2 1H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2M16 11l5-3v8l-3.5-2.1M3 3l18 18"/>',
-  sound: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
-  mute: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="m17 9 5 6m0-6-5 6"/>',
-};
-const icon = name => '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ICON_PATHS[name] + '</svg>';
-
 function renderMicBtn() {
   const b = $('topMicBtn');
   const on = CA.voice.micOn();
-  b.innerHTML = icon(on ? 'mic' : 'micOff');
+  b.textContent = on ? '🎤' : '🔇';
   b.classList.toggle('off', !on);
   b.title = on ? 'Microphone on (click to mute)' : CA.voice.hasMic() ? 'Microphone muted (click to unmute)' : 'Microphone off (click to turn on)';
   const c = $('topCamBtn');
   const cam = CA.voice.camWanted();
-  c.innerHTML = icon(cam ? 'cam' : 'camOff');
+  c.textContent = cam ? '📷' : '🐱';
   c.classList.toggle('off', !cam);
   c.title = cam ? 'Camera on in games (click to play as your cat)' : 'Playing as your cat (click to turn the camera on in games)';
 }
@@ -641,12 +630,10 @@ $('topMicBtn').addEventListener('click', () => {
 $('topCamBtn').addEventListener('click', () => toggleCamera(!CA.voice.camWanted()));
 $('soundBtn').addEventListener('click', () => {
   CA.setSound(!CA.soundOn);
-  $('soundBtn').innerHTML = icon(CA.soundOn ? 'sound' : 'mute');
-  $('soundBtn').classList.toggle('off', !CA.soundOn);
+  $('soundBtn').textContent = CA.soundOn ? '🔊' : '🔇';
   if (CA.soundOn) CA.sound('tick');
 });
-$('soundBtn').innerHTML = icon(CA.soundOn ? 'sound' : 'mute');
-$('soundBtn').classList.toggle('off', !CA.soundOn);
+$('soundBtn').textContent = CA.soundOn ? '🔊' : '🔇';
 
 // Dark mode: the switch at the bottom of the home page. Saved in this browser (index.html reads it before the page draws).
 const darkOn = () => document.documentElement.dataset.theme === 'dark';
