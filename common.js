@@ -1497,7 +1497,7 @@ function guestGate() {
   if (Date.now() - gateAt > 800) {
     gateAt = Date.now();
     modal({
-      title: '📷🎤 Make a free account to use your camera and mic',
+      title: 'Make a free account to use your camera and mic',
       text: 'Guests play as their cat. Sign up (it takes a few seconds) to talk with your microphone, show your face to other players, and play the camera games. You also keep your streak, fish and Streak Pass.',
       buttons: [
         { label: 'Sign up', primary: true, fn: () => { logOut(); go('auth', { mode: 'signup' }); } },

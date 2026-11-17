@@ -36,8 +36,8 @@
 <!-- (the font loads without holding up the page: the text shows in a stand-in font for a moment, then switches) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@600;700;800;900&display=swap"></noscript>
-<link rel="stylesheet" href="style.css?v=180">
-<link rel="stylesheet" href="pieces.css?v=180">
+<link rel="stylesheet" href="style.css?v=181">
+<link rel="stylesheet" href="pieces.css?v=181">
 </head>
 <body>
 
@@ -45,16 +45,16 @@
   <a class="logo" href="#/menu"><span class="logo-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.5 2.5 8.6 7a9.4 9.4 0 0 1 6.8 0l5.1-4.5V13a8.5 8.5 0 0 1-17 0z"/><circle cx="9" cy="13" r="1.5" fill="#14151c"/><circle cx="15" cy="13" r="1.5" fill="#14151c"/></svg></span><span class="logo-text">Cam<b>Arcade</b></span></a>
   <div class="hero-stats bar-stats">
     <span class="stat-chip">🔥 <b id="menuStreak">0</b> <i>win streak</i></span>
-    <span class="stat-chip">🏆 <b id="menuBest">0</b> <i>best</i></span>
+    <span class="stat-chip"><i>best</i> <b id="menuBest">0</b></span>
     <span class="stat-chip fish">🐟 <b id="menuFish">0</b> <i>fish</i></span>
-    <span class="stat-chip">🎟️ <i>tier</i> <b id="menuTier">0</b></span>
+    <span class="stat-chip"><i>tier</i> <b id="menuTier">0</b></span>
     <span class="stat-chip online-note hidden" id="menuOnline"></span>
   </div>
   <div class="topbar-actions">
     <button class="btn small go guest-login" id="topLogin"><span class="gl-long">Log in · Sign up</span><span class="gl-short">Log in</span></button>
-    <button class="icon-btn" id="topMicBtn" title="Microphone">🎤</button>
-    <button class="icon-btn" id="topCamBtn" title="Camera in games">📷</button>
-    <button class="icon-btn" id="soundBtn" title="Sound effects">🔊</button>
+    <button class="icon-btn" id="topMicBtn" title="Microphone" aria-label="Microphone"></button>
+    <button class="icon-btn" id="topCamBtn" title="Camera in games" aria-label="Camera in games"></button>
+    <button class="icon-btn" id="soundBtn" title="Sound effects" aria-label="Sound effects"></button>
     <div class="stats" id="caStats"></div>
     <div class="user-menu">
       <button class="user-btn" id="userBtn"><span id="userName"></span> ▾</button>
@@ -137,7 +137,7 @@
       <p>Play games as your cat. Win streaks, catch 🐟 fish, and dress your cat up.</p>
     </div>
     <div class="card auth-card">
-      <button class="btn go big wide" id="guestBtn" type="button">▶ Play as guest</button>
+      <button class="btn go big wide" id="guestBtn" type="button">Play as guest</button>
       <p class="hint small center">No sign-up: you get a funny name. No shop or Streak Pass, and nothing is saved once you close this tab. By playing you confirm you're 13 or older, and you agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a>.</p>
       <p class="auth-or"><span>or keep your progress</span></p>
       <button class="btn wide google-btn hidden" id="googleBtn" type="button"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6C12.4 13.7 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.8-6C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.8-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.2-13.5-9.9l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg> Continue with Google</button>
@@ -176,7 +176,7 @@
       <p class="hint small center" id="authHint"></p>
     </div>
   </div>
-  <p class="auth-links"><a href="#/leaders">🏆 Leaderboard</a> · <a href="#/stats">📊 How many people play</a> · <a href="#/privacy">🔒 Privacy</a> · <a href="#/terms">📜 Terms</a></p>
+  <p class="auth-links"><a href="#/leaders">Leaderboard</a> · <a href="#/stats">How many people play</a> · <a href="#/privacy">Privacy</a> · <a href="#/terms">Terms</a></p>
 </main>
 
 <!-- ================= CAMERA + MICROPHONE ================= -->
@@ -184,14 +184,14 @@
   <div class="card perm-card">
     <div class="perm-media">
       <div class="perm-cat" id="permCat"></div>
-      <div class="perm-video hidden" id="permVideoBox"><video id="permVideo" class="mirror" autoplay playsinline muted></video><span class="v-label">📷 You</span></div>
+      <div class="perm-video hidden" id="permVideoBox"><video id="permVideo" class="mirror" autoplay playsinline muted></video><span class="v-label">You</span></div>
     </div>
     <h1 id="permTitle">Turn on your camera and microphone?</h1>
     <p id="permText">When you play, your camera turns on so the other player can see you, and they hear your voice. You can switch to your cat at any time. Your cat's mouth moves when you talk.</p>
     <div class="meter hidden" id="permMeter"><i id="permMeterBar"></i></div>
     <p class="msg" id="permMsg"></p>
     <div class="row center perm-btns">
-      <button class="btn go big" id="permAllow">🎤📷 Allow camera &amp; microphone</button>
+      <button class="btn go big" id="permAllow">Allow camera &amp; microphone</button>
       <button class="btn big" id="permSkip">No thanks</button>
       <button class="btn go big hidden" id="permContinue">Continue →</button>
     </div>
@@ -207,9 +207,9 @@
     </div>
 
     <nav class="lobby-side">
-      <a class="side-btn" href="#/leaders"><span>🏆</span><b>Leaderboard</b></a>
-      <a class="side-btn" href="#/cat"><span>🐱</span><b>My Cat</b></a>
-      <a class="side-btn" href="#/stats"><span>📊</span><b>Players</b></a>
+      <a class="side-btn" href="#/leaders"><span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg></span><b>Leaderboard</b></a>
+      <a class="side-btn" href="#/cat"><span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l4 4a8 8 0 0 1 8 0l4-4v9a8 8 0 0 1-16 0z"/><path d="M9.5 13h.01M14.5 13h.01"/></svg></span><b>My Cat</b></a>
+      <a class="side-btn" href="#/stats"><span><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/></svg></span><b>Players</b></a>
     </nav>
 
     <div class="lobby-cat">
@@ -267,8 +267,8 @@
     <a class="games-back" href="#/menu">← Home</a>
     <h2 class="sewer-title">Classic Games</h2>
     <div class="sewer-actions">
-      <a class="btn sewer-go" href="#/solos">⚔️ Find a match</a>
-      <a class="btn sewer-mix" href="#/practice?game=mix">🎲 Random practice</a>
+      <a class="btn sewer-go" href="#/solos">Find a match</a>
+      <a class="btn sewer-mix" href="#/practice?game=mix">Random practice</a>
     </div>
   </div>
 
@@ -281,7 +281,7 @@
         <button data-level="hard">Hard</button>
       </div>
     </div>
-    <h3 class="pc-group">⚔️ Battles</h3>
+    <h3 class="pc-group">Battles</h3>
     <div class="pc-games">
       <a class="pc-game" data-art="swords" href="#/practice?game=swords"><b>Floppy Sword Cats</b></a>
       <a class="pc-game" data-art="boxing" href="#/practice?game=boxing"><b>Shadow Boxing</b><i class="pc-cam" title="Camera or keyboard">📷</i></a>
@@ -294,7 +294,7 @@
       <a class="pc-game" data-art="stare" href="#/practice?game=stare"><b>Staring Contest</b><i class="pc-cam" title="Needs your camera">📷</i></a>
       <a class="pc-game" data-art="poop" href="#/practice?game=poop"><b>Poop Showdown</b></a>
     </div>
-    <h3 class="pc-group">🏁 Races</h3>
+    <h3 class="pc-group">Races</h3>
     <div class="pc-games">
       <a class="pc-game" data-art="trails" href="#/practice?game=trails"><b>Light Trails</b></a>
       <a class="pc-game" data-art="kart" href="#/practice?game=kart"><b>Kart Dash</b></a>
@@ -307,7 +307,7 @@
       <a class="pc-game" data-art="golf" href="#/practice?game=golf"><b>Mini Golf Duel</b></a>
       <a class="pc-game" data-art="pond" href="#/practice?game=pond"><b>Pond War</b></a>
     </div>
-    <h3 class="pc-group">🧀 Grab it first</h3>
+    <h3 class="pc-group">Grab it first</h3>
     <div class="pc-games">
       <a class="pc-game" data-art="cheese" href="#/practice?game=cheese"><b>Cheese Grab</b><i class="pc-new">NEW</i></a>
       <a class="pc-game" data-art="laser" href="#/practice?game=laser"><b>Laser Pointer</b><i class="pc-new">NEW</i></a>
@@ -315,7 +315,7 @@
       <a class="pc-game" data-art="paint" href="#/practice?game=paint"><b>Turf War</b></a>
       <a class="pc-game" data-art="aim" href="#/practice?game=aim"><b>Aim Targets</b></a>
     </div>
-    <h3 class="pc-group">🧠 Brains &amp; reflexes</h3>
+    <h3 class="pc-group">Brains &amp; reflexes</h3>
     <div class="pc-games">
       <a class="pc-game" data-art="draw" href="#/practice?game=draw"><b>Quick Draw</b></a>
       <a class="pc-game" data-art="simon" href="#/practice?game=simon"><b>Simon Says</b><i class="pc-cam" title="Needs your camera">📷</i></a>
@@ -359,18 +359,18 @@
           <video id="themVideo" class="hidden" autoplay playsinline></video>
           <div class="v-label"><span class="dot on" id="oppDot"></span><span id="themName">Opponent</span><span id="themMic"></span></div>
           <span class="streak-tag" id="themStreak"></span>
-          <button class="btn small primary unmute hidden" id="unmuteBtn">🔊 Tap to hear them</button>
+          <button class="btn small primary unmute hidden" id="unmuteBtn">Tap to hear them</button>
         </div>
       </div>
     </div>
     <section class="stage-card"><div class="stage" id="stage"></div></section>
     <div class="m-controls">
-      <button class="btn" id="micBtn">🎤 Mic on</button>
-      <button class="btn" id="faceBtn">🐱 Show my cat</button>
-      <button class="btn" id="hideThemBtn">🙈 Hide their camera</button>
-      <button class="btn" id="muteThemBtn">🔈 Mute them</button>
-      <button class="btn" id="reportBtn">🚩 Report</button>
-      <button class="btn danger" id="skipBtn">⏭ Skip</button>
+      <button class="btn" id="micBtn">Mic on</button>
+      <button class="btn" id="faceBtn">Show my cat</button>
+      <button class="btn" id="hideThemBtn">Hide their camera</button>
+      <button class="btn" id="muteThemBtn">Mute them</button>
+      <button class="btn" id="reportBtn">Report</button>
+      <button class="btn danger" id="skipBtn">Skip</button>
     </div>
     <p class="m-safety hidden" id="safetyNote"></p>
   </div>
@@ -383,7 +383,7 @@
       <p class="muted small" id="searchOnline"></p>
       <p class="search-tip hidden" id="searchTip">Nobody else is searching right now. Stay here and you'll be matched as soon as someone joins. If nobody turns up soon, you'll play a bot (it won't count for your streak).</p>
       <div class="row center">
-        <button class="btn hidden" id="retryBtn">↻ Try again</button>
+        <button class="btn hidden" id="retryBtn">Try again</button>
         <button class="btn ghost" id="cancelSearchBtn">Cancel</button>
       </div>
     </div>
@@ -405,7 +405,7 @@
         <div class="vs-note hidden" id="vsNote"></div>
         <!-- Fish bets (see BETS in common.js): each picks an amount, and the smaller one is the bet -->
         <div class="bet-box hidden" id="betBox">
-          <div class="bet-top"><b>🎲 Bet fish?</b><span id="betPot"></span></div>
+          <div class="bet-top"><b>Bet fish?</b><span id="betPot"></span></div>
           <div class="bet-opts" id="betOpts"></div>
           <div class="bet-line" id="betLine"></div>
           <button class="btn small bet-cash hidden" id="betCash"></button>
@@ -417,8 +417,8 @@
         <h2 id="rxTitle"></h2>
         <p class="rx-reward" id="rxReward"></p>
         <div class="rx-bet hidden" id="rxBet"><span id="rxBetText"></span><button class="btn small bet-cash hidden" id="rxCash"></button></div>
-        <div class="rx-btns"><button class="btn big primary" id="rematchBtn">🔁 Rematch</button><button class="btn big solos-btn" id="nextBtn">⏭ Next</button></div>
-        <div class="rx-small"><button class="btn ghost small" id="rxMenuBtn">🏠 Menu</button><button class="btn ghost small" id="rxReportBtn">🚩 Report</button></div>
+        <div class="rx-btns"><button class="btn big primary" id="rematchBtn">Rematch</button><button class="btn big solos-btn" id="nextBtn">Next</button></div>
+        <div class="rx-small"><button class="btn ghost small" id="rxMenuBtn">Menu</button><button class="btn ghost small" id="rxReportBtn">Report</button></div>
         <p class="rx-vs" id="rxVs"></p>
         <p class="rx-note" id="rxNote"></p>
         <div class="timer"><i id="rxTimer"></i></div>
@@ -435,7 +435,7 @@
 <!-- ================= MATH SPRINT PRACTICE SETTINGS ================= -->
 <main class="screen hidden" id="scr-practice">
   <div class="napkin">
-    <h1>🧮 Math Sprint</h1>
+    <h1>Math Sprint</h1>
     <p class="muted center">Answer as many as you can before the time runs out.</p>
     <div class="nk-card">
       <div class="nk-row">
@@ -477,19 +477,19 @@
 <main class="screen hidden" id="scr-chess">
   <div id="lobby" class="lobby">
     <div class="lobby-head">
-      <h1>♞ Chess</h1>
+      <h1>Chess</h1>
       <p>Create a room and send the code to a friend. You'll see each other's cats and hear each other talk.</p>
     </div>
     <div class="lobby-grid">
       <section class="card">
-        <div class="card-head"><h2>🐱 You</h2><span class="pill" id="chessMicPill">Mic off</span></div>
+        <div class="card-head"><h2>You</h2><span class="pill" id="chessMicPill">Mic off</span></div>
         <div class="vbox cat-tile lobby-cat" id="lobbyCat"></div>
         <p class="hint" id="lobbyMicHint"></p>
       </section>
       <section class="card">
-        <div class="card-head"><h2>♟️ Play</h2></div>
+        <div class="card-head"><h2>Play</h2></div>
         <div class="invite hidden" id="inviteBox">
-          <span>🎉 You're invited to room <b id="inviteCode"></b></span>
+          <span>You're invited to room <b id="inviteCode"></b></span>
           <button class="btn go" id="inviteJoinBtn">Join game</button>
         </div>
         <div class="panel" id="menuPanel">
@@ -517,8 +517,8 @@
           <p class="muted center label">Your room code</p>
           <div class="room-code" id="roomCode">······</div>
           <div class="row center">
-            <button class="btn small" id="copyCodeBtn">📋 Copy code</button>
-            <button class="btn small" id="copyLinkBtn">🔗 Copy invite link</button>
+            <button class="btn small" id="copyCodeBtn">Copy code</button>
+            <button class="btn small" id="copyLinkBtn">Copy invite link</button>
           </div>
           <div class="waiting"><span class="spinner"></span><span id="hostMsg">Waiting for your friend to join…</span></div>
           <p class="hint center">Send the code to your friend. They open CamArcade, go to Chess, type it in, and press <b>Join</b>.</p>
@@ -540,7 +540,7 @@
         <video id="remoteVideo" class="hidden" autoplay playsinline></video>
         <div class="v-label"><span class="dot off" id="oppDot"></span><span id="remoteName">Opponent</span><span id="remoteMic"></span></div>
         <div class="v-overlay hidden" id="remoteOverlay"><p id="remoteText"></p></div>
-        <button class="btn small primary unmute hidden" id="unmuteBtn">🔊 Click to hear your opponent</button>
+        <button class="btn small primary unmute hidden" id="unmuteBtn">Click to hear your opponent</button>
       </div>
       <div class="vbox cat-tile mine" id="localTile">
         <div class="m-cat" id="localCat"></div>
@@ -560,14 +560,14 @@
       <div class="status" id="statusBox"></div>
       <div class="offer hidden" id="offerBar"><span id="offerText"></span><div class="row" id="offerBtns"></div></div>
       <div class="controls">
-        <button class="btn" id="micBtn">🎤 Mic on</button>
-        <button class="btn" id="faceBtn">📷 Show my face</button>
-        <button class="btn" id="drawBtn">🤝 Offer draw</button>
-        <button class="btn" id="resignBtn">🏳️ Resign</button>
-        <button class="btn" id="undoBtn">↶ Undo</button>
-        <button class="btn" id="rematchBtn">↻ Rematch</button>
-        <button class="btn" id="flipBtn">⇅ Flip board</button>
-        <button class="btn danger" id="leaveBtn">✕ Leave</button>
+        <button class="btn" id="micBtn">Mic on</button>
+        <button class="btn" id="faceBtn">Show my face</button>
+        <button class="btn" id="drawBtn">Offer draw</button>
+        <button class="btn" id="resignBtn">Resign</button>
+        <button class="btn" id="undoBtn">Undo</button>
+        <button class="btn" id="rematchBtn">Rematch</button>
+        <button class="btn" id="flipBtn">Flip board</button>
+        <button class="btn danger" id="leaveBtn">Leave</button>
       </div>
       <div class="moves-card">
         <div class="moves-head">Moves</div>
@@ -594,21 +594,21 @@
       <div class="pass-head">
         <div class="pass-scene" aria-hidden="true"><svg class="pass-rat" viewBox="560 -80 940 980" aria-hidden="true"><defs><linearGradient id="passRatMouth" gradientUnits="userSpaceOnUse" x1="700" y1="0" x2="1020" y2="0"><stop offset="0" stop-color="#06080c" stop-opacity=".15"/><stop offset=".55" stop-color="#06080c" stop-opacity=".7"/><stop offset="1" stop-color="#06080c"/></linearGradient><filter id="passRatSoft"><feGaussianBlur stdDeviation="4"/></filter></defs><g class="sc-rat"><g filter="url(#passRatSoft)"><path class="sc-rat-body" d="M690 228C760 190 860 150 960 110C1010 90 1030 70 1040 50C1030 -30 1150 -60 1190 10C1200 40 1190 60 1170 80C1260 90 1360 140 1420 220L1500 900H1100C1120 600 1150 450 1100 380C1050 390 950 390 860 370C820 362 780 358 750 352C800 330 900 305 1010 285C900 268 790 250 690 228Z"/><path class="sc-rat-body" d="M1170 80 L1196 58 L1206 92 L1236 72 L1240 108 L1272 92 L1272 128 L1306 116 L1300 152 L1338 146 L1326 180 L1366 180 L1350 210 L1400 214 L1420 220Z"/><circle class="sc-rat-body" cx="692" cy="226" r="16"/><path d="M698 232C790 254 900 270 1018 285C905 306 805 330 752 352C730 320 712 282 698 232Z" fill="url(#passRatMouth)"/><path class="sc-teeth" d="M737 240 Q745 258 750 274 Q751 255 759 238Z M773 246 Q781 263 786 277 Q787 259 795 244Z M809 252 Q817 267 822 280 Q823 264 831 250Z M845 258 Q853 271 858 283 Q859 269 867 256Z M881 264 Q889 276 894 286 Q895 273 903 262Z M915 270 Q923 280 928 289 Q929 278 937 268Z M947 275 Q955 283 960 291 Q961 282 969 273Z M975 280 Q983 287 988 293 Q989 285 997 278Z M782 342 Q789 327 794 314 Q795 330 802 344Z M816 333 Q823 320 828 308 Q829 322 836 335Z M850 324 Q857 312 862 302 Q863 315 870 326Z M884 316 Q891 306 896 297 Q897 308 904 318Z M918 307 Q925 299 930 291 Q931 300 938 309Z M952 298 Q959 291 964 285 Q965 293 972 300Z M693 229 Q690 268 704 304 Q712 270 713 233Z M716 234 Q715 266 727 296 Q734 268 735 238Z"/><g class="sc-arms"><path class="sc-arm" d="M1150 430C1080 470 1010 520 930 520"/><ellipse cx="915" cy="522" rx="36" ry="28"/><path d="M900 500Q850 470 812 488Q850 486 892 512Z M890 512Q835 505 800 530Q842 518 888 528Z M892 528Q842 540 818 572Q852 548 898 540Z M915 545Q900 585 870 600Q905 590 928 548Z"/><g transform="translate(100 125)"><path class="sc-arm" d="M1110 340C1060 400 1000 410 930 400"/><ellipse cx="915" cy="522" rx="32" ry="25" transform="translate(0 -122)"/><g transform="translate(0 -122)"><path d="M900 500Q850 470 812 488Q850 486 892 512Z M890 512Q835 505 800 530Q842 518 888 528Z M892 528Q842 540 818 572Q852 548 898 540Z M915 545Q900 585 870 600Q905 590 928 548Z"/></g></g></g></g><ellipse class="sc-eyeglow" cx="1000" cy="160" rx="46" ry="30"/><path class="sc-eye" d="M972 168Q996 140 1028 150Q1008 172 972 168Z"/><path class="sc-pupil" d="M1004 148Q998 160 1003 168"/></g></svg>
 <span class="ps-torch"></span></div>
-        <span class="tag">🐀 Season 1 · Streak Pass</span>
+        <span class="tag">Season 1 · Streak Pass</span>
         <h1>Fear of Rats</h1>
-        <p>Something huge is stirring in the temple. Win Classic Games to earn XP and climb 20 tiers of rat season rewards: 7 rat season skins, the Rat King Crown, a Torch and, at tier 20, the Rat Costume. Your 🔥 streak gives bonus XP, so the longer your streak, the faster you climb.</p>
+        <p>Win games to unlock rat season rewards.</p>
         <div class="pp-top"><b id="ppTier">Tier 0</b><span id="ppXp">0 / 300 XP</span></div>
         <div class="bar big"><i id="ppBar"></i></div>
         <div class="row pass-actions">
-          <a class="btn solos-btn big" href="#/solos">⚡ Play Classic Games</a>
-          <button class="btn primary big" id="claimAllBtn">🎁 Claim all</button>
+          <a class="btn solos-btn big" href="#/solos">Play Classic Games</a>
+          <button class="btn primary big" id="claimAllBtn">Claim all</button>
         </div>
       </div>
       <div class="card xp-card">
         <h3>How to earn</h3>
-        <div class="xp-row"><span>🏆 Win</span><b>100 XP + 20 per 🔥 · 🐟 5 + 5 per 🔥</b></div>
-        <div class="xp-row"><span>🤝 Draw</span><b>50 XP · 🐟 3</b></div>
-        <div class="xp-row"><span>💀 Loss</span><b>25 XP</b></div>
+        <div class="xp-row"><span>Win</span><b>100 XP + 20 per 🔥 · 🐟 5 + 5 per 🔥</b></div>
+        <div class="xp-row"><span>Draw</span><b>50 XP · 🐟 3</b></div>
+        <div class="xp-row"><span>Loss</span><b>25 XP</b></div>
         <div class="xp-row"><span>Your streak</span><b>🔥 <span id="ptStreak">0</span> · best <span id="ptBest">0</span></b></div>
         <p class="muted small">The streak bonus tops out at 🔥10 (300 XP and 55 fish a win). A loss resets your streak, but you keep your tiers and everything you claimed.</p>
       </div>
@@ -621,16 +621,16 @@
 <main class="screen hidden" id="scr-leaders">
   <div class="board-page">
     <div class="board-head">
-      <h1>🏆 Leaderboard</h1>
+      <h1>Leaderboard</h1>
       <p class="muted">The longest win streaks in Classic Games. Only games the server saw count, and nobody can change their own streak.</p>
     </div>
     <div class="row board-tabs">
       <div class="seg" id="lbTabs" role="group" aria-label="Which streaks">
-        <button data-lb="week" class="active">📅 This week</button>
-        <button data-lb="best">🏆 Best ever</button>
-        <button data-lb="hot">🔥 Right now</button>
+        <button data-lb="week" class="active">This week</button>
+        <button data-lb="best">Best ever</button>
+        <button data-lb="hot">Right now</button>
       </div>
-      <button class="btn small ghost" id="lbRefresh">↻ Refresh</button>
+      <button class="btn small ghost" id="lbRefresh">Refresh</button>
     </div>
     <div class="card prize-card hidden" id="lbPrize"></div>
     <p class="board-me hidden" id="lbMe"></p>
@@ -650,7 +650,7 @@
       </ul>
     </details>
     <details class="card board-rules" id="lbPrizeRules">
-      <summary>💵 The $100 tournament</summary>
+      <summary>The $100 tournament</summary>
       <ul>
         <li><b>The prize:</b> $100 to the winner of the tournament.</li>
         <li><b>When:</b> the tournament only begins once we reach 5,000 users. We count users by internet connection, so a house full of people or accounts counts once. If we never reach 5,000, there's no tournament and no prize.</li>
@@ -665,7 +665,7 @@
 <main class="screen hidden" id="scr-terms">
   <div class="board-page privacy-page">
     <div class="board-head">
-      <h1>📜 Terms of Service</h1>
+      <h1>Terms of Service</h1>
       <p class="muted">Last updated: November 2026</p>
     </div>
     <div class="card">
@@ -726,7 +726,7 @@
 <main class="screen hidden" id="scr-privacy">
   <div class="board-page privacy-page">
     <div class="board-head">
-      <h1>🔒 Privacy Policy</h1>
+      <h1>Privacy Policy</h1>
       <p class="muted">Last updated: November 2026</p>
     </div>
     <div class="card">
@@ -808,7 +808,7 @@
 <main class="screen hidden" id="scr-stats">
   <div class="board-page">
     <div class="board-head">
-      <h1>📊 How many people play</h1>
+      <h1>How many people play</h1>
       <p class="muted" id="stSince">Counted by CamArcade's server.</p>
     </div>
     <div class="stat-tiles" id="stTiles"></div>
@@ -842,8 +842,8 @@
     </section>
     <section class="char-right">
       <div class="tabs">
-        <button class="tab" data-tab="wardrobe">👕 Wardrobe</button>
-        <button class="tab" data-tab="shop">🛒 Shop</button>
+        <button class="tab" data-tab="wardrobe">Wardrobe</button>
+        <button class="tab" data-tab="shop">Shop</button>
         <span class="coin-pill">🐟 <b id="fishCount">0</b></span>
       </div>
       <div class="slot-chips" id="slotChips"></div>
@@ -867,55 +867,55 @@
 <script src="lib/chess.min.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="lib/world-map.js"></script>
-<script src="config.js?v=180"></script>
-<script src="server.js?v=180"></script>
-<script src="common.js?v=180"></script>
-<script src="solos.js?v=180"></script>
-<script src="games-quick.js?v=180"></script>
-<script src="games-words.js?v=180"></script>
-<script src="games-board.js?v=180"></script>
-<script src="games-world.js?v=180"></script>
+<script src="config.js?v=181"></script>
+<script src="server.js?v=181"></script>
+<script src="common.js?v=181"></script>
+<script src="solos.js?v=181"></script>
+<script src="games-quick.js?v=181"></script>
+<script src="games-words.js?v=181"></script>
+<script src="games-board.js?v=181"></script>
+<script src="games-world.js?v=181"></script>
 <script src="lib/countries.js"></script>
-<script src="games-action.js?v=180"></script>
-<script src="games-quiz.js?v=180"></script>
-<script src="games-mind.js?v=180"></script>
-<script src="games-tracker.js?v=180"></script>
-<script src="games-pose.js?v=180"></script>
-<script src="cam-walls.js?v=180"></script>
-<script src="games-floppy.js?v=180"></script>
-<script src="games-barrel.js?v=180"></script>
-<script src="games-walls.js?v=180"></script>
-<script src="games-duel.js?v=180"></script>
-<script src="games-trails.js?v=180"></script>
-<script src="games-box.js?v=180"></script>
-<script src="games-sumo.js?v=180"></script>
-<script src="games-pond.js?v=180"></script>
-<script src="games-hockey.js?v=180"></script>
-<script src="games-paint.js?v=180"></script>
-<script src="games-cannons.js?v=180"></script>
-<script src="games-golf.js?v=180"></script>
-<script src="games-mouse.js?v=180"></script>
-<script src="games-kart.js?v=180"></script>
-<script src="games-swords.js?v=180"></script>
-<script src="games-stare.js?v=180"></script>
-<script src="games-boxing.js?v=180"></script>
-<script src="games-dodge.js?v=180"></script>
-<script src="games-parkour.js?v=180"></script>
-<script src="games-poop.js?v=180"></script>
-<script src="games-hoops.js?v=180"></script>
-<script src="games-simon.js?v=180"></script>
-<script src="games-climb.js?v=180"></script>
-<script src="games-cheese.js?v=180"></script>
-<script src="games-cheesegrab.js?v=180"></script>
-<script src="games-gator.js?v=180"></script>
-<script src="games-rounds.js?v=180"></script>
-<script src="chess.js?v=180"></script>
-<script src="pass.js?v=180"></script>
-<script src="character.js?v=180"></script>
-<script src="leaders.js?v=180"></script>
-<script src="games-intro.js?v=180"></script>
-<script src="games-art.js?v=180"></script>
-<script src="app.js?v=180"></script>
+<script src="games-action.js?v=181"></script>
+<script src="games-quiz.js?v=181"></script>
+<script src="games-mind.js?v=181"></script>
+<script src="games-tracker.js?v=181"></script>
+<script src="games-pose.js?v=181"></script>
+<script src="cam-walls.js?v=181"></script>
+<script src="games-floppy.js?v=181"></script>
+<script src="games-barrel.js?v=181"></script>
+<script src="games-walls.js?v=181"></script>
+<script src="games-duel.js?v=181"></script>
+<script src="games-trails.js?v=181"></script>
+<script src="games-box.js?v=181"></script>
+<script src="games-sumo.js?v=181"></script>
+<script src="games-pond.js?v=181"></script>
+<script src="games-hockey.js?v=181"></script>
+<script src="games-paint.js?v=181"></script>
+<script src="games-cannons.js?v=181"></script>
+<script src="games-golf.js?v=181"></script>
+<script src="games-mouse.js?v=181"></script>
+<script src="games-kart.js?v=181"></script>
+<script src="games-swords.js?v=181"></script>
+<script src="games-stare.js?v=181"></script>
+<script src="games-boxing.js?v=181"></script>
+<script src="games-dodge.js?v=181"></script>
+<script src="games-parkour.js?v=181"></script>
+<script src="games-poop.js?v=181"></script>
+<script src="games-hoops.js?v=181"></script>
+<script src="games-simon.js?v=181"></script>
+<script src="games-climb.js?v=181"></script>
+<script src="games-cheese.js?v=181"></script>
+<script src="games-cheesegrab.js?v=181"></script>
+<script src="games-gator.js?v=181"></script>
+<script src="games-rounds.js?v=181"></script>
+<script src="chess.js?v=181"></script>
+<script src="pass.js?v=181"></script>
+<script src="character.js?v=181"></script>
+<script src="leaders.js?v=181"></script>
+<script src="games-intro.js?v=181"></script>
+<script src="games-art.js?v=181"></script>
+<script src="app.js?v=181"></script>
 <div class="lobby-scene lobby-front" aria-hidden="true"><svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
 <g class="sc-torch"><rect class="sc-iron" x="366" y="330" width="8" height="46"/><path class="sc-iron" d="M348 324 h44 l-10 20 h-24z"/><g class="sc-flame"><path fill="#ff8a2a" d="M370 260 C392 290 394 316 370 324 C346 316 348 290 370 260z"/><path fill="#ffd84a" d="M370 282 C382 300 382 316 370 322 C358 316 358 300 370 282z"/></g></g>
 <g class="sc-torch"><rect class="sc-iron" x="1226" y="330" width="8" height="46"/><path class="sc-iron" d="M1208 324 h44 l-10 20 h-24z"/><g class="sc-flame"><path fill="#ff8a2a" d="M1230 260 C1252 290 1254 316 1230 324 C1206 316 1208 290 1230 260z"/><path fill="#ffd84a" d="M1230 282 C1242 300 1242 316 1230 322 C1218 316 1218 300 1230 282z"/></g></g>

@@ -223,6 +223,7 @@ async function main() {
       return;
     }
     if (q.get('page')) { // (a picture of another screen)
+      if (CA.route === 'perm' && q.get('page') !== 'perm') { $('permSkip').click(); await sleep(1500); }
       if (q.get('page') === 'auth') await leave();
       if (q.get('page') === 'cat' || q.get('page') === 'pass') CA.profile.guest = false; // (guests can't open these)
       location.hash = '#/' + q.get('page');
@@ -230,6 +231,14 @@ async function main() {
       if (q.get('dbg')) { const sc = document.querySelector('.lobby-scene'); const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:70px;z-index:99;background:#fff;color:#000;font:14px monospace;padding:6px'; d.textContent = 'h=' + getComputedStyle(sc).height + ' inline=' + sc.style.height + ' vb=' + sc.querySelector('svg').getAttribute('viewBox') + ' main=' + Math.round(document.getElementById('scr-menu').getBoundingClientRect().bottom) + ' route=' + CA.route; document.body.appendChild(d); }
       if (q.get('betlook') && CA.route === 'perm') { $('permSkip').click(); await sleep(3000); }
       if (q.get('betlook')) { CA.profile.fish = 120; CA.profile.run = { pot: 19, wins: 2 }; window.__betShow(25, 10); await sleep(300); } // (the fish-bet box)
+      if (q.get('wide')) { // (what sticks out past the right edge of the screen)
+        const vw = document.documentElement.clientWidth, out = [];
+        document.querySelectorAll('body *').forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.width && r.right > vw + 1 && getComputedStyle(el).visibility !== 'hidden' && el.offsetParent !== null) out.push((el.id ? '#' + el.id : el.tagName.toLowerCase() + '.' + String(el.className).split(' ')[0]) + ' ' + Math.round(r.left) + '-' + Math.round(r.right));
+        });
+        await log('too wide (screen ' + vw + ', page ' + document.documentElement.scrollWidth + ')', true, out.slice(0, 40));
+      }
       if (q.get('scroll')) { document.body.style.transform = 'translateY(-' + Number(q.get('scroll')) + 'px)'; await sleep(400); } // (as if scrolled down: a headless screenshot doesn't scroll)
       return;
     }
@@ -509,11 +518,10 @@ async function wallRules() {
   await shootAt(410, 400, 0.2, -1, line.born + 3.2);
   await check('a bullet stops at a shielded wall (and the wall is fine)', mine.lines.has(line.id) && line.hp === 2 && bullets.every(b => b.fade >= 0),
     { hp: line.hp, bullets: bullets.length });
+  // (Only dots break: a wall between two dots doesn't, even while its dots flash open.)
   await shootAt(410, 400, 0.2, -1, line.born + 2.15);
-  await check('an open wall takes 1 of its 2 hits, and the bullet is used up', line.hp === 1 && mine.lines.has(line.id) && !bullets.length,
+  await check('a wall doesn\'t break, even while open: the bullet stops there', mine.lines.has(line.id) && line.hp === 2 && bullets.every(b => b.fade >= 0) && mine.dots.has(2) && mine.dots.has(3),
     { hp: line.hp, bullets: bullets.length });
-  await shootAt(410, 400, 0.2, -1, line.born + 2.15);
-  await check('a second hit while it is open breaks the wall (its dots stay)', !mine.lines.has(line.id) && mine.dots.has(2) && mine.dots.has(3));
 
   build(me, 200, 450);
   build(me, 300, 450);

@@ -17,7 +17,7 @@ function render() {
   if (preview) eq[CA.ITEM[preview].slot] = preview;
   $('charStage').innerHTML = CA.catSVG(eq, { label: p.name, talker: 'me' });
   $('charName').textContent = p.name;
-  $('charTalk').textContent = CA.voice.micOn() ? '🎤 Talk and watch your cat!' : '';
+  $('charTalk').textContent = CA.voice.micOn() ? 'Talk and watch your cat!' : '';
   $('csStreak').textContent = p.streak;
   $('csBest').textContent = p.best;
   $('csWins').textContent = p.wins;
@@ -67,7 +67,7 @@ function renderGrid() {
     if (worn) { foot = '<div class="item-foot ok">Wearing ✓</div>'; cls += ' equipped'; }
     else if (owned) foot = '<div class="item-foot">' + (tab === 'shop' ? 'Owned · tap to wear' : 'Tap to wear') + '</div>';
     else if (it.price != null) foot = '<div class="item-foot price">🐟 ' + it.price + '</div>';
-    else { foot = '<div class="item-foot">🔒 Pass tier ' + it.tier + '</div>'; cls += ' locked'; }
+    else { foot = '<div class="item-foot">Pass tier ' + it.tier + '</div>'; cls += ' locked'; }
     if (preview === it.id) cls += ' previewing';
     tiles.push('<button class="' + cls + '" data-id="' + it.id + '"><div class="item-art">' + CA.previewSVG(it.id, p.equip.skin) + '</div>' +
       '<div class="item-name">' + CA.esc(it.name) + '</div>' + foot + '</button>');
@@ -134,7 +134,7 @@ $('emptyNote').addEventListener('click', e => {
 $('previewBuy').addEventListener('click', buyPreview);
 $('previewClear').addEventListener('click', () => { preview = null; render(); });
 window.addEventListener('ca:change', () => { if (CA.route === 'cat' && CA.profile) render(); });
-window.addEventListener('ca:media', () => { if (CA.route === 'cat') $('charTalk').textContent = CA.voice.micOn() ? '🎤 Talk and watch your cat!' : ''; });
+window.addEventListener('ca:media', () => { if (CA.route === 'cat') $('charTalk').textContent = CA.voice.micOn() ? 'Talk and watch your cat!' : ''; });
 
 CA.register('cat', {
   enter(params) {

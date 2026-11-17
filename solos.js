@@ -1204,10 +1204,10 @@ function beginMatch(gameId, seed, extra) {
   CA.showScreen('scr-play');
   $('matchView').classList.toggle('solo-run', solo);
   renderPlayers();
-  setMsg('scMode', !looksPractice() ? '⚡ Classic Games'
-    : opp && opp.standIn ? '🤖 Bot game: nothing is counted'
-    : solo ? '🎯 Practice'
-    : (practiceMix ? '🎲 Classic vs bots' : '🎯 Practice') + ' · ' + practiceLevel());
+  setMsg('scMode', !looksPractice() ? 'Classic Games'
+    : opp && opp.standIn ? 'Bot game: nothing is counted'
+    : solo ? 'Practice'
+    : (practiceMix ? 'Classic vs bots' : 'Practice') + ' · ' + practiceLevel());
   setMsg('scGame', g.icon + ' ' + g.name);
   ctx.score(0, 0);
   ctx.note('');
@@ -1245,7 +1245,7 @@ function showFaces() {
   $('vsThemCat').innerHTML = opp ? CA.catSVG(opp.equip, { bgOnly: true }) + CA.catSVG(opp.equip, { label: opp.name, talker: 'opp', bg: false }) : '';
   setMsg('vsMeName', p.name);
   setMsg('vsThemName', opp ? opp.name : '');
-  setMsg('vsMeTag', looksPractice() ? '🎯 Practice' : '🔥 ' + p.streak);
+  setMsg('vsMeTag', looksPractice() ? 'Practice' : '🔥 ' + p.streak);
   setMsg('vsThemTag', !opp ? '' : opp.bot ? botTag() : '🔥 ' + opp.streak);
   syncFaceVideos();
 }
@@ -1334,12 +1334,12 @@ function betRender() {
   if (!B.canBet()) {
     setMsg('betPot', '');
     $('betOpts').innerHTML = '';
-    $('betLine').textContent = '👤 Sign up to bet fish.';
+    $('betLine').textContent = 'Sign up to bet fish.';
     $('betCash').classList.add('hidden');
     return;
   }
   const fmt = n => n.toLocaleString();
-  setMsg('betPot', run.pot > 0 ? '💰 Pot ' + fmt(run.pot) + ' 🐟' + (run.wins ? ' · 🔥' + run.wins : '') : 'You have ' + fmt(CA.profile.fish) + ' 🐟');
+  setMsg('betPot', run.pot > 0 ? 'Pot ' + fmt(run.pot) + ' 🐟' + (run.wins ? ' · 🔥' + run.wins : '') : 'You have ' + fmt(CA.profile.fish) + ' 🐟');
   const steps = BET_STEPS.filter(n => n < most);
   if (most > 0) steps.push(most); // (everything: your whole pot, or all your fish)
   $('betOpts').innerHTML = '<button data-amt="0">No bet</button>' + steps.map(n =>
@@ -1367,18 +1367,18 @@ function betRender() {
     line = 'Bet: <b>' + fmt(s) + ' 🐟</b> · win <b>+' + fmt(Math.floor(s * (1 - B.CUT))) + '</b>' +
       (run.pot > 0 ? ' · lose and your pot is gone' : '');
   }
-  if (locked) line = match.bet ? '🔒 <b>' + fmt(match.bet.stake) + ' 🐟</b> on this game!' : '🔒 No bet this game.';
+  if (locked) line = match.bet ? '🔒 <b>' + fmt(match.bet.stake) + ' 🐟</b> on this game!' : 'No bet this game.';
   $('betLine').innerHTML = line;
   const cash = $('betCash');
   cash.classList.toggle('hidden', locked || run.pot <= 0);
-  cash.textContent = '💰 Cash out ' + fmt(B.cashValue()) + ' 🐟';
+  cash.textContent = 'Cash out ' + fmt(B.cashValue()) + ' 🐟';
 }
 
 function cashOutPressed() {
   const n = CA.bets.cashOut();
   if (!n) return;
   betPick = Math.min(betPick, CA.bets.most());
-  CA.toast('💰 You cashed out ' + n.toLocaleString() + ' 🐟!');
+  CA.toast('You cashed out ' + n.toLocaleString() + ' 🐟!');
   sound('win');
   sendOffer();
   betRender();
@@ -1414,7 +1414,7 @@ function applyStake(m) {
 
 function betOn(m) {
   if (!m.bet) return;
-  setMsg('scMode', '⚡ Classic Games · 🎲 ' + m.bet.stake.toLocaleString() + ' 🐟');
+  setMsg('scMode', 'Classic Games · 🎲 ' + m.bet.stake.toLocaleString() + ' 🐟');
   CA.toast('🎲 ' + m.bet.stake.toLocaleString() + ' 🐟 bet on this game!');
 }
 
@@ -1446,7 +1446,7 @@ function betFix(m, result, name) {
   if (server === m.betOutcome) return;
   m.betOutcome = server;
   m.betRes = CA.bets.redo(m.bet, server);
-  CA.toast(server === 'draw' ? '🎲 That game didn\'t count, so your bet is off: your pot is back.' : '🎲 The server settled your bet with ' + name + ' differently.');
+  CA.toast(server === 'draw' ? 'That game didn\'t count, so your bet is off: your pot is back.' : 'The server settled your bet with ' + name + ' differently.');
   renderRxBet();
 }
 
@@ -1463,14 +1463,14 @@ function renderRxBet() {
   let text = '';
   box.classList.remove('up', 'down');
   if (r && r.won != null) { text = '🎲 +' + fmt(r.won) + ' 🐟 → pot ' + fmt(r.pot) + ' 🐟'; box.classList.add('up'); }
-  else if (r && r.lost != null) { text = '🎲 Bet lost: your pot of ' + fmt(r.lost) + ' 🐟 is gone'; box.classList.add('down'); }
-  else if (r) text = '🎲 No result: your pot stays ' + fmt(run.pot) + ' 🐟';
-  else if (run.pot > 0) text = '💰 Your pot: ' + fmt(run.pot) + ' 🐟';
+  else if (r && r.lost != null) { text = 'Bet lost: your pot of ' + fmt(r.lost) + ' 🐟 is gone'; box.classList.add('down'); }
+  else if (r) text = 'No result: your pot stays ' + fmt(run.pot) + ' 🐟';
+  else if (run.pot > 0) text = 'Your pot: ' + fmt(run.pot) + ' 🐟';
   if (run.pot > 0 && run.wins > 1) text += ' · 🔥 ' + run.wins + ' wins: +' + Math.round(CA.bets.bonus(run.wins) * 100) + '% to cash out';
   $('rxBetText').textContent = text;
   const cash = $('rxCash');
   cash.classList.toggle('hidden', run.pot <= 0);
-  cash.textContent = '💰 Cash out ' + fmt(CA.bets.cashValue()) + ' 🐟';
+  cash.textContent = 'Cash out ' + fmt(CA.bets.cashValue()) + ' 🐟';
   box.classList.toggle('hidden', !text);
 }
 
@@ -1492,17 +1492,17 @@ function startReaction(outcome, res, opts) {
   if (res) {
     reward = '🔥 ' + res.before.streak + ' → ' + (outcome === 'win' ? cu(res.before.streak, res.after.streak) : res.after.streak) +
       (res.fish ? ' · +' + cu(0, res.fish, 'coin') + ' 🐟' : '') + (res.xp ? ' · +' + cu(0, res.xp) + ' XP' : '') +
-      (res.after.tier > res.before.tier ? '<a href="#/pass">🎁 Tier ' + res.after.tier + ' unlocked!</a>' : '');
+      (res.after.tier > res.before.tier ? '<a href="#/pass">Tier ' + res.after.tier + ' unlocked!</a>' : '');
   } else if (opp.glingus) {
-    reward = '🤝 Friendly game: nothing is counted';
+    reward = 'Friendly game: nothing is counted';
   } else if (opp.standIn) {
-    reward = '🤖 Bot game: nothing is counted';
+    reward = 'Bot game: nothing is counted';
   } else if (mode === 'practice') {
-    reward = '🎯 Practice: nothing is counted';
+    reward = 'Practice: nothing is counted';
   } else {
-    reward = '🤝 Friendly game: nothing is counted';
+    reward = 'Friendly game: nothing is counted';
   }
-  $('rxReward').innerHTML = reward + newRecords.map(r => '<span class="rx-record">🏅 New record! ' + esc(r) + '</span>').join('');
+  $('rxReward').innerHTML = reward + newRecords.map(r => '<span class="rx-record">New record! ' + esc(r) + '</span>').join('');
   renderRxBet();
   setMsg('rxVs', h2hText());
   const rb = $('rematchBtn');
@@ -1510,8 +1510,8 @@ function startReaction(outcome, res, opts) {
   const blocked = online && !!opp && !!opp.blocked;
   rb.disabled = gone || noRematch || blocked;
   rb.classList.remove('chosen');
-  rb.textContent = outcome === 'lose' ? '🔥 Revenge!' : '🔁 Rematch';
-  setMsg('nextBtn', online || opp.glingus ? '⏭ Next player' : opp.standIn ? '⏭ Find a player' : '⏭ New bot');
+  rb.textContent = outcome === 'lose' ? 'Revenge!' : 'Rematch';
+  setMsg('nextBtn', online || opp.glingus ? 'Next player' : opp.standIn ? 'Find a player' : 'New bot');
   $('rxReportBtn').classList.toggle('hidden', !online || blocked);
   setMsg('rxNote', gone ? opp.name + ' has left.' : blocked ? "You blocked " + opp.name + ", so you'll get someone new."
     : noRematch ? '3 ties in a row: on to ' + (online || opp.standIn ? 'someone new' : 'a new bot') + '!' : '');
@@ -1526,7 +1526,7 @@ function reactTick() {
   if (document.visibilityState !== 'visible') { // don't match you with someone while you're away
     clearInterval(react.iv);
     react.iv = null;
-    setMsg('rxNote', '⏸ Paused while you were away. Pick Rematch or Next.');
+    setMsg('rxNote', 'Paused while you were away. Pick Rematch or Next.');
     return;
   }
   goNext(mode === 'solos' ? 'next' : 'bot');
@@ -1558,7 +1558,7 @@ $('rematchBtn').addEventListener('click', () => {
   react.mine = true;
   const rb = $('rematchBtn');
   rb.classList.add('chosen');
-  rb.textContent = react.theirs ? '🔁 Starting…' : '⏳ Waiting for ' + opp.name + '…';
+  rb.textContent = react.theirs ? 'Starting…' : 'Waiting for ' + opp.name + '…';
   send({ t: 'again' });
   maybeRematch();
 });
@@ -1602,18 +1602,18 @@ function endSolo(score) {
   const best = CA.setMathBest(score);
   sound(best ? 'win' : 'draw');
   $('stage').innerHTML =
-    '<div class="result"><div class="result-badge">' + (best ? '🏆' : '🧮') + '</div><h2>' + score + ' right!</h2>' +
+    '<div class="result' + (best ? ' win' : '') + '"><div class="result-top"><span class="result-tag">' + (best ? 'New best' : 'Finished') + '</span><span>Math Sprint</span></div><h2>' + score + ' right!</h2>' +
     '<p class="muted">' + (best ? 'New personal best!' : 'Your best is ' + CA.profile.mathBest + '.') + '</p>' +
-    '<div class="row center result-btns"><button class="btn go big" data-act="again">↻ Try again</button>' +
-    '<button class="btn big" data-act="settings">⚙️ Change settings</button><button class="btn ghost" data-act="menu">Menu</button></div></div>';
+    '<div class="result-btns"><button class="btn primary big" data-act="again">Try again</button>' +
+    '<button class="btn big" data-act="settings">Settings</button><button class="btn big" data-act="menu">Menu</button></div></div>';
   wireResultButtons();
 }
 
 function showNoContest(text) {
   $('stage').innerHTML =
-    '<div class="result"><div class="result-badge">👋</div><h2>Match cancelled</h2><p class="muted">' + esc(text) + '</p>' +
-    '<div class="row center result-btns"><button class="btn solos-btn big" data-act="next">⚡ Next player now</button>' +
-    '<button class="btn ghost" data-act="menu">Menu</button></div><p class="next-note" id="nextNote"></p></div>';
+    '<div class="result"><div class="result-top"><span class="result-tag">No contest</span></div><h2>Match cancelled</h2><p class="muted">' + esc(text) + '</p>' +
+    '<div class="result-btns"><button class="btn primary big" data-act="next">Next player</button>' +
+    '<button class="btn big" data-act="menu">Menu</button></div><p class="next-note" id="nextNote"></p></div>';
   wireResultButtons();
   autoNext('next', 2500);
 }
@@ -1621,7 +1621,7 @@ function showNoContest(text) {
 function showResult(outcome, reason, res, opts) {
   const g = GAMES[match.gameId];
   const title = outcome === 'win' ? 'You win!' : outcome === 'lose' ? 'You lost' : "It's a draw";
-  const badge = outcome === 'win' ? '🏆' : outcome === 'lose' ? '😿' : '🤝';
+  const tag = outcome === 'win' ? 'Victory' : outcome === 'lose' ? 'Defeat' : 'Draw';
   const text =
     reason === 'left' ? opp.name + ' left the match, so the win is yours.'
     : reason === 'afk' ? opp.name + ' stopped playing, so the win is yours.'
@@ -1629,13 +1629,13 @@ function showResult(outcome, reason, res, opts) {
     : (outcome === 'win' ? 'You beat ' : outcome === 'lose' ? 'You lost to ' : 'You tied with ') + opp.name + ' at ' + g.name + '.';
   let body;
   if (opp.glingus) {
-    body = '<div class="streak-change">🤝 Friendly game: your streak and fish stay the same.</div>';
+    body = '<div class="streak-change">Friendly game: your streak and fish stay the same.</div>';
   } else if (opp.standIn) {
-    body = '<div class="streak-change">🤖 Bot game: your streak and fish stay the same.</div>';
+    body = '<div class="streak-change">Bot game: your streak and fish stay the same.</div>';
   } else if (mode === 'practice') {
-    body = '<div class="streak-change">🎯 Practice game: your streak and fish stay the same.</div>';
+    body = '<div class="streak-change">Practice game: your streak and fish stay the same.</div>';
   } else if (!res) {
-    body = '<div class="streak-change">🤝 ' + esc(friendlyText()) + '</div>';
+    body = '<div class="streak-change">' + esc(friendlyText()) + '</div>';
   } else {
     let streakLine;
     if (outcome === 'win') {
@@ -1643,8 +1643,8 @@ function showResult(outcome, reason, res, opts) {
         (res.newBest ? ' <span class="best-tag">New best!</span>' : '') + '</div>';
     } else if (outcome === 'lose') {
       streakLine = res.before.streak > 0
-        ? '<div class="streak-change down">Streak lost 😿 🔥 ' + res.before.streak + ' → <b>0</b></div>'
-        : '<div class="streak-change">🔥 Streak: 0. Win the next one to start a streak!</div>';
+        ? '<div class="streak-change down">Streak lost · 🔥 ' + res.before.streak + ' → <b>0</b></div>'
+        : '<div class="streak-change">Streak: 0. Win the next one to start a streak!</div>';
     } else {
       streakLine = '<div class="streak-change">🔥 ' + res.after.streak + ' (a draw keeps your streak)</div>';
     }
@@ -1656,28 +1656,32 @@ function showResult(outcome, reason, res, opts) {
     const pctWas = maxed ? 100 : Math.max(0, Math.min(pct, Math.round((res.before.xp - tier * CA.TIER_XP) / CA.TIER_XP * 100)));
     body = streakLine +
       '<div class="rewards">' + (res.fish ? '<span class="reward fish">+' + cu(0, res.fish, 'coin') + ' 🐟</span>' : '') + '<span class="reward xp">+' + cu(0, res.xp) + ' XP</span></div>' +
-      '<div class="pass-mini"><div class="pass-mini-top"><span>🎟️ Streak Pass · Tier ' + tier + '</span><span>' +
+      '<div class="pass-mini"><div class="pass-mini-top"><span>Streak Pass · Tier ' + tier + '</span><span>' +
       (maxed ? 'All tiers unlocked!' : into + ' / ' + CA.TIER_XP + ' XP') + '</span></div>' +
       '<div class="bar"><i style="width:' + pctWas + '%" data-w="' + pct + '"></i></div>' +
-      (res.after.tier > res.before.tier ? '<a class="tier-up" href="#/pass">🎁 You reached tier ' + tier + '! Claim your reward</a>' : '') +
+      (res.after.tier > res.before.tier ? '<a class="tier-up" href="#/pass">You reached tier ' + tier + '! Claim your reward</a>' : '') +
       '</div>';
-    if (CA.profile.guest) body = streakLine + '<div class="streak-change">👤 Sign up to catch fish and earn XP.</div>';
+    if (CA.profile.guest) body = streakLine + '<div class="streak-change">Sign up to catch fish and earn XP.</div>';
   }
   const buttons =
-    mode !== 'practice' ? '<button class="btn solos-btn big" data-act="next">⚡ Next player now</button>'
-    : opp.standIn ? '<button class="btn solos-btn big" data-act="next">⚡ ' + (opp.glingus ? 'Next player now' : 'Find a player') + '</button>'
-    : practiceMix ? '<button class="btn solos-btn big" data-act="bot">🎲 Next game now</button>'
-    : '<button class="btn go big" data-act="again">↻ Play again</button>';
+    mode !== 'practice' ? '<button class="btn primary big" data-act="next">Next player</button>'
+    : opp.standIn ? '<button class="btn primary big" data-act="next">' + (opp.glingus ? 'Next player' : 'Find a player') + '</button>'
+    : practiceMix ? '<button class="btn primary big" data-act="bot">Next game</button>'
+    : '<button class="btn primary big" data-act="again">Play again</button>';
+  // (the final score, as the scoreboard showed it)
+  const score = '<div class="result-score"><div><b>' + esc($('scMe').textContent) + '</b><span>You</span></div><i></i>' +
+    '<div><b>' + esc($('scThem').textContent) + '</b><span>' + esc(opp.name) + '</span></div></div>';
   $('stage').innerHTML =
-    '<div class="result ' + outcome + '"><div class="result-badge">' + badge + '</div><h2>' + title + '</h2>' +
+    '<div class="result ' + outcome + '"><div class="result-top"><span class="result-tag">' + tag + '</span><span>' + esc(g.name) + '</span></div>' +
+    '<h2>' + title + '</h2>' + score +
     '<p class="muted">' + esc(text) + '</p>' + body + recordsHtml() +
-    '<div class="row center result-btns">' + buttons + '<button class="btn ghost" data-act="menu">Menu</button></div>' +
+    '<div class="result-btns">' + buttons + '<button class="btn big" data-act="menu">Menu</button></div>' +
     '<p class="next-note" id="nextNote"></p></div>';
   wireResultButtons();
 }
 
 function recordsHtml() {
-  return newRecords.map(r => '<div class="streak-change up">🏅 New record! ' + esc(r) + '</div>').join('');
+  return newRecords.map(r => '<div class="streak-change up">New record! ' + esc(r) + '</div>').join('');
 }
 
 // A number on a result screen that counts up from `from` to `to` (see celebrate). kind 'coin': fish, with a coin sound.
@@ -1714,7 +1718,7 @@ function celebrate(outcome, res) {
 // You against this opponent, like "You 2 – 3 Them".
 function h2hText() {
   if (!opp || (!h2h.me && !h2h.them)) return '';
-  return '⚔️ You ' + h2h.me + ' – ' + h2h.them + ' ' + opp.name;
+  return 'You ' + h2h.me + ' – ' + h2h.them + ' ' + opp.name;
 }
 
 // Starts counting for a new opponent; for a real player, your past games against them come from the server.
@@ -1751,11 +1755,11 @@ function autoNext(act, ms) {
     if (!note) { cancelNext(); return; }
     const left = due - Date.now();
     if (left > 0) {
-      note.textContent = (act === 'bot' ? '🎲 Next game with a new bot in ' : '⚡ Finding you a new player in ') + Math.ceil(left / 1000) + '…';
+      note.textContent = (act === 'bot' ? 'Next game with a new bot in ' : 'Finding you a new player in ') + Math.ceil(left / 1000) + '…';
       return;
     }
     cancelNext();
-    if (document.visibilityState !== 'visible') { note.textContent = '⏸ Paused while you were away. Press the button to keep playing.'; return; }
+    if (document.visibilityState !== 'visible') { note.textContent = 'Paused while you were away. Press the button to keep playing.'; return; }
     goNext(act);
   };
   nextTimer = setInterval(tick, 200);
@@ -1916,12 +1920,12 @@ function updateTiles() {
   const glingus = !!opp && !!opp.glingus;
   if (glingus && clip) clip.muted = muteThem || lastGame === 'simon'; // (Simon Says: you have to hear Simon)
   $('muteThemBtn').classList.toggle('hidden', !glingus && (!human || !share));
-  setMsg('muteThemBtn', muteThem ? '🔊 Unmute them' : '🔈 Mute them');
+  setMsg('muteThemBtn', muteThem ? 'Unmute them' : 'Mute them');
   if ($('unmuteBtn').classList.contains('hidden')) $('themVideo').muted = muteThem; // (stays muted until "Tap to hear them")
-  setMsg('skipBtn', mode === 'practice' && !(opp && opp.standIn) ? '✕ Quit' : '⏭ Skip');
+  setMsg('skipBtn', mode === 'practice' && !(opp && opp.standIn) ? 'Quit' : 'Skip');
   $('reportBtn').classList.toggle('hidden', !human || !!opp.blocked);
   const mic = $('micBtn');
-  mic.textContent = CA.voice.micOn() ? '🎤 Mic on' : CA.voice.hasMic() ? '🔇 Mic off' : '🎤 Turn on mic';
+  mic.textContent = CA.voice.micOn() ? 'Mic on' : CA.voice.hasMic() ? 'Mic off' : 'Turn on mic';
   mic.classList.toggle('off', CA.voice.hasMic() && !CA.voice.micOn());
 
   // Your camera (only while the other player sees it, or against a bot) and theirs (while they show it and you
@@ -1934,10 +1938,10 @@ function updateTiles() {
   const face = $('faceBtn');
   if (!human) {
     face.disabled = false;
-    face.textContent = CA.voice.cameraOn() || CA.voice.camPending ? '🐱 Show my cat' : '📷 Show my face';
+    face.textContent = CA.voice.cameraOn() || CA.voice.camPending ? 'Show my cat' : 'Show my face';
   } else {
     face.disabled = !share;
-    face.textContent = !CA.canVideoChat() ? '🐱 Cats only (under 18)' : !share ? '🐱 Cats-only match' : showFace ? '🐱 Hide my face' : '📷 Show my face';
+    face.textContent = !CA.canVideoChat() ? 'Cats only (under 18)' : !share ? 'Cats-only match' : showFace ? 'Hide my face' : 'Show my face';
   }
   const glingusCam = opp && opp.glingus ? theirStream() : null;
   if (glingusCam && $('themVideo').srcObject !== glingusCam) {
@@ -1947,10 +1951,10 @@ function updateTiles() {
   const showThem = !!glingusCam || (human && share && !opp.gone && opp.face && remoteHasVideo && !hideThem);
   $('themVideo').classList.toggle('hidden', !showThem);
   $('hideThemBtn').classList.toggle('hidden', !human || !share || !opp.face);
-  setMsg('hideThemBtn', hideThem ? '👀 Show their camera' : '🙈 Hide their camera');
+  setMsg('hideThemBtn', hideThem ? 'Show their camera' : 'Hide their camera');
   const note = !human ? ''
     : !CA.canVideoChat() ? "🐱 You're under 18, so other players never see or hear you: they see your cat."
-    : !share ? '🐱 Cats-only match: no cameras or voices with this player.'
+    : !share ? 'Cats-only match: no cameras or voices with this player.'
     : showFace ? '📷 ' + opp.name + ' can see you. Press 🐱 Hide my face any time.'
     : '🐱 ' + opp.name + ' sees your cat. Press 📷 Show my face if you want them to see you.';
   setMsg('safetyNote', note);
@@ -2443,7 +2447,7 @@ function netStarved(gap) {
   net.starves++;
   if (now - net.starveAt < 6000 && (net.starveRun = (net.starveRun || 0) + 1) >= 4 && !net.warned && opp && !opp.bot) {
     net.warned = true;
-    CA.toast('📶 The connection to ' + opp.name + ' is slow right now, so things may jump a little.');
+    CA.toast('The connection to ' + opp.name + ' is slow right now, so things may jump a little.');
   } else if (now - net.starveAt >= 6000) net.starveRun = 0;
   net.starveAt = now;
 }
@@ -2521,7 +2525,7 @@ function onNet(msg) {
       if (react && opp && !opp.blocked) {
         react.theirs = true;
         setMsg('rxNote', opp.name + (rxWon() ? ' wants revenge! 🔥' : ' wants a rematch! 🔁'));
-        if (react.mine) setMsg('rematchBtn', '🔁 Starting…');
+        if (react.mine) setMsg('rematchBtn', 'Starting…');
         sound('notify');
         maybeRematch();
       }
@@ -2641,12 +2645,12 @@ function reportPressed() {
     icon: '🚩', title: 'Report ' + target.name + '?', stack: true,
     text: "Pick what happened. Their camera and voice are hidden right away, and you won't be matched with " + target.name + ' again.',
     buttons: [
-      { label: '🔞 Showed or said something sexual', fn: pick('nudity') },
-      { label: '🧒 Looks younger than 13', fn: pick('young') },
-      { label: '😠 Bullying, hate or threats', fn: pick('hate') },
+      { label: 'Showed or said something sexual', fn: pick('nudity') },
+      { label: 'Looks younger than 13', fn: pick('young') },
+      { label: 'Bullying, hate or threats', fn: pick('hate') },
       { label: '🃏 Cheating', fn: pick('cheating') },
-      { label: '❓ Something else', fn: pick('other') },
-      { label: '🚫 Just block them', fn: () => blockOnly(target) },
+      { label: 'Something else', fn: pick('other') },
+      { label: 'Just block them', fn: () => blockOnly(target) },
       { label: 'Cancel' },
     ],
   });
@@ -2881,7 +2885,7 @@ function startClip() {
 // Glingus looks like a player, so nothing around him says Practice.
 function looksPractice() { return mode === 'practice' && !(opp && opp.glingus); }
 
-function botTag() { return opp && opp.glingus ? '🔥 ' + opp.streak : opp && opp.standIn ? '🤖 Bot' : '🤖 ' + practiceLevel(); }
+function botTag() { return opp && opp.glingus ? '🔥 ' + opp.streak : opp && opp.standIn ? 'Bot' : '🤖 ' + practiceLevel(); }
 
 function startSolo() {
   hangUp();

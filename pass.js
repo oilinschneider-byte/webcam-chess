@@ -27,13 +27,13 @@ function render() {
   $('ptBest').textContent = p.best;
   const ready = readyTiers();
   $('claimAllBtn').disabled = !ready.length;
-  $('claimAllBtn').textContent = ready.length ? '🎁 Claim all (' + ready.length + ')' : '🎁 Nothing to claim';
+  $('claimAllBtn').textContent = ready.length ? 'Claim all (' + ready.length + ')' : 'Nothing to claim';
   $('tiers').innerHTML = CA.PASS.map(t => {
     const claimed = p.claimed.includes(t.tier);
     const unlocked = t.tier <= tier;
     const state = claimed ? 'claimed' : unlocked ? 'ready' : 'locked';
     const name = t.fish ? t.fish + ' fish' : CA.ITEM[t.item].name;
-    const foot = claimed ? '<span class="tier-state ok">✓ Claimed</span>'
+    const foot = claimed ? '<span class="tier-state ok">Claimed</span>'
       : unlocked ? '<button class="btn small go" data-claim="' + t.tier + '">Claim</button>'
       : '<span class="tier-state">🔒 ' + (t.tier * CA.TIER_XP).toLocaleString() + ' XP</span>';
     return '<div class="tier-card ' + state + '" data-tier="' + t.tier + '"><div class="tier-num">Tier ' + t.tier + '</div>' +
