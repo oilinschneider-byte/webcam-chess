@@ -132,7 +132,7 @@ let recentName = '';
 // Fish bets (see BETS in common.js and FISH BETS below): what you offer (kept from game to game), and what the other
 // player offered and the host settled on, by game number (a message can arrive before that game starts here).
 let betPick = 0;
-const betNet = { offers: {}, stakes: {} };
+const betNet = { offers: {}, stakes: {}, chosen: {} };
 
 /* ================= SMALL HELPERS ================= */
 
@@ -1284,100 +1284,139 @@ function faceToFace(ctx, g, then) {
   const note = mode === 'solos' && !match.counted ? '🤝 ' + friendlyText() : '';
   setMsg('vsNote', note);
   $('vsNote').classList.toggle('hidden', !note);
-  $('vsIntro').classList.remove('hidden');
   $('vsReact').classList.add('hidden');
-  const betting = !!match.betOk;
-  betSetup(betting);
-  // (a few seconds longer against a real player, to pick a bet; the tests make this shorter)
-  const len = window.__introMs != null ? window.__introMs : betting ? 9000 : 5000;
-  let n = Math.max(1, Math.round(len / 1000));
-  const per = len / n;
-  setMsg('vsCount', n);
   $('vs').classList.remove('hidden');
   sound('match');
-  const step = () => {
-    n--;
-    if (n > 0) { setMsg('vsCount', n); sound('tick'); ctx.later(step, per); return; }
-    if (betting) betLock();
-    $('vs').classList.add('hidden');
-    then();
+  // Against a real player, the bets come first (see FISH BETS), then the game's intro.
+  const showIntro = () => {
+    $('vsBet').classList.add('hidden');
+    $('vsIntro').classList.remove('hidden');
+    const len = window.__introMs != null ? window.__introMs : 5000; // (the tests make this shorter)
+    let n = Math.max(1, Math.round(len / 1000));
+    const per = len / n;
+    setMsg('vsCount', n);
+    const step = () => {
+      n--;
+      if (n > 0) { setMsg('vsCount', n); sound('tick'); ctx.later(step, per); return; }
+      $('vs').classList.add('hidden');
+      then();
+    };
+    ctx.later(step, per);
   };
-  ctx.later(step, per);
+  if (match.betOk) betStage(ctx, showIntro); else showIntro();
 }
 
 /* ================= FISH BETS ================= */
-// On the face-to-face screen before a game against a real player, each of you picks how many fish to bet (or none).
-// The bet is the smaller of the two. When the countdown ends, the host's app settles on it and tells the other app.
+// Before a game against a real player there's a whole screen for it: "Place your bets". Each of you picks 10, 25, 50 or
+// 100 fish (or no bet), and the lower offer is the bet. Neither of you sees the other's amount until the time runs out:
+// then both are shown, and the bet locks in. The host's app settles on it and tells the other app.
 // How pots, wins and cashing out work: see BETS in common.js. A loss shows (and costs your pot) right away; the server's
 // result fixes it if it settles the game differently (like a disputed game, which changes nothing).
 
-const BET_STEPS = [5, 10, 25, 50, 100, 250, 500, 1000];
+const BET_STEPS = [10, 25, 50, 100];
+const BET_REVEAL_MS = 1900;     // (how long "Bet locked" shows before the game's intro)
 const betKey = no => (pairing ? pairing.id : 0) + ':' + no; // (offers and stakes are kept by match and game number)
+const fmtFish = n => n.toLocaleString();
+
+// The bet screen: pick for a few seconds, then the reveal, then on to the game's intro.
+function betStage(ctx, then) {
+  const len = window.__betMs != null ? window.__betMs : 8000; // (the tests make this shorter)
+  $('vsIntro').classList.add('hidden');
+  const scr = $('vsBet');
+  scr.classList.remove('hidden', 'revealed');
+  void scr.offsetWidth; // (so the slide-in plays again for every game)
+  betSetup(true);
+  startTimer('vbTimer', len);
+  ctx.later(() => {
+    betLock();
+    scr.classList.add('revealed');
+    betRender();
+    sound('whoosh');
+    ctx.later(then, BET_REVEAL_MS);
+  }, len);
+}
 
 function betSetup(on) {
   const box = $('betBox');
   box.classList.toggle('hidden', !on);
   box.classList.remove('locked');
   if (!on) return;
-  betPick = Math.min(betPick, CA.bets.most());
+  if (betPick > CA.bets.most()) betPick = [0].concat(BET_STEPS).filter(n => n <= CA.bets.most()).pop(); // (last time's amount is more than you have: the most you can)
+  // (the chips are made once per game, so their slide-in only plays once)
+  $('betOpts').innerHTML = [0].concat(BET_STEPS).map((n, i) =>
+    '<button data-amt="' + n + '" style="--i:' + i + '">' + (n ? '<b>' + n + '</b><small>🐟</small>' : '<b>No</b><small>bet</small>') + '</button>').join('');
+  $('betOpts').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    if (!match || match.betLocked || b.disabled) return;
+    betPick = Number(b.dataset.amt);
+    sendOffer(true);
+    betRender();
+    sound('coin', 0.85 + BET_STEPS.indexOf(betPick) * 0.08);
+  }));
   betRender();
-  sendOffer();
+  sendOffer(false);
 }
 
-function sendOffer() {
-  if (match && match.betOk && !match.betLocked) send({ t: 'bet', no: match.gameNo, amt: CA.bets.canBet() ? betPick : 0 });
+// chose: this player picked an amount themselves (not just the one they had last time).
+function sendOffer(chose) {
+  if (match && match.betOk && !match.betLocked) {
+    match.betChose = match.betChose || chose;
+    send({ t: 'bet', no: match.gameNo, amt: CA.bets.canBet() ? betPick : 0, ch: match.betChose ? 1 : 0 });
+  }
+}
+
+// Your pot, what cashing out gives now (with the streak bonus), and what one more win would make the bonus.
+function potHtml(run) {
+  const B = CA.bets, bonus = Math.round(B.bonus(run.wins) * 100), next = Math.round(B.bonus(run.wins + 1) * 100);
+  return '<div class="bp-row"><span>💰 Your pot</span><b>' + fmtFish(run.pot) + ' 🐟</b></div>' +
+    '<div class="bp-sub">' + (run.wins ? '🔥 ' + run.wins + ' win' + (run.wins > 1 ? 's' : '') + ' in a row' : 'A new pot') +
+    (bonus ? ' · cash-out bonus <b>+' + bonus + '%</b>' : '') + (next > bonus ? ' · win again for <b>+' + next + '%</b>' : '') + '</div>' +
+    '<div class="bp-warn">Bets come out of your pot. Lose one and the whole pot is gone.</div>';
 }
 
 function betRender() {
   if (!match || !match.betOk) return;
-  const B = CA.bets, run = B.run(), most = B.most(), locked = !!match.betLocked;
-  if (!B.canBet()) {
-    setMsg('betPot', '');
-    $('betOpts').innerHTML = '';
-    $('betLine').textContent = 'Sign up to bet fish.';
-    $('betCash').classList.add('hidden');
-    return;
-  }
-  const fmt = n => n.toLocaleString();
-  setMsg('betPot', run.pot > 0 ? 'Pot ' + fmt(run.pot) + ' 🐟' + (run.wins ? ' · 🔥' + run.wins : '') : 'You have ' + fmt(CA.profile.fish) + ' 🐟');
-  const steps = BET_STEPS.filter(n => n < most);
-  if (most > 0) steps.push(most); // (everything: your whole pot, or all your fish)
-  $('betOpts').innerHTML = '<button data-amt="0">No bet</button>' + steps.map(n =>
-    '<button data-amt="' + n + '">' + (n === most && !BET_STEPS.includes(n) ? 'All ' + fmt(n) : fmt(n)) + '</button>').join('');
+  const B = CA.bets, run = B.run(), most = B.most(), locked = !!match.betLocked, key = betKey(match.gameNo);
+  const theirs = betNet.offers[key], chose = !!betNet.chosen[key], name = opp ? opp.name : 'Them';
+  const can = B.canBet();
+  setMsg('vbThemName', name);
+  // (the chips: amounts you don't have are greyed out)
   $('betOpts').querySelectorAll('button').forEach(b => {
     const n = Number(b.dataset.amt);
     b.classList.toggle('on', n === betPick);
-    b.disabled = locked;
-    b.addEventListener('click', () => {
-      if (!match || match.betLocked) return;
-      betPick = n;
-      sendOffer();
-      betRender();
-      sound('tick');
-    });
+    b.disabled = locked || !can || n > most;
   });
-  const theirs = betNet.offers[betKey(match.gameNo)];
-  const name = opp ? esc(opp.name) : 'They';
+  // (the two offers: theirs stays hidden until the reveal)
+  const mine = can ? betPick : 0;
+  $('vbMeAmt').innerHTML = mine ? fmtFish(mine) + ' <small>🐟</small>' : 'No bet';
+  $('vbThemAmt').innerHTML = locked && theirs != null ? (theirs ? fmtFish(theirs) + ' <small>🐟</small>' : 'No bet') : chose ? '✓ Ready' : 'Choosing…';
+  const stake = locked ? (match.bet ? match.bet.stake : (isHost || match.betApplied ? 0 : null)) : null;
+  $('vbMe').classList.toggle('low', locked && stake > 0 && mine === stake);
+  $('vbThem').classList.toggle('low', locked && stake > 0 && theirs === stake);
+  // (the line under the chips)
   let line;
-  if (betPick === 0) line = theirs > 0 ? name + ' offers <b>' + fmt(theirs) + ' 🐟</b>. Pick an amount to bet.' : 'Pick an amount, or play without a bet.';
-  else if (theirs == null) line = 'Waiting for ' + name + '…';
-  else if (!theirs) line = name + " isn't betting this time.";
-  else {
-    const s = Math.min(betPick, theirs);
-    line = 'Bet: <b>' + fmt(s) + ' 🐟</b> · win <b>+' + fmt(Math.floor(s * (1 - B.CUT))) + '</b>' +
-      (run.pot > 0 ? ' · lose and your pot is gone' : '');
-  }
-  if (locked) line = match.bet ? '🔒 <b>' + fmt(match.bet.stake) + ' 🐟</b> on this game!' : 'No bet this game.';
-  $('betLine').innerHTML = line;
+  if (!can) line = 'Sign up to bet fish. This game has no bet.';
+  else if (most <= 0) line = 'You have no fish to bet. This game has no bet.';
+  else if (!locked) line = run.pot > 0 ? 'Betting from your pot. The lower offer is the bet.' : 'You have ' + fmtFish(CA.profile.fish) + ' 🐟. The lower offer is the bet.';
+  else if (stake == null) line = 'Locking in…';
+  else if (stake) line = 'Bet: ' + fmtFish(stake) + ' 🐟 · win +' + fmtFish(Math.floor(stake * (1 - B.CUT))) + (run.pot > stake ? ' · lose and your pot is gone' : '');
+  else line = 'No bet this game.';
+  $('betLine').textContent = line;
+  // (the reveal: the bet, big)
+  $('vbRevealAmt').innerHTML = stake == null ? '…' : stake ? fmtFish(stake) + ' <small>🐟</small>' : 'No bet';
+  $('vbRevealSub').textContent = stake ? 'Winner gets +' + fmtFish(Math.floor(stake * (1 - B.CUT))) + ' 🐟' : stake === 0 ? 'Just for glory this time' : '';
+  $('vbReveal').classList.toggle('none', stake === 0);
+  // (your pot, with its Cash out button: only before the bet locks)
+  $('betPotCard').classList.toggle('hidden', !can || run.pot <= 0 || locked);
+  if (run.pot > 0) $('betPotInfo').innerHTML = potHtml(run);
   const cash = $('betCash');
-  cash.classList.toggle('hidden', locked || run.pot <= 0);
-  cash.textContent = 'Cash out ' + fmt(B.cashValue()) + ' 🐟';
+  cash.classList.toggle('hidden', !can || locked || run.pot <= 0);
+  cash.textContent = 'Cash out ' + fmtFish(B.cashValue()) + ' 🐟';
 }
 
 function cashOutPressed() {
   const n = CA.bets.cashOut();
   if (!n) return;
-  betPick = Math.min(betPick, CA.bets.most());
+  if (betPick > CA.bets.most()) betPick = [0].concat(BET_STEPS).filter(k => k <= CA.bets.most()).pop();
   CA.toast('You cashed out ' + n.toLocaleString() + ' 🐟!');
   sound('win');
   sendOffer();
@@ -1415,7 +1454,6 @@ function applyStake(m) {
 function betOn(m) {
   if (!m.bet) return;
   setMsg('scMode', 'Classic Games · 🎲 ' + m.bet.stake.toLocaleString() + ' 🐟');
-  CA.toast('🎲 ' + m.bet.stake.toLocaleString() + ' 🐟 bet on this game!');
 }
 
 function betMsg(msg) {
@@ -1423,6 +1461,7 @@ function betMsg(msg) {
   if (no < 1) return;
   if (msg.t === 'bet') {
     betNet.offers[betKey(no)] = amt;
+    if (msg.ch) betNet.chosen[betKey(no)] = true;
     if (match && match.gameNo === no && !match.betLocked) betRender();
   } else if (!isHost) { // ('stake': the host settled on the bet)
     betNet.stakes[betKey(no)] = amt;
@@ -1452,7 +1491,19 @@ function betFix(m, result, name) {
 
 // (For pictures of the bet box in the tests: shows it on the current face-to-face screen, as if the other player offered `theirs`.)
 if (/[?&]autotest=/.test(location.search)) {
-  window.__betShow = (theirs, pick) => { if (!match) return; match.betOk = true; betNet.offers[betKey(match.gameNo)] = theirs; betPick = pick; betSetup(true); };
+  // (reveal: show it as it looks once the bet has locked in)
+  window.__betShow = (theirs, pick, reveal) => {
+    if (!match) return;
+    match.betOk = true;
+    betNet.offers[betKey(match.gameNo)] = theirs;
+    betNet.chosen[betKey(match.gameNo)] = true;
+    betPick = pick;
+    $('vs').classList.remove('hidden');
+    $('vsIntro').classList.add('hidden');
+    $('vsBet').classList.remove('hidden');
+    betSetup(true);
+    if (reveal) { match.betLocked = true; match.bet = { stake: Math.min(theirs, pick) }; $('vsBet').classList.add('revealed'); betRender(); }
+  };
 }
 
 // After a game: what the bet did, and your pot with its Cash out button.
@@ -1462,16 +1513,18 @@ function renderRxBet() {
   const run = CA.bets.run(), r = match.betRes, fmt = n => n.toLocaleString();
   let text = '';
   box.classList.remove('up', 'down');
-  if (r && r.won != null) { text = '🎲 +' + fmt(r.won) + ' 🐟 → pot ' + fmt(r.pot) + ' 🐟'; box.classList.add('up'); }
+  if (r && r.won != null) { text = 'You won the bet: +' + fmt(r.won) + ' 🐟'; box.classList.add('up'); }
   else if (r && r.lost != null) { text = 'Bet lost: your pot of ' + fmt(r.lost) + ' 🐟 is gone'; box.classList.add('down'); }
-  else if (r) text = 'No result: your pot stays ' + fmt(run.pot) + ' 🐟';
-  else if (run.pot > 0) text = 'Your pot: ' + fmt(run.pot) + ' 🐟';
-  if (run.pot > 0 && run.wins > 1) text += ' · 🔥 ' + run.wins + ' wins: +' + Math.round(CA.bets.bonus(run.wins) * 100) + '% to cash out';
+  else if (r) text = 'No result: the bet is off';
   $('rxBetText').textContent = text;
+  $('rxBetText').classList.toggle('hidden', !text);
+  // (your pot, what cashing out gives now, and the button)
+  $('rxPotCard').classList.toggle('hidden', run.pot <= 0);
+  if (run.pot > 0) $('rxPotInfo').innerHTML = potHtml(run);
   const cash = $('rxCash');
   cash.classList.toggle('hidden', run.pot <= 0);
   cash.textContent = 'Cash out ' + fmt(CA.bets.cashValue()) + ' 🐟';
-  box.classList.toggle('hidden', !text);
+  box.classList.toggle('hidden', !text && run.pot <= 0);
 }
 
 let react = null; // the few seconds after a round: { mine, theirs, due, iv } (did you / they press Rematch?)
@@ -1484,6 +1537,7 @@ function startReaction(outcome, res, opts) {
   react = { mine: false, theirs: false, due: Date.now() + ms, iv: null };
   showFaces();
   $('vsIntro').classList.add('hidden');
+  $('vsBet').classList.add('hidden');
   const box = $('vsReact');
   box.className = 'f2f-react ' + outcome;
   setMsg('rxBadge', outcome === 'win' ? '🏆' : outcome === 'lose' ? '😿' : '🤝');

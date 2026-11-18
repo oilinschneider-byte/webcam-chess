@@ -2132,22 +2132,6 @@ body.guest .guest-login { display: inline-flex; }
 .lobby-rat .sc-eyeglow { animation: sc-glare 2.6s ease-in-out infinite alternate, rat-blink 7s linear infinite; }
 
 /* Fish bets on the face-to-face screens (see BETS in common.js) */
-.bet-box { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(340px, 100%); padding: 12px; border-radius: 16px; background: rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .18); color: #fff; }
-.bet-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%; font-size: 15px; }
-.bet-top span { color: #ffd76a; font-size: 13px; font-weight: 800; }
-.bet-opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
-.bet-opts button { min-width: 52px; padding: 7px 10px; border: 2px solid rgba(255, 255, 255, .25); border-radius: 999px; background: rgba(255, 255, 255, .08); color: #fff; font: inherit; font-weight: 900; cursor: pointer; }
-.bet-opts button:hover:not(:disabled) { border-color: #ffd76a; }
-.bet-opts button.on { border-color: #ffd76a; background: #ffd76a; color: #3a2700; }
-.bet-opts button:disabled { opacity: .45; cursor: default; }
-.bet-line { min-height: 18px; font-size: 13px; font-weight: 800; color: rgba(255, 255, 255, .85); }
-.bet-line b { color: #ffd76a; }
-.bet-box.locked .bet-opts button:not(.on) { opacity: .3; }
-.bet-cash { background: #ffd76a; color: #3a2700; border: 0; font-weight: 900; }
-.bet-cash:hover { background: #ffe38f; }
-.rx-bet { display: flex; flex-direction: column; align-items: center; gap: 6px; font-weight: 900; }
-.rx-bet.up { color: #7ee07a; }
-.rx-bet.down { color: #ff8a8a; }
 
 /* ================= CELEBRATIONS ================= */
 /* (the confetti is drawn by confetti() in common.js; the numbers count up with countUp(): see celebrate in solos.js) */
@@ -2205,3 +2189,78 @@ h1, h2, h3 { font-weight: 800; letter-spacing: -.01em; }
 #scr-games .sewer-go:hover, #scr-games .sewer-mix:hover { transform: none; filter: brightness(1.06); }
 .pc-group { font-weight: 800; }
 :root:not([data-theme="dark"]) .btn.go { color: #fff; }
+
+/* ================= PLACE YOUR BETS =================
+   The screen before a game against a real player (see FISH BETS in solos.js). It covers the face-to-face screen: dark,
+   with gold for the money. Everything comes in from the left, one after another; when the time runs out, the chips
+   fall away and the bet shows big in the middle. */
+.vs-bet { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 24px 16px; overflow: auto;
+  background: radial-gradient(ellipse at 50% 40%, #1b2a44 0%, #0b1220 62%, #05080f 100%); color: #fff; }
+.vs-bet::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 0 40%, rgba(255, 215, 106, .07) 50%, transparent 60% 100%); background-size: 250% 100%; animation: vb-sweep 1.4s ease-out both; }
+@keyframes vb-sweep { from { background-position: 120% 0; } to { background-position: -40% 0; } }
+.bet-box { position: relative; display: flex; flex-direction: column; align-items: center; gap: 18px; width: min(640px, 100%); text-align: center; }
+.vb-kicker, .vb-title, .vb-players, .bet-line, .bet-pot { animation: vb-in .55s cubic-bezier(.2, .9, .25, 1) both; }
+.vb-kicker { color: #ffd76a; font-size: 13px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
+.vb-title { margin: -10px 0 0; font-family: 'Bowlby One', var(--font); font-size: clamp(30px, 5.2vw, 58px); white-space: nowrap; font-weight: 400; line-height: 1; letter-spacing: .01em;
+  text-shadow: 0 6px 30px rgba(0, 0, 0, .6); animation-delay: .08s; }
+.vb-players { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; width: 100%; animation-delay: .16s; }
+.vb-p { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 12px; background: rgba(255, 255, 255, .04);
+  transition: border-color .3s, background .3s, transform .3s; }
+.vb-p.me { text-align: left; }
+.vb-p.them { text-align: right; }
+.vb-p span { overflow: hidden; color: rgba(255, 255, 255, .6); font-size: 13px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.vb-p b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.vb-p b small { color: #ffd76a; font-size: .7em; }
+.vb-p.low { border-color: #ffd76a; background: rgba(255, 215, 106, .12); transform: scale(1.04); }
+.vb-vs { color: rgba(255, 255, 255, .4); font-size: 14px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+/* the chips: round, in a row, each one a moment after the one before */
+.bet-opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.bet-opts button { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 86px; height: 86px; padding: 0;
+  border: 2px solid rgba(255, 255, 255, .22); border-radius: 50%; background: radial-gradient(circle at 50% 35%, #26344d, #141d2e);
+  box-shadow: inset 0 0 0 6px rgba(255, 255, 255, .04), 0 10px 24px rgba(0, 0, 0, .45); color: #fff; font: inherit; cursor: pointer;
+  animation: vb-in .5s cubic-bezier(.2, .9, .25, 1) both; animation-delay: calc(.28s + var(--i, 0) * .09s);
+  transition: transform .15s, border-color .15s, background .15s, opacity .3s; }
+.bet-opts button b { font-size: 26px; font-weight: 800; line-height: 1; }
+.bet-opts button small { margin-top: 3px; color: rgba(255, 255, 255, .55); font-size: 12px; font-weight: 800; }
+.bet-opts button:first-child b { font-size: 18px; }
+.bet-opts button:hover:not(:disabled) { border-color: #ffd76a; transform: translateY(-3px); }
+.bet-opts button.on { border-color: #ffd76a; background: radial-gradient(circle at 50% 35%, #ffe08a, #e8b13a); color: #2b1d00;
+  box-shadow: inset 0 0 0 6px rgba(255, 255, 255, .25), 0 0 0 4px rgba(255, 215, 106, .2), 0 12px 30px rgba(232, 177, 58, .35); transform: translateY(-3px); }
+.bet-opts button.on small { color: rgba(43, 29, 0, .7); }
+.bet-opts button:disabled { cursor: default; }
+.bet-opts button:disabled:not(.on) { opacity: .28; }
+.bet-line { min-height: 20px; color: rgba(255, 255, 255, .7); font-size: 14px; font-weight: 700; animation-delay: .75s; }
+/* your pot */
+.bet-pot { display: flex; align-items: center; gap: 16px; width: 100%; padding: 14px 16px; border: 1px solid rgba(255, 215, 106, .35); border-radius: 12px;
+  background: rgba(255, 215, 106, .07); text-align: left; animation-delay: .85s; }
+.bet-pot > div { flex: 1; min-width: 0; }
+.bp-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-weight: 800; }
+.bp-row b { color: #ffd76a; font-size: 20px; }
+.bp-sub { margin-top: 2px; color: rgba(255, 255, 255, .75); font-size: 13px; font-weight: 700; }
+.bp-sub b { color: #ffd76a; }
+.bp-warn { margin-top: 4px; color: rgba(255, 255, 255, .5); font-size: 12px; font-weight: 700; }
+.bet-cash { flex: none; border: 0; background: #ffd76a; color: #2b1d00; font-weight: 800; }
+.bet-cash:hover:not(:disabled) { background: #ffe38f; }
+/* the time left */
+.vb-timer { width: min(320px, 80%); height: 4px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, .1); animation: vb-in .5s .9s both; }
+.vb-timer i { display: block; height: 100%; background: #ffd76a; transform-origin: left; }
+@keyframes vb-in { from { transform: translateX(-60px); opacity: 0; } }
+/* the reveal: the chips and the line fall away, the bet lands in the middle */
+.vb-reveal { display: none; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 4px; white-space: nowrap; }
+.vs-bet.revealed .vb-reveal { display: flex; animation: vb-land .6s cubic-bezier(.2, 1.4, .35, 1) both; }
+.vs-bet.revealed .bet-opts, .vs-bet.revealed .bet-line, .vs-bet.revealed .bet-pot, .vs-bet.revealed .vb-timer { display: none; }
+.vs-bet.revealed .bet-opts button { animation: none; }
+.vb-reveal small { color: #ffd76a; font-size: 13px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
+.vb-reveal b { font-family: 'Bowlby One', var(--font); font-size: clamp(56px, 9vw, 96px); font-weight: 400; line-height: 1; color: #ffd76a; text-shadow: 0 8px 40px rgba(232, 177, 58, .45); }
+.vb-reveal b small { font-family: var(--font); font-size: .45em; letter-spacing: 0; }
+.vb-reveal span { color: rgba(255, 255, 255, .75); font-size: 15px; font-weight: 700; }
+.vb-reveal.none small, .vb-reveal.none b { color: #fff; text-shadow: none; }
+@keyframes vb-land { from { transform: scale(1.8); opacity: 0; } }
+@media (max-width: 560px) { .vb-title { white-space: normal; } .bet-opts { gap: 10px; } .bet-opts button { width: 64px; height: 64px; } .bet-opts button b { font-size: 20px; } .bet-pot { flex-direction: column; align-items: stretch; } }
+@media (prefers-reduced-motion: reduce) { .vs-bet::before { display: none; } }
+/* after the game: what the bet did, and your pot */
+.rx-bet { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; font-weight: 800; }
+.rx-bet.up > span { color: #7ee07a; }
+.rx-bet.down > span { color: #ff8a8a; }
+.rx-bet .bet-pot { animation: none; color: #fff; }

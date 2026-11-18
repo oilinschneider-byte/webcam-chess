@@ -57,6 +57,7 @@ const NAME = 'zt' + run + role;
 const PASS = 'test-pass-' + run;
 const adult = role === 'a' || camTest || wallTest || duelTest || glingusTest || perfTest || netTest || rulesTest || shotsTest;
 window.__introMs = /[?&]intro=1\b/.test(location.search) ? 60000 : 1500;   // (shorter face-to-face screens)
+window.__betMs = /[?&]intro=1/.test(location.search) ? 60000 : 1500;     // (a shorter bet screen too)
 window.__reactMs = 15000;
 if (glingusTest) { window.__standInMs = 2000; window.__reactMs = 60000; window.__testHooks = true; } else window.__noStandIn = true; // (the other rounds wait a long time for each other: no stand-ins)
 window.__forceGame = wallTest ? 'walls' : camTest ? 'ttt' : 'rps'; // (Tic-Tac-Toe waits for moves, so there's time to check the cameras)
@@ -230,7 +231,16 @@ async function main() {
       await sleep(2500);
       if (q.get('dbg')) { const sc = document.querySelector('.lobby-scene'); const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:0;top:70px;z-index:99;background:#fff;color:#000;font:14px monospace;padding:6px'; d.textContent = 'h=' + getComputedStyle(sc).height + ' inline=' + sc.style.height + ' vb=' + sc.querySelector('svg').getAttribute('viewBox') + ' main=' + Math.round(document.getElementById('scr-menu').getBoundingClientRect().bottom) + ' route=' + CA.route; document.body.appendChild(d); }
       if (q.get('betlook') && CA.route === 'perm') { $('permSkip').click(); await sleep(3000); }
-      if (q.get('betlook')) { CA.profile.fish = 120; CA.profile.run = { pot: 19, wins: 2 }; window.__betShow(25, 10); await sleep(300); } // (the fish-bet box)
+      if (q.get('betlook')) { // (the bet screen: &betlook=2 once the bet has locked in, &nopot=1 with no pot)
+        CA.profile.guest = false;
+        CA.profile.fish = 120;
+        CA.profile.run = q.get('nopot') ? { pot: 0, wins: 0 } : { pot: 28, wins: 2 };
+        window.__betShow(25, 10, q.get('betlook') === '2');
+        await sleep(1800);
+        window.requestAnimationFrame = () => 0;
+        const top = setTimeout(() => {}, 0);
+        for (let k = 0; k <= top; k++) { clearTimeout(k); clearInterval(k); } // (nothing moves on after this)
+      }
       if (q.get('wide')) { // (what sticks out past the right edge of the screen)
         const vw = document.documentElement.clientWidth, out = [];
         document.querySelectorAll('body *').forEach(el => {
@@ -922,7 +932,7 @@ async function verifyRound() {
 // Fish bets (BETS in common.js, FISH BETS in solos.js): the host offers 25, the other 10, so the bet is 10. The host wins
 // twice: its pot goes 10 → 19 → 28, worth 30 to cash out (2 wins in a row: +10%). The other player's first bet is gone.
 async function betRound() {
-  window.__introMs = 7000; // (time to pick a bet)
+  window.__betMs = 7000; // (time to pick a bet)
   const B = CA.bets;
   CA.profile.fish = 100;
   CA.profile.run = { pot: 0, wins: 0 };
@@ -936,7 +946,7 @@ async function betRound() {
     $('betOpts').querySelector('[data-amt="' + amt + '"]').click();
   };
   await pick(host ? 25 : 10);
-  await until(() => /Bet: 10 🐟/.test($('betLine').textContent), 6000, 'both offers to arrive');
+  await until(() => /Bet: 10 🐟/.test($('betLine').textContent), 12000, 'the bet to lock in');
   await check('each offers fish, and the bet is the smaller offer: ' + $('betLine').textContent, true);
   const d = await until(() => window.__duel && window.__duel.id === DUEL_ONLINE && window.__duel, 20000, 'the game');
   await until(() => d.phase() === 'play', 10000, 'the countdown');
