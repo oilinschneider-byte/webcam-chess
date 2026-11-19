@@ -162,6 +162,8 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'crash') { v.mood(e.i, 'ko', 1.8); v.mood(1 - e.i, 'happy', 1.8); }
   if (e.type === 'crash') {
     v.burst(e.x, e.y, v.team[e.i].main, 26, 340);
     v.burst(e.x, e.y, '#ffffff', 10, 220);

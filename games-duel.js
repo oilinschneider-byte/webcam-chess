@@ -77,7 +77,7 @@ const siteVersion = () => { const s = document.querySelector('script[src*="games
 
 // A cat's picture (with its arms), looking right or left, mouth closed or open: pics[1 or -1][0 or 1].
 function pictures(eq) {
-  const pics = { 1: [null, null], '-1': [null, null] };
+  const pics = { 1: [null, null], '-1': [null, null], face: F.faceCache(eq, {}, 200, 240) }; // (pics.face: with an expression)
   [1, -1].forEach(look => [0, 1].forEach(open => {
     const svg = CA.catSVG(eq, { bg: false, anim: false, mouth: open ? 'open' : 'closed', look: look * 6 })
       .replace('<svg ', '<svg width="200" height="240" ');
@@ -401,6 +401,7 @@ function run(ctx, def) {
     if (sent && ctx.gameLog) ctx.gameLog({ v: 1, role: 'guest', game: def.id, ver: siteVersion(), sent });
     koAt = performance.now();
     sound(w === meI ? 'fanfare' : w < 0 ? 'draw' : 'thud');
+    if (w >= 0) { view.mood(w, 'happy', 99); view.mood(1 - w, 'ko', 99); } else { view.mood(0, 'shock', 99); view.mood(1, 'shock', 99); }
     if (ready) { // (the big finish: see render)
       view.shake(14);
       if (w === meI) {
@@ -549,6 +550,8 @@ function run(ctx, def) {
     streak.who = i;
     const quick = t - streak.at < 1300; // (points coming fast, like punches: just the sound, higher each time)
     streak.at = t;
+    view.mood(i, 'happy', 1.6);
+    view.mood(1 - i, quick ? 'hurt' : 'sad', 1.6);
     if (i === meI) {
       sound('cheer', 1 + Math.min(7, streak.n - 1) * 0.06);
       buzz([18, 30, 30]);
@@ -618,7 +621,7 @@ function run(ctx, def) {
       g.save();
       g.translate(x, y + 17 * k);
       g.scale(0.48 * k, 0.48 * k);
-      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha });
+      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, face: faceOf(i, o) });
       g.restore();
       if (o.label !== false) paint.label(i === meI ? 'You' : names[i], x, y + 31 * k + 2, 12, i === meI ? '#ffd23f' : '#ffffff');
     },
@@ -628,11 +631,50 @@ function run(ctx, def) {
       g.save();
       g.translate(x, y);
       g.scale(size || 1, size || 1);
-      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, squash: o.squash || 0 });
+      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, squash: o.squash || 0, face: faceOf(i, o) });
       g.restore();
+    },
+    // The same, without its arms, so the game can draw them in any pose (see view.arm). o is as for catSide. The picture
+    // is 80 wide and 96 tall at size 1, the feet at the bottom, the shoulders 33 up and 12 either side of the middle.
+    catBare(i, x, y, size, o) {
+      o = o || {};
+      const L = looks[i];
+      if (!L.bare) L.bare = { pics: F.pictures(i === meI ? CA.profile.equip : ctx.oppEquip), fur: L.fur };
+      g.save();
+      g.translate(x, y);
+      g.scale(size || 1, size || 1);
+      F.drawBody(g, L.bare, 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, squash: o.squash || 0, face: faceOf(i, o) });
+      g.restore();
+    },
+    // One arm, in cat i's fur, from the shoulder (sx, sy) to the paw (px, py), bending at the elbow toward bend (1 or -1).
+    // fist: a clenched paw. w: how thick.
+    arm(i, sx, sy, px, py, o) {
+      o = o || {};
+      const fur = looks[i].fur, w = o.w || 9, dx = px - sx, dy = py - sy, l = Math.hypot(dx, dy) || 1;
+      const ex = (sx + px) / 2 - dy / l * l * 0.18 * (o.bend || 1), ey = (sy + py) / 2 + dx / l * l * 0.18 * (o.bend || 1);
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      [[fur.dark, w + 3.5], [fur.mid, w]].forEach(([c, lw]) => {
+        g.strokeStyle = c; g.lineWidth = lw;
+        g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo(ex, ey, px, py); g.stroke();
+      });
+      if (fur.sleeve) { g.strokeStyle = fur.sleeve; g.lineWidth = w + 3; g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + (ex - sx) * 0.5, sy + (ey - sy) * 0.5); g.stroke(); }
+      const r = o.fist ? w * 0.85 : w * 0.75;
+      g.fillStyle = fur.light;
+      g.strokeStyle = fur.dark;
+      g.lineWidth = 2;
+      g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fill(); g.stroke();
+      if (o.fist) { g.beginPath(); g.moveTo(px - r * 0.5, py - r * 0.1); g.lineTo(px + r * 0.5, py - r * 0.1); g.stroke(); } // (the knuckles)
     },
   };
   const talking = i => F.mouth(i === meI ? 'talk-me' : 'talk-opp') > 0.12;
+  // Each cat's mood: an expression (see FACES in common.js) for a moment, like 'hurt' after a hit. A game can give one
+  // itself (o.face when it draws the cat), or set one with view.mood(i, face, seconds). The engine sets some on its own:
+  // happy or sad for a point, and at the end the winner is happy and the loser knocked out.
+  const moods = [{ face: null, until: 0 }, { face: null, until: 0 }];
+  view.mood = (i, face, secs) => { if (moods[i]) { moods[i].face = face; moods[i].until = performance.now() + (secs == null ? 1 : secs) * 1000; } };
+  const faceOf = (i, o) => o.face || (moods[i] && performance.now() < moods[i].until ? moods[i].face : null);
+  view.faceOf = i => faceOf(i, {}); // (the mood just now, or null: for a game that draws its cats itself)
   ready = true;
   early.splice(0).forEach(runEvent);
 

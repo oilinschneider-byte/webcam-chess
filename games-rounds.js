@@ -1,6 +1,7 @@
 /* Three round games:
    Yarn Unravel: a tangle of yarn; trace your strand from the yarn ball to the end, faster than the other cat. Best of 3.
-   Rock Paper Claw: rock paper scissors, but you also bet 1 to 3 claws on each round. The winner gets both bets. First to 10.
+   Rock Paper Scissors: face to face on camera (or as your cats), and you also bet 1 to 3 claws on each round. The winner
+   gets both bets. First to 10.
    Hot Potato Bomb: the cat holding the bomb has to answer a quick question to pass it. Whoever holds it when it blows up
    loses the round. First to 2. (The host's app keeps the bomb's time.) */
 (() => {
@@ -11,8 +12,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 /* ================= YARN UNRAVEL ================= */
 
-const YW = 960, YH = 540, YARN_MS = 25000, TOL = 30, AHEAD = 14;
-const YARN_COLORS = ['#ff4d6d', '#37b4ff', '#ffd23f'];
+const YW = 960, YH = 540, YARN_MS = 32000, TOL = 30, AHEAD = 14;
+const YARN_COLORS = ['#ff4d6d', '#37b4ff', '#ffd23f', '#5ce07a', '#c77dff', '#ff9a3c', '#ff7ac8', '#4be0d0', '#ffffff', '#a0d64a', '#8f9dff', '#e6b98a']; // (one colour per strand)
 
 // A smooth strand through some points (Catmull-Rom), as many small steps about 4px apart.
 function strand(points) {
@@ -33,9 +34,11 @@ function strand(points) {
 
 function tangle(rng, r) {
   const pts = n => { const a = []; for (let k = 0; k < n; k++) a.push([90 + rng() * (YW - 180), 110 + rng() * (YH - 170)]); return a; };
-  const n = 6 + r; // (later rounds are more tangled)
-  const strands = [0, 1, 2].map(() => strand(pts(n)));
-  return { strands, mine: Math.floor(rng() * 3) };
+  const n = 7 + r; // (later rounds are longer, and more tangled)
+  const count = 8 + r; // (lots of yarn: 9 to 11 strands, only one of them yours)
+  const strands = [];
+  for (let k = 0; k < count; k++) strands.push(strand(pts(n)));
+  return { strands, mine: Math.floor(rng() * count) };
 }
 
 CA.games.add('yarn', {
@@ -176,19 +179,22 @@ CA.games.add('yarn', {
   },
 });
 
-/* ================= ROCK PAPER CLAW ================= */
+/* ================= ROCK PAPER SCISSORS (on camera) ================= */
 
 const HANDS = { r: ['🪨', 'Rock'], p: ['📄', 'Paper'], s: ['✂️', 'Scissors'] };
 const BEATS = { r: 's', p: 'r', s: 'p' };
 const CLAW_WIN = 10, CLAW_MS = 9000;
 
 CA.games.add('claw', {
-  name: 'Rock Paper Claw', icon: '🐾',
-  blurb: 'Rock paper scissors with a twist: bet 1, 2 or 3 claws on every round. The winner of the round takes both bets. Read the other cat\'s face! First to 10.',
+  name: 'Rock Paper Scissors', icon: '✂️',
+  blurb: 'Rock paper scissors, face to face on camera! Bet 1, 2 or 3 claws on every round, then pick your hand. Rock… paper… scissors… SHOOT! The winner of the round takes both bets. Watch their face! First to 10.',
   start(ctx) {
     ctx.stage.innerHTML =
       '<div class="g-rps g-claw">' +
-      '<div class="rps-arena"><div class="rps-hand" id="clMe">❔</div><div class="rps-vs" id="clVs">VS</div><div class="rps-hand them" id="clThem">❔</div></div>' +
+      // (each side: that player's camera, or their cat, with their hand on top of it)
+      '<div class="rps-arena clw-arena"><div class="clw-cam" id="clMeCam"><video class="mirror hidden" id="clMeVid" autoplay playsinline muted></video><div class="clw-cat" id="clMeCat"></div><span class="clw-name">You</span><div class="rps-hand" id="clMe">❔</div></div>' +
+      '<div class="rps-vs" id="clVs">VS</div>' +
+      '<div class="clw-cam" id="clThemCam"><video class="hidden" id="clThemVid" autoplay playsinline muted></video><div class="clw-cat" id="clThemCat"></div><span class="clw-name" id="clThemName"></span><div class="rps-hand them" id="clThem">❔</div></div></div>' +
       '<div class="claw-bets"><span id="clMyBet"></span><span id="clTheirBet"></span></div>' +
       '<div class="timer"><i id="clTimer"></i></div>' +
       '<div class="rps-picks">' + Object.keys(HANDS).map((k, i) =>
@@ -197,6 +203,22 @@ CA.games.add('claw', {
       '<p class="g-msg" id="clMsg"></p></div>';
     const picks = [...ctx.stage.querySelectorAll('.rps-pick')];
     const betBtns = [...ctx.stage.querySelectorAll('#clBet [data-b]')];
+    // The cameras: yours (if it's on) and theirs (if they show it); otherwise each of you is your cat.
+    $('clMeCat').innerHTML = CA.catSVG(CA.profile.equip, { bg: false, anim: false, talker: 'me' });
+    $('clThemCat').innerHTML = CA.catSVG(ctx.oppEquip, { bg: false, anim: false, talker: 'opp' });
+    setMsg('clThemName', ctx.oppName);
+    const showCams = () => {
+      const mine = CA.voice.camera && CA.voice.cameraOn && CA.voice.cameraOn() ? CA.voice.camera : null, theirs = ctx.theirCam ? ctx.theirCam() : null;
+      [['clMeVid', 'clMeCat', mine], ['clThemVid', 'clThemCat', theirs]].forEach(([vid, cat, src]) => {
+        const v = $(vid);
+        if (src && v.srcObject !== src) { v.srcObject = src; v.play().catch(() => {}); }
+        if (!src) v.srcObject = null;
+        v.classList.toggle('hidden', !src);
+        $(cat).classList.toggle('hidden', !!src);
+      });
+    };
+    showCams();
+    ctx.every(showCams, 1000); // (a camera that's turned on or off during the game)
     let bet = 1, onPick = null;
     const showBet = () => betBtns.forEach(b => b.classList.toggle('on', Number(b.dataset.b) === bet));
     betBtns.forEach(b => ctx.listen(b, 'click', () => { bet = Number(b.dataset.b); showBet(); sound('tick'); }));
@@ -209,7 +231,7 @@ CA.games.add('claw', {
     });
     const valid = v => v && HANDS[v.h] && [1, 2, 3].includes(v.b);
     roundMatch(ctx, {
-      revealMs: 2600,
+      revealMs: 3600,
       over: (my, op, r) => my >= CLAW_WIN || op >= CLAW_WIN || r >= 12,
       play(r, submit) {
         ctx.note('Round ' + r + ' · first to ' + CLAW_WIN + ' claws');
@@ -243,8 +265,17 @@ CA.games.add('claw', {
         return BEATS[a.h] === b.h ? [a.b + b.b, 0] : [0, a.b + b.b];
       },
       reveal(r, a, b, w) {
+        // Rock… paper… scissors… SHOOT! Then both hands at once.
+        ['Rock…', 'Paper…', 'Scissors…'].forEach((t, k) => ctx.later(() => { setMsg('clVs', t); sound('count', 1 + k * 0.12); $('clMeCam').classList.toggle('clw-bob', k % 2 === 0); $('clThemCam').classList.toggle('clw-bob', k % 2 === 0); }, k * 330));
+        setMsg('clMe', '✊'); setMsg('clThem', '✊');
+        ctx.later(() => this.show(r, a, b, w), 1000);
+      },
+      show(r, a, b, w) {
+        $('clMeCam').classList.remove('clw-bob'); $('clThemCam').classList.remove('clw-bob');
+        sound('go');
         setMsg('clMe', HANDS[a.h][0]);
         setMsg('clThem', valid(b) ? HANDS[b.h][0] : '❔');
+        $('clMe').classList.add('thrown'); $('clThem').classList.add('thrown');
         setMsg('clMyBet', 'You bet ' + a.b);
         setMsg('clTheirBet', valid(b) ? ctx.oppName + ' bet ' + b.b : '');
         $('clMe').classList.add(w > 0 ? 'won' : w < 0 ? 'lost' : 'tied');

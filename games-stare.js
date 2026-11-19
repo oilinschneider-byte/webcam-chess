@@ -263,6 +263,8 @@ CA.games.add('stare', {
       local, draw,
       event(v, e) {
         if (e.type === 'go') { v.sound('go'); }
+        if (e.type === 'distract') { v.mood(e.to, 'squint', 1.5); v.mood(1 - e.to, 'smug', 1.5); } // (trying so hard not to blink)
+        if (e.type === 'round' && e.rw >= 0) { v.mood(e.rw, 'happy', 2); v.mood(1 - e.rw, 'sad', 2); }
         if (e.type === 'distract') { dis = { to: e.to, k: e.k, at: v.now }; v.sound(e.to === v.me ? [[500, 0, 0.06], [420, 0.06, 0.08]] : [[700, 0, 0.04]]); }
         if (e.type === 'round') v.sound(e.rw === v.me ? 'point' : e.rw < 0 ? 'draw' : 'miss');
       },

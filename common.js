@@ -438,7 +438,61 @@ const TIER_XP = 300;
 
 let uidCounter = 0;
 
+// The cat's expressions in the games (catSVG's face option): eyes, and for most of them a mouth of their own. The eyes
+// sit at (71, 91) and (129, 91), the mouth just under the nose at about (100, 112).
+const ink = (d, w) => '<path d="' + d + '" fill="none" stroke="' + INK + '" stroke-width="' + (w || 4) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+const plainEyes = (rim, ry) => '<ellipse cx="71" cy="' + (91 + (12 - ry) * 0.6) + '" rx="7.8" ry="' + ry + '" fill="' + INK + '"' + rim + '/><circle cx="73.5" cy="' + (85 + (12 - ry) * 0.9) + '" r="2.4" fill="#fff"/>' +
+  '<ellipse cx="129" cy="' + (91 + (12 - ry) * 0.6) + '" rx="7.8" ry="' + ry + '" fill="' + INK + '"' + rim + '/><circle cx="131.5" cy="' + (85 + (12 - ry) * 0.9) + '" r="2.4" fill="#fff"/>';
+const tear = '<path d="M60 104 Q56 112 60 116 Q64 112 60 104 Z" fill="#7cc8ff" stroke="#3b8fd0" stroke-width="1.2"/>';
+const FACES = {
+  // cross: eyebrows down in the middle, eyes narrowed, teeth gritted
+  angry: {
+    eyes: rim => plainEyes(rim, 8) + ink('M57 74 L85 83 M143 74 L115 83', 5),
+    mouth: () => '<rect x="87" y="110" width="26" height="10" rx="3" fill="#fff" stroke="' + INK + '" stroke-width="2.6"/>' + ink('M95.5 110.5 V119.5 M104.5 110.5 V119.5', 1.8),
+  },
+  // pushing hard, or just happy: > <
+  squint: { eyes: () => ink('M62 82 L80 91 L62 100 M138 82 L120 91 L138 100', 4.5) },
+  // big smile, eyes curved shut
+  happy: {
+    eyes: () => ink('M61 95 Q71 81 81 95 M119 95 Q129 81 139 95', 4.5),
+    mouth: uid => '<path d="M87 109 Q100 128 113 109 Z" fill="#3d1810" stroke="' + INK + '" stroke-width="2.4" stroke-linejoin="round"/><path d="M93 119 Q100 124 107 119 Q100 115 93 119 Z" fill="#ff8a9a"/>',
+  },
+  // ouch: eyes squeezed shut, a wobbly mouth
+  hurt: {
+    eyes: () => ink('M62 84 L80 92 L62 98 M138 84 L120 92 L138 98', 4.5) + tear,
+    mouth: () => ink('M88 117 Q92 112 96 117 Q100 122 104 117 Q108 112 112 117', 3),
+  },
+  // upset: eyebrows up in the middle, a frown, a tear
+  sad: {
+    eyes: rim => plainEyes(rim, 10) + ink('M58 80 L82 72 M142 80 L118 72', 4) + tear,
+    mouth: () => ink('M88 120 Q100 108 112 120', 3.4),
+  },
+  // shocked: wide eyes with tiny pupils, mouth open in an O
+  shock: {
+    eyes: () => '<circle cx="71" cy="90" r="12" fill="#fff" stroke="' + INK + '" stroke-width="3"/><circle cx="71" cy="90" r="3.6" fill="' + INK + '"/>' +
+      '<circle cx="129" cy="90" r="12" fill="#fff" stroke="' + INK + '" stroke-width="3"/><circle cx="129" cy="90" r="3.6" fill="' + INK + '"/>',
+    mouth: () => '<ellipse cx="100" cy="118" rx="6.5" ry="8" fill="#3d1810"/>',
+  },
+  // dizzy: swirly eyes
+  dizzy: {
+    eyes: () => ink('M71 91 m-2 0 a2 2 0 1 1 4 0 a5 5 0 1 1 -9 0 a8 8 0 1 1 15 0 a10 10 0 1 1 -18 1', 3) +
+      ink('M129 91 m-2 0 a2 2 0 1 1 4 0 a5 5 0 1 1 -9 0 a8 8 0 1 1 15 0 a10 10 0 1 1 -18 1', 3),
+    mouth: () => ink('M88 117 Q92 112 96 117 Q100 122 104 117 Q108 112 112 117', 3),
+  },
+  // knocked out: X eyes, tongue out
+  ko: {
+    eyes: () => ink('M63 83 L79 99 M79 83 L63 99 M121 83 L137 99 M137 83 L121 99', 4.5),
+    mouth: () => ink('M89 113 L111 113', 3.2) + '<path d="M101 113 Q101 125 107 124 Q112 122 110 113 Z" fill="#ff8a9a" stroke="' + INK + '" stroke-width="2"/>',
+  },
+  // smug, sure of a win: half-closed eyes, a sideways smile
+  smug: {
+    eyes: rim => plainEyes(rim, 6.5) + ink('M60 82 L82 82 M118 82 L140 82', 4),
+    mouth: () => ink('M89 113 Q100 120 112 110', 3.4),
+  },
+};
+
 // talker: 'me' (mouth follows your microphone) or 'opp' (mouth follows your opponent's voice).
+// face: one of FACES (angry, squint, happy, hurt, sad, shock, dizzy, ko, smug), for the games.
 // For pictures drawn on a canvas (where the page's CSS doesn't apply): arms: false leaves out the arms, paws and
 // held item, mouth: 'open' or 'closed' draws only that mouth, and look moves the eyes sideways (in viewBox units).
 function catSVG(equip, opts) {
@@ -522,16 +576,22 @@ function catSVG(equip, opts) {
   if (fur.sparkle) p.push(dots([[58, 58, 1.8], [146, 62, 2], [118, 40, 1.5], [82, 42, 1.3], [154, 110, 1.5], [46, 112, 1.4]], '#fff', 0.9));
   p.push('<ellipse cx="96" cy="56" rx="44" ry="24" fill="url(#' + uid + '-sheen)"/>');
   const rim = fur.dark ? ' stroke="#fff" stroke-opacity=".5" stroke-width="1.6"' : ''; // so dark cats' eyes still show
+  const face = FACES[o.face] ? o.face : null; // (o.face: an expression for the games, see FACES)
   if (o.look) p.push('<g transform="translate(' + o.look + ' 0)">');
-  p.push('<g class="cat-eye"><ellipse cx="71" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="73.5" cy="85" r="2.8" fill="#fff"/></g>');
-  p.push('<g class="cat-eye"><ellipse cx="129" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="131.5" cy="85" r="2.8" fill="#fff"/></g>');
+  if (face) p.push(FACES[face].eyes(rim));
+  else {
+    p.push('<g class="cat-eye"><ellipse cx="71" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="73.5" cy="85" r="2.8" fill="#fff"/></g>');
+    p.push('<g class="cat-eye"><ellipse cx="129" cy="91" rx="7.8" ry="12" fill="' + INK + '"' + rim + '/><circle cx="131.5" cy="85" r="2.8" fill="#fff"/></g>');
+  }
   if (o.look) p.push('</g>');
   if (!fur.noWhiskers) p.push('<path d="M41 103 Q49 103 56.5 105 M43.5 116 Q50 113 56.5 111 M159 103 Q151 103 143.5 105 M156.5 116 Q150 113 143.5 111" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round"/>');
-  if (o.mouth !== 'closed') {
+  if (face && FACES[face].mouth) {
+    p.push(FACES[face].mouth(uid));
+  } else if (o.mouth !== 'closed') {
     p.push('<g class="cat-mouth-open"><ellipse cx="100" cy="117" rx="8.5" ry="8" fill="#3d1810"/>' +
       '<ellipse cx="100" cy="122" rx="5.5" ry="3.4" fill="#ff8a9a" clip-path="url(#' + uid + '-mouth)"/></g>');
   }
-  if (o.mouth !== 'open') p.push('<path class="cat-mouth-closed" d="M100 108.3 L100 111.5 M86 110.5 Q93 118.5 100 111.5 Q107 118.5 114 110.5" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
+  if (!(face && FACES[face].mouth) && o.mouth !== 'open') p.push('<path class="cat-mouth-closed" d="M100 108.3 L100 111.5 M86 110.5 Q93 118.5 100 111.5 Q107 118.5 114 110.5" fill="none" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>');
   p.push('<path d="M94.5 101.5 Q100 99.3 105.5 101.5 Q103 107 100 108.3 Q97 107 94.5 101.5 Z" fill="#4a2418"/>');
   if (fur.face) p.push(fur.face()); // (the costume's mask, over the eyes and nose)
   if (shirt && shirt.face) p.push(shirt.face(c));

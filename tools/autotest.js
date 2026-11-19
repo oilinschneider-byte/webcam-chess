@@ -196,6 +196,22 @@ async function main() {
     if (q.get('theme') === 'dark') $('themeToggle').click();
     if (q.get('skin')) { CA.profile.owned.push(q.get('skin')); CA.profile.equip.skin = q.get('skin'); CA.render(); await sleep(300); } // (wearing a skin)
     if (q.get('acct')) { CA.profile.guest = false; document.body.classList.remove('guest'); CA.render(); await sleep(300); } // (as a player with an account)
+    if (q.get('climbmaps')) { // (Claw Climb: can every map be climbed? The bot's path finder must find a way to the top)
+      const C = CA.games.climb;
+      for (let k = 0; k < 3; k++) {
+        const cs = C.theCourse(k), R = C.courseRoute(cs) || {}, last = R.pts && R.pts[R.pts.length - 1];
+        await check('Claw Climb map ' + k + ' (' + cs.theme + '): a way up to the gold', !!last && last.y < cs.finish.y2 + 80, { points: R.pts ? R.pts.length : 0, total: Math.round(R.total || 0), end: last && [Math.round(last.x), Math.round(last.y)], gold: [cs.finish.x1, cs.finish.y1] });
+      }
+      return;
+    }
+    if (q.get('faces')) { // (every expression the cat can make, side by side: see FACES in common.js)
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-wrap:wrap;gap:8px;padding:16px;background:#fff;align-content:flex-start';
+      d.innerHTML = ['', 'angry', 'squint', 'happy', 'hurt', 'sad', 'shock', 'dizzy', 'ko', 'smug'].map(f =>
+        '<div style="width:150px;text-align:center;font:700 14px sans-serif">' + CA.catSVG({ skin: q.get('skin') || 'skin-orange' }, { bg: false, anim: false, face: f }).replace('<svg ', '<svg width="150" height="180" ') + '<br>' + (f || 'normal') + '</div>').join('');
+      document.body.appendChild(d);
+      return;
+    }
     if (q.get('fx')) { // (a picture of a game's effects, frozen: &fx=poop&fxk=count, point, ko or result)
       const kind = q.get('fxk') || 'point', freeze = () => { window.requestAnimationFrame = () => 0; const top = setTimeout(() => {}, 0); for (let k = 0; k <= top; k++) { clearTimeout(k); clearInterval(k); } }; // (nothing moves on after this)
       location.hash = '#/practice?game=' + q.get('fx');
@@ -204,6 +220,35 @@ async function main() {
       if (kind === 'count') { await sleep(Number(q.get('fxms')) || 700); freeze(); return; }
       await until(() => d.phase() === 'play', 8000, 'the game to begin');
       await sleep(500);
+      if (kind === 'golfpull') { // (Mini Golf: pulling back from the ball)
+        await sleep(1200);
+        const b = d.state().balls[d.view.me];
+        d.aim.x = b.x - 110; d.aim.y = b.y + 60; d.aim.seen = true;
+        d.press('fire');
+        await sleep(400);
+        freeze();
+        return;
+      }
+      if (kind === 'wait') { await sleep(Number(q.get('fxms')) || 3000); freeze(); return; } // (just the game, a while in)
+      if (kind === 'sumopush' || kind === 'sumowind') { // (Sumo: pushing each other, or the bot winding up a charge)
+        const S = d.state(), close = kind === 'sumopush';
+        d.view.held.a = false;
+        const hold = () => { S.cats[0].x = 480 - (close ? 29 : 90); S.cats[1].x = 480 + (close ? 29 : 90); S.cats.forEach(c => { c.y = 280; c.vx = c.vy = 0; }); if (!close) { S.cats[1].cm = 0.8; S.cats[1].wait = 0; } };
+        for (let k = 0; k < 90; k++) { hold(); await sleep(16); } // (long enough for the pictures to load)
+        freeze();
+        return;
+      }
+      if (kind === 'poopspecial') { // (Poop Showdown: a poop mountain under the host, pee rain on the bot)
+        const S = d.state();
+        d.view.mood(1, 'hurt', 9);
+        S.cats[0].x = 300; S.cats[1].x = 640; S.cats[1].f = -1;
+        S.mounds.push({ o: 0, x: 300, h: 0, t: 0, sl: 0 }, { o: 1, x: 760, h: 0, t: 3.9, sl: 1 });
+        S.rain = { o: 0, t: 1.5, acc: 0, x: 640 };
+        S.cats[1].slow = 1;
+        await sleep(Number(q.get('fxms')) || 900);
+        freeze();
+        return;
+      }
       if (kind === 'point') {
         d.api.score(1, 0);
         d.api.score(2, 0);
@@ -224,6 +269,7 @@ async function main() {
       return;
     }
     if (q.get('page')) { // (a picture of another screen)
+      if (q.get('cmap')) window.__climbMap = Number(q.get('cmap'));
       if (CA.route === 'perm' && q.get('page') !== 'perm') { $('permSkip').click(); await sleep(1500); }
       if (q.get('page') === 'auth') await leave();
       if (q.get('page') === 'cat' || q.get('page') === 'pass') CA.profile.guest = false; // (guests can't open these)
@@ -240,6 +286,10 @@ async function main() {
         window.requestAnimationFrame = () => 0;
         const top = setTimeout(() => {}, 0);
         for (let k = 0; k <= top; k++) { clearTimeout(k); clearInterval(k); } // (nothing moves on after this)
+      }
+      if (q.get('stagelog')) { // (what's on the stage after a while, for checking what a screenshot shows)
+        await sleep(Number(q.get('stagelog')));
+        await log('the stage', true, { html: $('stage').innerHTML.slice(0, 300), route: CA.route, vs: !$('vs').classList.contains('hidden'), react: !$('vsReact').classList.contains('hidden') });
       }
       if (q.get('wide')) { // (what sticks out past the right edge of the screen)
         const vw = document.documentElement.clientWidth, out = [];
@@ -1277,6 +1327,37 @@ async function heistRules() {
   const me2 = S.movers[0], m2 = S.movers[1];
   await check('Cheese Heist: then you swap', S.mouseI === 1 && me2.role === 'cat' && m2.role === 'mouse');
   await shot('heist-cat');
+  // the cat's trap: never on the only way to the exit (so never right by it), but anywhere off the way out is fine
+  await until(() => me2.hold <= 0 && me2.stun <= 0, 4000, 'the cat to be free').catch(() => {});
+  m2.hold = 1e6;
+  const keep = [me2.x, me2.y];
+  const press = async k => { d.press(k); await wait(70); d.release(k); };
+  me2.x = ex - 40; me2.y = ey;
+  await wait(60);
+  await press('e');
+  await wait(60);
+  await check("Cheese Heist: the cat can't set its trap on the only way to the exit", !me2.used && !S.trap, { used: me2.used, trap: S.trap });
+  {
+    const CW = 23, CH = 13, mz = S.maze;
+    const go = (x, y, dx, dy) => { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= CW || ny >= CH) return false; if (dx === 1) return !(mz[y * CW + x] & 1); if (dx === -1) return !(mz[y * CW + nx] & 1); if (dy === 1) return !(mz[y * CW + x] & 2); return !(mz[ny * CW + x] & 2); };
+    const mc = [Math.floor((m2.x - 20) / 40), Math.floor((m2.y - 10) / 40)];
+    const dist = {}, prev = {}, q = [mc];
+    dist[mc] = 0;
+    for (let h = 0; h < q.length; h++) {
+      const [x, y] = q[h];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = [x + dx, y + dy]; if (go(x, y, dx, dy) && dist[n] == null) { dist[n] = dist[[x, y]] + 1; prev[n] = [x, y]; q.push(n); } }
+    }
+    const onPath = new Set();
+    for (let c = [CW - 1, CH - 1]; c; c = prev[c]) onPath.add(String(c));
+    const spot = q.find(c => dist[c] >= 4 && !onPath.has(String(c)) && Math.abs(c[0] - (CW - 1)) + Math.abs(c[1] - (CH - 1)) > 2);
+    if (spot) { me2.x = cx(spot); me2.y = cy(spot); }
+    await wait(60);
+    await press('e');
+    await wait(60);
+    await check('Cheese Heist: …but it can anywhere off the way out, once a round', !!spot && !!me2.used && !!S.trap, { spot, used: me2.used, trap: S.trap });
+    S.trap = null;
+    me2.x = keep[0]; me2.y = keep[1];
+  }
   // a tie goes to sudden death
   S.sc = [1, 1];
   m2.hold = 1e6;
@@ -1326,11 +1407,25 @@ async function pondRules() {
   await check('Pond War: press when it bites to hook it', me.ph === 'reel' && f.st === 'hooked', me.ph);
   await shot('pond-reel');
   f.runK = 1e6; f.run = false;
-  // one long pull: it snaps, even on the smallest fish
+  // just holding the button doesn't reel anything in: you have to mash it
+  me.pn = 1e6;
   d.press('fire');
-  await until(() => me.ph !== 'reel', 5000, 'the long pull to end').catch(() => {});
+  await wait(1200);
   d.release('fire');
-  await check("Pond War: one long pull can't land a fish: the line snaps", me.ph === 'snapped' && me.got === 0, { ph: me.ph, got: me.got });
+  await check("Pond War: holding the button doesn't reel it in: you have to mash", me.ph === 'reel' && Math.abs(f.p) < 0.08, { ph: me.ph, p: f.p });
+  // mashing does, answering the letters that pop up, until it's landed
+  const reelIn = async (fish, until0) => {
+    const t1 = Date.now() + (until0 || 15000);
+    let taps = 0;
+    while (Date.now() < t1 && me.ph === 'reel') {
+      if (me.pr) await tap('k' + me.pr); else { await tap('fire'); taps++; }
+      await sleep(30);
+    }
+    return taps;
+  };
+  me.pn = 0.3; // (a letter soon)
+  const taps0 = await reelIn(f);
+  await check('Pond War: mashing reels it in, takes lots of presses, and scores right away', me.sc === 1 && me.got === 1 && taps0 >= 8, { sc: me.sc, ph: me.ph, taps: taps0 });
   await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
   // a quick click while waiting reels back in; holding hooks the next bite
   S.fish.length = 0;
@@ -1346,46 +1441,45 @@ async function pondRules() {
   await until(() => me.ph === 'wait', 2000, 'the cast').catch(() => {});
   d.press('fire');
   await until(() => me.ph === 'reel', 6000, 'the fish to hook itself').catch(() => {});
-  await check('Pond War: press and hold, and the bite hooks and starts reeling by itself', me.ph === 'reel' && f1.st === 'hooked', me.ph);
-  f1.runK = 1e6; f1.run = false;
-  // pull and let go, keeping the needle in the green
-  let pulls = 0, holding = true;
-  const reelEnd = Date.now() + 15000;
-  while (Date.now() < reelEnd && me.ph === 'reel') {
-    if (holding && me.ten > 0.8) { d.release('fire'); holding = false; pulls++; }
-    else if (!holding && me.ten < 0.5) { d.press('fire'); holding = true; }
-    await sleep(16);
-  }
+  await check('Pond War: press and hold, and the bite hooks and starts reeling by itself', me.ph === 'reel' && !!me.fish && me.fish.st === 'hooked', { ph: me.ph, mine: me.fish === f1 });
   d.release('fire');
-  await check('Pond War: pulling and letting go lands it, takes several pulls, and scores right away', me.sc === 1 && me.got === 1 && pulls >= 2, { sc: me.sc, ph: me.ph, pulls });
-  await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
-  // too much tension
-  const f2 = oneFish(1, 420, 330);
-  d.aim.x = 420; d.aim.y = 330;
-  await tap('fire');
-  await until(() => me.ph === 'bite', 6000, 'a bite').catch(() => {});
-  await tap('fire');
-  f2.runK = 1e6; f2.run = true;
-  d.press('fire');
-  await until(() => me.ph === 'snapped', 3000, 'the line to snap').catch(() => {});
-  d.release('fire');
-  await check('Pond War: pull while it runs and the line snaps, and you keep your score', me.ph === 'snapped' && me.sc === 1, { ph: me.ph, sc: me.sc });
+  const g1 = me.fish || f1; // (whichever fish bit: another one can swim in)
+  g1.runK = 1e6; g1.run = false;
+  // a letter pops up: the wrong key loses line, and so does waiting too long
+  me.pn = 1e6;
+  for (let k = 0; k < 10; k++) { await tap('fire'); await sleep(30); }
+  const p0 = Math.abs(g1.p);
+  me.pn = 0;
+  await until(() => !!me.pr, 2000, 'a letter').catch(() => {});
+  const wrong = me.pr === 'Q' ? 'R' : 'Q';
+  await tap('k' + wrong);
+  await wait(60);
+  await check('Pond War: a letter pops up, and pressing the wrong key loses line', !me.pr && Math.abs(g1.p) < p0 - 0.15, { before: p0, after: g1.p });
+  me.pn = 1e6;
+  for (let k = 0; k < 12; k++) { await tap('fire'); await sleep(30); }
+  const p1 = Math.abs(g1.p);
+  me.pn = 0;
+  await until(() => !!me.pr, 2000, 'a letter').catch(() => {});
+  await until(() => !me.pr, 3000, 'it to time out').catch(() => {});
+  await check('Pond War: …and so does not pressing it in time', Math.abs(g1.p) < p1 - 0.15, { before: p1, after: g1.p });
+  me.pn = 1e6;
+  await reelIn(g1);
+  await check('Pond War: then you can still reel it in', me.got === 2, { got: me.got, ph: me.ph });
   await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
   // a tug of war: cast onto the other cat's fish
   const f3 = oneFish(2, 500, 330);
   Object.assign(f3, { st: 'hooked', hx: 500, hy: 330, runK: 1e6, on: [false, true] });
   Object.assign(them, { ph: 'reel', fish: f3, ten: 0, k: 0, slack: 0 });
-  S.bs = { 1: { wait: 1e6, react: -1, hold: false, tx: 480, ty: 330, think: 0, waited: 0 } };
+  S.bs = { 1: { wait: 1e6, react: -1, hold: false, tx: 480, ty: 330, think: 0, waited: 0, tap: 1e9 } };
   d.aim.x = 500; d.aim.y = 330;
-  them.ten = 0.95; // (the bot lets go when its line is tight, so the fish stays where it is while the cast flies)
+  them.pn = 1e6; them.pr = ''; // (the bot stays still while the cast flies: no mashing, no letters)
   await tap('fire');
   await until(() => me.ph === 'reel', 2000, 'the snag').catch(() => {});
   await check('Pond War: cast onto their hooked fish and you both have it', f3.on[0] && f3.on[1] && me.fish === f3, { ph: me.ph, on: f3.on });
   await shot('pond-tug');
-  d.press('fire');
-  const tugEnd = Date.now() + 8000;
-  while (Date.now() < tugEnd && me.ph === 'reel') { me.ten = 0; them.ten = 0.95; await sleep(30); }
-  d.release('fire');
+  const tugEnd = Date.now() + 10000;
+  me.pn = 1e6;
+  while (Date.now() < tugEnd && me.ph === 'reel') { S.bs[1].tap = 1e9; them.pn = 1e6; them.pr = ''; await tap('fire'); await sleep(25); } // (they stop reeling)
   await check('Pond War: winning the tug of war takes the fish from them', me.ph === 'caught' && them.fish === null && them.ph !== 'reel', { me: me.ph, them: them.ph, sc: me.sc });
   parkThem();
   await until(() => me.ph === 'idle', 3000, 'idle').catch(() => {});
@@ -1400,7 +1494,7 @@ async function pondRules() {
   await wait(100);
   await check('Pond War: the legendary fish appears for the last 15 seconds', S.fish.some(x => x.t === 6));
   await shot('pond-legend');
-  me.ph = 'idle'; me.sc = 10; them.sc = 13;
+  me.ph = 'idle'; me.sc = 10; them.sc = 20;
   S.t = 59.9;
   await until(() => d.phase() === 'ko', 3000, 'the end').catch(() => {});
   await check('Pond War: at the end, the most points wins', d.winner() === 1, { winner: d.winner(), me: me.sc, them: them.sc });
@@ -1520,7 +1614,7 @@ async function duelPractice(id) {
   const d = await until(() => window.__duel && window.__duel.id === id && window.__duel, 15000, id + ' to start');
   await until(() => d.phase() === 'play', 8000, id + ': the countdown');
   window.__duelSpeed = 6;
-  const end = Date.now() + 60000;
+  const end = Date.now() + (id === 'cannons' ? 180000 : 60000); // (Cat Cannons has no clock: a whole game takes a few minutes)
   let result = null;
   while (Date.now() < end && !(result = $('stage').querySelector('.result h2'))) {
     if (d.phase() === 'play') mash(d);

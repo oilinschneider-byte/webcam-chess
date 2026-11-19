@@ -304,6 +304,10 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'splat') { v.mood(e.i, 'hurt', 1.3); v.mood(e.v, 'smug', 1.1); }
+  if (e.type === 'claim' && e.n >= 12) v.mood(e.i, 'happy', 1.2);
+  if (e.type === 'pick') v.mood(e.i, 'happy', 0.7);
   if (e.type === 'pick') { v.ring(e.x, e.y, v.team[e.i].main, 14); v.burst(e.x, e.y, v.team[e.i].light, 10, 200); v.pop(e.x, e.y - 24, e.t === 'bomb' ? '💣 Bomb!' : e.t === 'shield' ? '🛡️ Shield!' : '🪣 Splash!', '#ffffff'); v.sound('point'); }
   if (e.type === 'throw') v.sound([[500, 0, 0.05], [300, 0.05, 0.08]]);
   if (e.type === 'boom') { v.burst(e.x, e.y, v.team[e.i].main, 28, 380); v.ring(e.x, e.y, v.team[e.i].light, 30); v.shake(7); v.sound('boom'); }

@@ -148,6 +148,8 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'hit' && e.hard) v.mood(e.i, 'angry', 0.7);
   if (e.type === 'hit') { v.sound(e.hard ? [[300, 0, 0.04], [200, 0.03, 0.05]] : [[420, 0, 0.03]]); if (e.hard) { v.burst(e.x, e.y, '#ffffff', 8, 200); v.shake(4); } }
   if (e.type === 'wall') v.sound([[700, 0, 0.02]]);
   if (e.type === 'goal') {

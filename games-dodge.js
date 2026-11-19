@@ -221,6 +221,9 @@ function bot(s, i, dt, api) {
 /* ---------- drawing ---------- */
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'hit') { v.mood(e.i, e.l <= 1 ? 'shock' : 'hurt', 1.3); v.mood(1 - e.i, 'smug', 1.1); }
+  if (e.type === 'heal') v.mood(e.i, 'happy', 1.2);
   if (e.type === 'hit') { v.burst(e.x, e.y, '#ff5a5a', 16, 300); v.pop(e.x, e.y - 50, e.l > 0 ? '−1 ❤️' : 'K.O.!', '#ff5a5a'); v.shake(10); v.sound(e.i === v.me ? 'miss' : 'point'); }
   if (e.type === 'splat') { const c = 'hsl(' + e.h + ', 90%, 62%)'; v.burst(e.x, e.y, c, e.k === 'star' ? 8 : 14, 260); }
   if (e.type === 'boom') { v.burst(e.x, e.y, '#ffb347', 30, 420); v.burst(e.x, e.y, '#ff4d4d', 18, 300); v.ring(e.x, e.y, '#ffd23f', 30); v.shake(16); v.sound('boom'); }

@@ -111,6 +111,11 @@ function play(ctx) {
   let evN = 0, evText = '', evHoop = 0, seenEv = 0; // hoop events ("SWISH! +3"), so the guest sees them too
   let shake = 0, cheer = 0, lastMsg = performance.now(), lastBounce = 0, otAt = -1e9;
   const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
+  // The cats' faces: a mood for a moment after something happens (a point, a block, a hit), and otherwise what each
+  // one is up to. (Worked out on each screen, from what that screen sees.)
+  const moods = [{ f: null, until: 0 }, { f: null, until: 0 }];
+  const mood = (i, f, secs) => { moods[i] = { f, until: performance.now() + secs * 1000 }; };
+  const moodNow = (i, now) => (moods[i].f && now < moods[i].until ? moods[i].f : null);
   const rimShake = [0, 0], netT = [0, 0];
   const fx = [];
   const playing = () => phase === 'play' || phase === 'ot';
@@ -381,7 +386,7 @@ function play(ctx) {
     const ahead = (v.x - c.x) * c.face;
     if (ahead < -12 || ahead > SLAP_REACH || Math.abs(v.y - c.y) > 55) return;
     const had = ballNow().h === o.i;
-    if (had) c.noGrab = 0.45; // (you don't catch it straight away: it rolls off)
+    if (had) { c.noGrab = 0.45; mood(c.i, 'smug', 1.3); mood(o.i, 'hurt', 1.4); } // (you don't catch it straight away: it rolls off)
     if (local.includes(o)) stripped(o, c.face);
     else { ctx.send({ t: 'slap', d: c.face }); whap(v.x, v.y - 50, had ? 'LOOSE BALL!' : 'WHAP!'); }
   }
@@ -436,6 +441,7 @@ function play(ctx) {
     if (!bp) return;
     c.swatT = 0;
     const o = other(c), b = ballNow();
+    mood(o.i, 'shock', 1.2); mood(c.i, 'happy', 1.2); // (BLOCKED!)
     if (b.h === o.i) { // knocked out of their hands
       if (local.includes(o)) blocked(o, c.face);
       else { ctx.send({ t: 'block', d: c.face }); blockFx(bp); }
@@ -450,6 +456,7 @@ function play(ctx) {
   // Your shot (or dunk) got swatted out of your hands.
   function blocked(c, dir) {
     if (!c.hold) return;
+    mood(c.i, 'shock', 1.2); mood(1 - c.i, 'happy', 1.2);
     const p = holdPos(c);
     c.meter = -1;
     c.dunk = false;
@@ -546,6 +553,7 @@ function play(ctx) {
     const pts = b.by === scorer ? b.pts : 2;
     score[scorer] += pts;
     party.point(scorer === meI);
+    mood(scorer, 'happy', 1.8); mood(1 - scorer, 'sad', 1.8);
     run[scorer]++;
     run[1 - scorer] = 0;
     bv++;
@@ -731,7 +739,7 @@ function play(ctx) {
       const a = num(m.sc[0], 0), b2 = num(m.sc[1], 0);
       if (a !== score[0] || b2 !== score[1]) {
         if (a > score[0]) { run[0]++; run[1] = 0; } else if (b2 > score[1]) { run[1]++; run[0] = 0; }
-        if (a > score[0] || b2 > score[1]) party.point((a > score[0] ? 0 : 1) === meI);
+        if (a > score[0] || b2 > score[1]) { const by = a > score[0] ? 0 : 1; party.point(by === meI); mood(by, 'happy', 1.8); mood(1 - by, 'sad', 1.8); }
         score[0] = a; score[1] = b2; showScore(); }
     }
     if (Number.isFinite(m.tm)) timeLeft = clamp(m.tm, 0, GAME_LEN);
@@ -1163,6 +1171,18 @@ function play(ctx) {
     F.stepArms(c, v, dt, { pins, wild: v.stun, ground: armGround });
   }
 
+  // Its face: the winner's grin and the loser's K.O. at the end, dizzy when slapped silly, a mood after something
+  // happens, gritted teeth going up for a shot or a dunk, and a smug look with the ball.
+  function faceOf(c, v, now) {
+    if (phase === 'over') return winner === c.i ? 'happy' : 'ko';
+    if (v.stun) return 'dizzy';
+    const m = moodNow(c.i, now);
+    if (m) return m;
+    if (v.dunk || v.meter >= 0) return 'angry';
+    if (shown.h === c.i) return 'smug';
+    return null;
+  }
+
   function armGround(p) { // the floor and the walls (true if this bit of arm is lying on the floor)
     if (p.y > FLOOR - 4) { p.y = FLOOR - 4; if (p.py > p.y) p.py = p.y; }
     if (p.x < 2) p.x = 2;
@@ -1178,7 +1198,7 @@ function play(ctx) {
     if (v.stun) tilt = Math.sin(now / 45) * 0.25;
     else tilt = clamp(v.vx / (v.ground ? 300 : 420), -1, 1) * (v.ground ? 0.12 : 0.2) * (flip ? -1 : 1);
     const bob = v.ground && Math.abs(v.vx) > 40 ? -Math.abs(Math.sin(c.walk * 3)) * 3.5 : 0;
-    F.drawBody(g, c, sx(v.x), v.y + bob, { tilt, squash: c.squash, lookRight, open: F.mouth(c === me ? 'talk-me' : 'talk-opp') > 0.12 });
+    F.drawBody(g, c, sx(v.x), v.y + bob, { tilt, squash: c.squash, lookRight, open: F.mouth(c === me ? 'talk-me' : 'talk-opp') > 0.12, face: faceOf(c, v, now) });
     if (shown.h === c.i) { const p = holdPos(c); drawBall(p.x, p.y, shown.rot + c.dribble * 0.4); }
     F.drawArms(g, c, sx);
     if (v.stun) dizzy(sx(v.x), v.y, now);

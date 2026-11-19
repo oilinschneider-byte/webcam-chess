@@ -1,6 +1,6 @@
 /* Classic Games: Mini Golf Duel. Both cats play the same three holes at the same time (the balls go through each
-   other). Aim with the mouse, hold the button to charge, let go to hit: your cat swings its putter and the ball leaves
-   when they meet. Walls bounce the ball, moving bars block the way, sand slows it, slopes push it, bumpers fling it and
+   other). Hold the button and pull back from your ball, like a slingshot: the arrow shows which way it'll go and how
+   hard (the further you pull, the harder). Let go and your cat swings its putter; the ball leaves when they meet. Walls bounce the ball, moving bars block the way, sand slows it, slopes push it, bumpers fling it and
    water costs a stroke. The cup is small: a ball that arrives too fast, or off to one side, rolls over the edge and can
    lip out. Fewest strokes over the three holes wins; a tie goes to a timed playoff hole.
    (The host's app rolls the balls: see games-duel.js.) */
@@ -10,7 +10,7 @@
 const W = 960, H = 540, M = 36;                  // the course, inside a wooden border M wide
 const BR = 8, CUP = 11;
 const V_MIN = 90, V_MAX = 900;
-const METER_T = 1.4, SWEET = 0.74, SWEET_HALF = 0.06; // the power bar swings up and down; let go in the gold part for a perfect, straight putt
+const DRAG = 170;                                // pull back this far from the ball for the hardest putt
 const MAX_STROKES = 8, HOLE_TIME = 60, PLAYOFF_TIME = 40;
 const SWING = 0.16;                              // seconds from letting go to the putter meeting the ball
 const CAT_DIST = 58;                             // how far behind the ball the cat stands
@@ -60,13 +60,13 @@ const slide = (m, t) => Math.sin(t * m.sp + m.ph);
 
 CA.games.add('golf', {
   name: 'Mini Golf Duel', icon: '⛳',
-  blurb: 'Same holes, same time! Aim with the mouse, hold the button to charge, let go to hit. Dodge the moving bars, stay out of the water and sand, and go slowly near the cup or the ball will lip out. Fewest strokes over 3 holes wins.',
+  blurb: 'Same holes, same time! Hold the button and pull back from your ball, then let go to putt: it goes the way the arrow points. Dodge the moving bars, stay out of the water and sand, and go slowly near the cup or the ball will lip out. Fewest strokes over 3 holes wins.',
   start(ctx) {
     CA.duel.run(ctx, {
       id: 'golf', mouse: true, angles: ['a'], jump: 140, lerp,
       pad: { buttons: [{ k: 'fire', label: '⛳ Hold to charge', main: true }] },
-      help: 'Aim with the mouse · hold the button to charge · let go to putt · gently near the cup! · fewest strokes wins',
-      helpTouch: 'Touch where to aim, hold to charge, let go to putt',
+      help: 'Hold the button and pull back from your ball (like a slingshot) · the arrow shows where it goes · let go to putt · gently near the cup!',
+      helpTouch: 'Touch and pull back from your ball, then let go to putt',
       note: 'Fewest strokes over 3 holes',
       init, step, snap, bot, draw, event,
     });
@@ -202,14 +202,16 @@ function step(s, inp, dt, api) {
     }
     const moving = b.vx || b.vy;
     if (!moving && b.n < MAX_STROKES) {
-      b.a = Math.atan2(n.ay - b.y, n.ax - b.x);
-      if (n.hit.fire) { if (!b.ch) b.ct = 0; b.ch = true; }
-      if (b.ch && n.held.fire) { b.ct += dt; const ph = (b.ct / METER_T) % 2; b.p = ph < 1 ? ph : 2 - ph; }
-      if (b.ch && !n.held.fire) { // a putt: the swing starts now
-        const off = Math.abs(b.p - SWEET), perfect = off <= SWEET_HALF, miss = Math.max(0, off - SWEET_HALF);
-        b.lv = (V_MIN + (V_MAX - V_MIN) * b.p) * (perfect ? 1.06 : 1);
-        b.perf = perfect ? 1 : 0;
-        if (!perfect) b.a += (Math.random() - 0.5) * 2 * miss * 0.3; // (off the gold part: the putt wanders a little)
+      // (holding the button: pulling back from the ball, like a slingshot; the putt goes the other way)
+      if (n.held.fire) {
+        const dx = b.x - n.ax, dy = b.y - n.ay;
+        b.ch = true;
+        b.p = Math.min(1, Math.hypot(dx, dy) / DRAG);
+        if (b.p > 0.02) b.a = Math.atan2(dy, dx);
+      } else if (b.ch && b.p < 0.06) { b.ch = false; b.p = 0; } // (hardly pulled at all: no putt)
+      else if (b.ch) { // let go: a putt, and the swing starts now
+        b.lv = V_MIN + (V_MAX - V_MIN) * b.p;
+        b.perf = 0;
         b.rp = b.p;
         b.sw = SWING;
         b.n++;
@@ -307,15 +309,21 @@ function bot(s, i, dt, api) {
   }
   const plan = st[i];
   if (th) plan.wait -= s.t - th.t; // (the time spent thinking counts)
-  const out = { ax: b.x + Math.cos(plan.a) * 100, ay: b.y + Math.sin(plan.a) * 100, held: {}, hit: {} };
+  // (it pulls back from the ball, holds it for a moment, and lets go)
+  const out = { ax: b.x - Math.cos(plan.a) * plan.p * DRAG, ay: b.y - Math.sin(plan.a) * plan.p * DRAG, held: {}, hit: {} };
   plan.wait -= dt;
   if (plan.wait > 0) return out;
-  if (!b.ch) { out.hit.fire = true; out.held.fire = true; return out; }
-  if (b.p < plan.p) out.held.fire = true;
+  plan.hold = (plan.hold || 0) + dt;
+  if (plan.hold < 0.4) { out.held.fire = true; if (!b.ch) out.hit.fire = true; }
   return out;
 }
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'sunk') { v.mood(e.i, 'happy', 2.2); v.mood(1 - e.i, 'shock', 1.2); }
+  if (e.type === 'splash') v.mood(e.i, 'sad', 1.8);
+  if (e.type === 'lip') v.mood(e.i, 'shock', 1.4);
+  if (e.type === 'putt') v.mood(e.i, e.pf ? 'smug' : 'squint', 0.8);
   if (e.type === 'putt') {
     v.sound([[700, 0, 0.03], [500, 0.02, 0.04]]);
     v.burst(e.x, e.y, '#ffffff', 4 + Math.round(6 * (e.p || 0)), 90 + 140 * (e.p || 0));
@@ -613,7 +621,9 @@ function draw(v, s) {
     g.globalAlpha = 1;
   }));
   drawFlag(v, hole);
-  const aimOf = (b, i) => (i === v.me && !v.host && !b.m ? Math.atan2(v.aim.y - b.y, v.aim.x - b.x) : b.a);
+  // (your own putt is drawn from your own mouse, at once; the other player's comes from the host)
+  const pull = (b, i) => (i === v.me && !b.m && v.held.fire ? Math.min(1, Math.hypot(b.x - v.aim.x, b.y - v.aim.y) / DRAG) : b.c ? b.p : 0);
+  const aimOf = (b, i) => (i === v.me && !b.m && v.held.fire && pull(b, i) > 0.02 ? Math.atan2(b.y - v.aim.y, b.x - v.aim.x) : b.a);
   const order = [v.them, v.me]; // (you on top)
   order.forEach(i => walk(v, s.b[i], i, aimOf(s.b[i], i)));
   order.forEach(i => drawCat(v, s.b[i], i));
@@ -636,36 +646,32 @@ function draw(v, s) {
       return;
     }
     sinks[i] = null;
-    if (!b.m && i === v.me) { // your aim, and how hard
-      const a = aimOf(b, i), len = 44 + 150 * b.p;
-      g.setLineDash([7, 7]);
-      g.lineDashOffset = -v.now / 60;
-      g.strokeStyle = 'rgba(255, 255, 255, .85)';
-      g.lineWidth = 2.5;
+    const p = pull(b, i);
+    if (!b.m && p > 0.02) { // pulling back: the band back to the mouse, and the arrow the putt will follow (longer = harder)
+      const a = aimOf(b, i), len = 30 + 190 * p, col = p < 0.5 ? '#7dff8a' : p < 0.85 ? '#ffd23f' : '#ff5a5a';
+      if (i === v.me) { g.strokeStyle = 'rgba(255, 255, 255, .35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(b.x, b.y); g.lineTo(b.x - Math.cos(a) * p * DRAG, b.y - Math.sin(a) * p * DRAG); g.stroke(); }
+      g.globalAlpha = i === v.me ? 1 : 0.5;
+      g.setLineDash([9, 7]);
+      g.lineDashOffset = -v.now / 40;
+      g.strokeStyle = col;
+      g.lineWidth = 4;
+      g.lineCap = 'round';
       g.beginPath(); g.moveTo(b.x + Math.cos(a) * 14, b.y + Math.sin(a) * 14); g.lineTo(b.x + Math.cos(a) * len, b.y + Math.sin(a) * len); g.stroke();
       g.setLineDash([]);
-      g.fillStyle = 'rgba(255, 255, 255, .9)'; // an arrowhead
+      g.fillStyle = col; // an arrowhead
       g.beginPath();
-      g.moveTo(b.x + Math.cos(a) * (len + 10), b.y + Math.sin(a) * (len + 10));
-      g.lineTo(b.x + Math.cos(a) * len + Math.cos(a + 2.5) * 8, b.y + Math.sin(a) * len + Math.sin(a + 2.5) * 8);
-      g.lineTo(b.x + Math.cos(a) * len + Math.cos(a - 2.5) * 8, b.y + Math.sin(a) * len + Math.sin(a - 2.5) * 8);
+      g.moveTo(b.x + Math.cos(a) * (len + 14), b.y + Math.sin(a) * (len + 14));
+      g.lineTo(b.x + Math.cos(a) * len + Math.cos(a + 2.4) * 11, b.y + Math.sin(a) * len + Math.sin(a + 2.4) * 11);
+      g.lineTo(b.x + Math.cos(a) * len + Math.cos(a - 2.4) * 11, b.y + Math.sin(a) * len + Math.sin(a - 2.4) * 11);
       g.fill();
+      g.globalAlpha = 1;
+    }
+    if (!b.m && i === v.me) {
       g.strokeStyle = v.team[i].main; // a pulsing ring so your ball is easy to find
       g.globalAlpha = 0.55 + 0.35 * Math.sin(v.now / 180);
       g.lineWidth = 2.5;
       g.beginPath(); g.arc(b.x, b.y, 15 + Math.sin(v.now / 180) * 1.5, 0, Math.PI * 2); g.stroke();
       g.globalAlpha = 1;
-    }
-    if (!b.m && b.c) {
-      g.fillStyle = 'rgba(0, 0, 0, .6)';
-      v.roundRect(b.x - 27, b.y + 18, 54, 9, 4.5); g.fill();
-      g.fillStyle = b.p < 0.5 ? '#7dff8a' : b.p < 0.85 ? '#ffd23f' : '#ff5a5a';
-      v.roundRect(b.x - 25, b.y + 20, Math.max(4, 50 * b.p), 5, 2.5); g.fill();
-      g.fillStyle = 'rgba(255, 210, 63, .55)'; // the gold part: let go here for a perfect putt
-      g.fillRect(b.x - 25 + 50 * (SWEET - SWEET_HALF), b.y + 19, 50 * 2 * SWEET_HALF, 7);
-      g.fillStyle = '#ffd23f';
-      g.fillRect(b.x - 25 + 50 * (SWEET - SWEET_HALF) - 1, b.y + 18, 2, 9);
-      g.fillRect(b.x - 25 + 50 * (SWEET + SWEET_HALF) - 1, b.y + 18, 2, 9);
     }
     if (b.ar) { g.fillStyle = 'rgba(0, 0, 0, .3)'; g.beginPath(); g.ellipse(b.x + 3, b.y + 6, 9, 4, 0, 0, Math.PI * 2); g.fill(); }
     drawBall(v, b.x, b.y - (b.ar ? 14 : 0), i, b.ar ? 1.25 : 1, 1);
@@ -683,7 +689,8 @@ function draw(v, s) {
   });
   const mine = s.b[v.me];
   if (mine && mine.s) v.msg('In the hole! Waiting for ' + v.names[v.them] + '…');
-  else if (mine && mine.c) v.msg('Let go to putt!');
+  else if (mine && (mine.c || v.held.fire) && !mine.m) v.msg('Let go to putt! (pull further for a harder one)');
+  else if (mine && !mine.m) v.msg('Hold the button and pull back from your ball, then let go');
 }
 
 })();

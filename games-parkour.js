@@ -216,6 +216,10 @@ function bot(s, i, dt, api) {
 /* ---------- drawing ---------- */
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'cp') v.mood(e.i, 'happy', 1.1);
+  if (e.type === 'oops') v.mood(e.i, 'shock', 1.5);
+  if (e.type === 'finish') { v.mood(e.i, 'happy', 3); v.mood(1 - e.i, 'sad', 3); }
   if (e.type === 'jump') v.sound([[520, 0, 0.04]]);
   if (e.type === 'dash') v.sound([[640, 0, 0.04], [460, 0.03, 0.05]]);
   if (e.type === 'oops') { v.burst(e.x, e.y - 30, e.why === 'spikes' ? '#ff5a5a' : '#ffffff', 14, 280); v.sound(e.i === v.me ? 'miss' : 'tick'); }

@@ -7,6 +7,12 @@
    armchair, up crates and a fridge (hold on to its magnets), back left up a pallet, a big round boulder and some
    crooked crates, right up a leaning ladder, over a suitcase on a washing machine and a plank bridge, up a wobbly tower
    of tires, and across stepping stones to the finish. Fall, and you land wherever you land.
+   There are three maps, and each match gets one of them (the same for both players): the junk mountain, ICE PEAK (the
+   junk mountain's twin, frozen, the other way round: the ice walls are slippery) and CANDY TOWER (a zigzag staircase
+   of candy).
+
+   Tired paws: stay in the same spot up on the course for too long and your paws get tired and let go, so you fall. (So
+   nobody can camp in one place to block the other player.)
 
    Space takes out a giant fish in your other paw (Space again puts it away). While it's out, the mouse swings the fish, and
    your climbing paw just keeps holding on where it is. A fast swing that hits the other cat knocks them loose, but
@@ -48,13 +54,13 @@ const TIME_LIMIT = 240;          // seconds; then whoever got further wins
 const READY = 2.4;               // the 3-2-1 countdown
 const GHOST_AFTER = 1.1, GHOST_FOR = 2.5; // stuck against each other this long: slip through each other this long
 const SEND_MS = 17;              // each app sends where its cat is this often: after every frame's physics (see advance)
-const START_X = [150, 265];      // where the cats start (the host's on the left)
+const TIRED_T = 4.5, TIRED_MOVE = 30; // staying within this far of one spot for this long, up on the course: your paws give up
 
 CA.games.add('climb', {
   name: 'Claw Climb', icon: '🧗',
   blurb: 'Race up the junk mountain! Move the mouse and your long claw arm follows: press the paw on things to push ' +
     'and pull yourself up (no jumping!). Space takes out a giant fish: swing it fast to slap the other cat down (3 slaps). Space puts it away.',
-  prepare() { setTimeout(() => courseRoute(theCourse()), 30); }, // (the route is worked out while you look at each other)
+  prepare(ctx) { setTimeout(() => courseRoute(theCourse(mapOf(ctx))), 30); }, // (the route is worked out while you look at each other)
   start(ctx) { play(ctx); },
 });
 
@@ -81,21 +87,21 @@ function shape(points, m, look) {
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
   return { pts, n, m, look: look || m, cx, cy, x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
 }
-const box = (x1, y1, x2, y2, m, look) => shape([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], m, look);
+const boxShape = (x1, y1, x2, y2, m, look) => shape([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], m, look);
 // A plank whose top runs from a to b, th thick (it hangs below that line).
-function slab(ax, ay, bx, by, th, m, look) {
+function slabShape(ax, ay, bx, by, th, m, look) {
   const l = Math.hypot(bx - ax, by - ay);
   let px = -(by - ay) / l, py = (bx - ax) / l;
   if (py < 0) { px = -px; py = -py; }
   return shape([[ax, ay], [bx, by], [bx + px * th, by + py * th], [ax + px * th, ay + py * th]], m, look);
 }
 // A box turned by `turn` radians.
-function tilted(cx, cy, w, h, turn, m, look) {
+function tiltedShape(cx, cy, w, h, turn, m, look) {
   const c = Math.cos(turn), s = Math.sin(turn);
   return shape([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([x, y]) => [cx + x * c - y * s, cy + x * s + y * c]), m, look);
 }
 // A lumpy boulder (always the same lumps for the same `seed`).
-function rock(cx, cy, r, seed) {
+function rockShape(cx, cy, r, seed) {
   const pts = [];
   for (let k = 0; k < 10; k++) {
     const a = k / 10 * Math.PI * 2 + Math.sin(seed * 7.1 + k * 3.3) * 0.18, rr = r * (0.9 + 0.1 * Math.sin(seed * 3.7 + k * 5.9));
@@ -160,14 +166,29 @@ function segDist(a, b, x, y) {
 
 /* ---------- the course ---------- */
 
-let COURSE = null;
-function theCourse() { return COURSE || (COURSE = makeCourse()); }
+// The three maps. Each match gets one from its seed, so both players climb the same one.
+const MAPS = ['junk', 'ice', 'candy'];
+const mapOf = ctx => (window.__climbMap != null ? window.__climbMap : ctx && Number.isFinite(ctx.seed) ? (ctx.seed >>> 0) % MAPS.length : 0); // (the tests can pick one)
+const COURSES = [];
+function theCourse(k) { k = k || 0; return COURSES[k] || (COURSES[k] = k === 2 ? makeCandy() : makeCourse(k === 1)); }
+
+// How each map's things look: the junk mountain's looks, as they appear on Ice Peak.
+const ICE_LOOK = { ground: 'snow', rock: 'icerock', crate: 'ice', plank: 'iceplank', pallet: 'iceplank', rung: 'iceplank', tires: 'snowball',
+  seat: 'snowbank', chair: 'snowbank', chairback: 'snowbank', suitcase: 'snowbank', fridge: 'icewall', washer: 'icewall', magnet: 'icegrip', towel: 'snowcap', gold: 'gold' };
 
 // The junk mountain, from the backyard up. Each step is within an arm's reach of the last, and every gap between
-// things is either closed off, too small for a cat, or open enough to climb back out of.
-function makeCourse() {
+// things is either closed off, too small for a cat, or open enough to climb back out of. ice: ICE PEAK, the same
+// mountain the other way round (so it climbs the same), frozen.
+function makeCourse(ice) {
   const w = 1440, h = 3200, ground = 3100;
   const S = [], decor = [];
+  const X = x => (ice ? w - x : x);
+  const look = l => (ice ? ICE_LOOK[l] || l : l);
+  // (the shape makers, turned round for Ice Peak)
+  const box = (x1, y1, x2, y2, m, l) => boxShape(Math.min(X(x1), X(x2)), y1, Math.max(X(x1), X(x2)), y2, m, look(l));
+  const rock = (cx, cy, r, seed) => { const o = rockShape(X(cx), cy, r, seed); o.look = look('rock'); return o; };
+  const slab = (ax, ay, bx, by, th, m, l) => slabShape(X(ax), ay, X(bx), by, th, m, look(l));
+  const tilted = (cx, cy, ww, hh, turn, m, l) => tiltedShape(X(cx), cy, ww, hh, ice ? -turn : turn, m, look(l));
   const add = s => (S.push(s), s);
   add(box(-200, -400, 0, h + 200, 'wall', 'none'));            // the edges of the world
   add(box(w, -400, w + 200, h + 200, 'wall', 'none'));
@@ -195,7 +216,7 @@ function makeCourse() {
   add(tilted(442, 2063, 130, 76, -0.1, 'wood', 'crate'));
   // 4. right, up a leaning ladder (only its rungs are solid)
   for (let k = 0; k < 4; k++) add(box(530 + 110 * k, 1918 - 85 * k, 590 + 110 * k, 1928 - 85 * k, 'wood', 'rung'));
-  decor.push({ k: 'ladder', a: [512, 1937], b: [905, 1633] });
+  decor.push({ k: 'ladder', a: [X(512) - (ice ? 60 : 0), 1937], b: [X(905) - (ice ? 60 : 0), 1633] });
   // 5. a suitcase on a washing machine, a boulder, and a plank bridge back left
   add(box(945, 1630, 1095, 1770, 'metal', 'washer'));
   add(box(955, 1575, 1085, 1630, 'fabric', 'suitcase'));
@@ -209,8 +230,29 @@ function makeCourse() {
   add(rock(1030, 780, 46, 5));
   add(rock(1140, 710, 46, 6));
   const finish = add(box(1195, 580, 1395, 602, 'gold', 'gold'));
-  decor.push({ k: 'sign', x: 330, y: ground, text: 'TOP →' });
-  return { w, h, ground, shapes: S, finish, decor };
+  decor.push({ k: 'sign', x: X(330), y: ground, text: ice ? '← TOP' : 'TOP →' });
+  return { w, h, ground, shapes: S, finish, decor, theme: ice ? 'ice' : 'junk', start: ice ? [w - 150, w - 265] : [150, 265] };
+}
+
+// CANDY TOWER: a zigzag staircase of candy blocks, each one a step up and across from the last, to a golden one at the top.
+function makeCandy() {
+  const w = 1440, h = 3200, ground = 3100;
+  const S = [], decor = [];
+  const add = s => (S.push(s), s);
+  add(boxShape(-200, -400, 0, h + 200, 'wall', 'none'));
+  add(boxShape(w, -400, w + 200, h + 200, 'wall', 'none'));
+  add(boxShape(-200, -400, w + 200, 140, 'wall', 'none'));
+  add(boxShape(-200, ground, w + 200, h + 200, 'dirt', 'choc'));
+  const ZIG = [0, 1, 2, 3, 4, 3, 2, 1]; // (across and back: right four steps, then left)
+  let finish = null;
+  for (let k = 0; k <= 27; k++) {
+    const x = 330 + 150 * ZIG[k % ZIG.length], y = 3012 - 88 * k;
+    if (k === 27) finish = add(boxShape(x - 75, y, x + 75, y + 22, 'gold', 'gold'));
+    else add(boxShape(x - 75, y, x + 75, y + 24, 'grip', 'candy'));
+    if (k % 3 === 1) decor.push({ k: 'lolly', x: x + (ZIG[k % ZIG.length] < 2 ? 150 : -150), y: y + 10 });
+  }
+  decor.push({ k: 'sign', x: 200, y: ground, text: 'TOP ↑' });
+  return { w, h, ground, shapes: S, finish, decor, theme: 'candy', start: [150, 265] };
 }
 
 /* ---------- the bot's way up ---------- */
@@ -347,7 +389,7 @@ function findPath(grid, cs, sx, sy) {
 // The route up the course (the bot's path from the start), measured along the way.
 function courseRoute(cs) {
   if (cs.route !== undefined) return cs.route;
-  const pts = findPath(courseGrid(cs), cs, START_X[0], cs.ground - 30);
+  const pts = findPath(courseGrid(cs), cs, cs.start[0], cs.ground - 30);
   if (!pts) return (cs.route = null);
   const at = [0];
   for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
@@ -369,9 +411,20 @@ function progressAt(cs, x, y) {
 
 /* ---------- the cat pictures ---------- */
 
-// A cat's picture without its arms and legs (those are drawn separately), mouth closed [0] and open [1].
+// A cat's picture without its arms and legs (those are drawn separately), mouth closed [0] and open [1]. pics.face(f):
+// the same with an expression (see FACES in common.js), drawn the first time it's asked for (null until then).
 function bodyPics(eq) {
-  const pics = [null, null];
+  const pics = [null, null], faces = {};
+  pics.face = f => {
+    if (f in faces) return faces[f];
+    faces[f] = null;
+    const svg = CA.catSVG(eq, { bg: false, anim: false, arms: false, mouth: 'closed', face: f })
+      .replace('<svg ', '<svg width="200" height="192" ').replace('viewBox="0 0 200 240"', 'viewBox="0 0 200 192"');
+    const img = new Image();
+    img.onload = () => { const c = document.createElement('canvas'); c.width = 200; c.height = 192; c.getContext('2d').drawImage(img, 0, 0); faces[f] = c; };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    return null;
+  };
   [0, 1].forEach(open => {
     const svg = CA.catSVG(eq, { bg: false, anim: false, arms: false, mouth: open ? 'open' : 'closed' })
       .replace('<svg ', '<svg width="200" height="192" ').replace('viewBox="0 0 200 240"', 'viewBox="0 0 200 192"');
@@ -395,7 +448,7 @@ function play(ctx) {
   const host = ctx.isHost;              // (against a bot, you're always the host)
   const meI = host ? 0 : 1;
   const skill = skillOf(ctx);
-  const course = theCourse();
+  const course = theCourse(mapOf(ctx));
   const shapes = course.shapes;
   const LIMIT = L(TIME_LIMIT * 1000) / 1000;
   courseRoute(course);
@@ -413,7 +466,7 @@ function play(ctx) {
   const { dot, star, roundRect, label, bigText, dizzy } = F.painter(g, W);
 
   function newCat(i, eq, name) {
-    const x = START_X[i], y = course.ground - BODY.r - 0.5;
+    const x = course.start[i], y = course.ground - BODY.r - 0.5;
     const aim = { x: 44, y: 6 };
     const S = { x: x + SHOULDERS[0].x, y: y + SHOULDERS[0].y };
     return {
@@ -911,6 +964,20 @@ function play(ctx) {
     const [ax, ay] = me.done ? [0, 0] : stepArm(me, dt);
     if (me.fish) stepFish(me, dt);
     moveBody(me, dt, ax, ay, tv);
+    // Tired paws: up on the course, staying near one spot too long makes your claws let go.
+    if (phase === 'play' && !me.done && me.y < course.ground - 70) {
+      if (me.rx === undefined || Math.hypot(me.x - me.rx, me.y - me.ry) > TIRED_MOVE) { me.rx = me.x; me.ry = me.y; me.tired = 0; }
+      else me.tired += dt;
+      if (me.tired >= TIRED_T) {
+        me.tired = 0;
+        me.rx = me.x; me.ry = me.y;
+        me.hold = null;
+        me.stun = 1;
+        me.vy = Math.max(me.vy, 160);
+        pop(me.x, me.y - 70, 'Tired paws!', '#ffb0b0');
+        sound('ouch');
+      }
+    } else { me.tired = 0; me.rx = undefined; }
     if (bot) {
       stepBot(dt, viewOf(me));
       if (them.fish && !bot.swing) them.fish = false;
@@ -1035,6 +1102,7 @@ function play(ctx) {
   // The sky goes from a teal-and-orange sunset at the bottom to a starry night at the top, with hills, a lighthouse
   // and the moon far away (they move slower than you, so they look far).
   function drawScenery(now) {
+    if (course.theme !== 'junk') { drawThemeSky(now); return; }
     const t = clamp(1 - camY / (course.h - H), 0, 1); // 0 at the bottom, 1 at the top
     const sky = g.createLinearGradient(0, 0, 0, H);
     sky.addColorStop(0, mix('#2f6b6a', '#120d2b', t));
@@ -1180,10 +1248,76 @@ function play(ctx) {
       gr.addColorStop(1, '#d9a300');
       g.fillStyle = gr;
       roundRect(s.x1, s.y1, w, h, 6); g.fill();
+    } else if (s.look === 'snow' || s.look === 'choc') { // the ground on Ice Peak and Candy Tower
+      const snow = s.look === 'snow';
+      g.fillStyle = snow ? '#9fb8cf' : '#5a3320'; g.fillRect(s.x1, s.y1, w, h);
+      g.fillStyle = snow ? '#ffffff' : '#7a4528'; g.fillRect(s.x1, s.y1, w, 12);
+      if (!snow) { g.fillStyle = '#7a4528'; for (let x = Math.max(s.x1, camX - 30); x < Math.min(s.x2, camX + W + 30); x += 46) { g.beginPath(); g.ellipse(x, s.y1 + 12, 9, 6 + (x * 3) % 7, 0, 0, Math.PI * 2); g.fill(); } }
+    } else if (s.look === 'icerock') {
+      const gr = g.createRadialGradient(s.cx - w * 0.15, s.cy - h * 0.2, 4, s.cx, s.cy, Math.max(w, h) * 0.6);
+      gr.addColorStop(0, '#e8f6ff'); gr.addColorStop(1, '#7fa8c9');
+      shapePath(s); g.fillStyle = gr; g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#4f7896'; g.stroke();
+      g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(s.cx - w * 0.08, s.y1 + 6, w * 0.26, 6, 0, 0, Math.PI * 2); g.fill(); // (snow on top)
+    } else if (s.look === 'ice' || s.look === 'iceplank' || s.look === 'icegrip') {
+      shapePath(s); g.fillStyle = s.look === 'icegrip' ? '#3e6f9a' : s.look === 'ice' ? '#bfe6ff' : '#a7d6f2'; g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#5f9cc4'; g.stroke();
+      g.strokeStyle = 'rgba(255, 255, 255, .8)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(s.x1 + 6, s.y1 + 6); g.lineTo(s.x1 + Math.min(w, 40), s.y1 + 6); g.stroke();
+    } else if (s.look === 'snowball' || s.look === 'snowbank' || s.look === 'snowcap') {
+      g.fillStyle = '#f4fbff';
+      roundRect(s.x1, s.y1, w, h, Math.min(16, h / 2)); g.fill();
+      g.lineWidth = 2; g.strokeStyle = '#b9d4ea'; g.stroke();
+      g.fillStyle = 'rgba(150, 190, 225, .35)'; g.fillRect(s.x1 + 4, s.y2 - Math.min(10, h / 3), w - 8, Math.min(8, h / 3));
+    } else if (s.look === 'icewall') { // glassy ice: slippery
+      const gr = g.createLinearGradient(s.x1, 0, s.x2, 0);
+      gr.addColorStop(0, '#dff4ff'); gr.addColorStop(1, '#8cc7ea');
+      g.fillStyle = gr; roundRect(s.x1, s.y1, w, h, 10); g.fill();
+      g.lineWidth = 3; g.strokeStyle = '#5f9cc4'; g.stroke();
+      g.strokeStyle = 'rgba(255, 255, 255, .8)'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(s.x2 - 18, s.y1 + 14); g.lineTo(s.x2 - 34, s.y1 + 60); g.moveTo(s.x1 + 20, s.y1 + 120); g.lineTo(s.x1 + 8, s.y1 + 160); g.stroke();
+    } else if (s.look === 'candy') { // a pink and white striped candy block
+      g.save();
+      roundRect(s.x1, s.y1, w, h, 10); g.clip();
+      g.fillStyle = '#ff8cc6'; g.fillRect(s.x1, s.y1, w, h);
+      g.fillStyle = '#ffffff';
+      for (let x = s.x1 - h; x < s.x2; x += 24) { g.beginPath(); g.moveTo(x, s.y2); g.lineTo(x + 10, s.y2); g.lineTo(x + 10 + h, s.y1); g.lineTo(x + h, s.y1); g.fill(); }
+      g.restore();
+      g.lineWidth = 3; g.strokeStyle = '#c4407e'; roundRect(s.x1, s.y1, w, h, 10); g.stroke();
     } else {
       shapePath(s); g.fillStyle = '#777'; g.fill();
     }
     g.restore();
+  }
+
+  // The sky on Ice Peak (a frozen night, with the northern lights) and on Candy Tower (pink, with candy-floss clouds).
+  function drawThemeSky(now) {
+    const t = clamp(1 - camY / (course.h - H), 0, 1), ice = course.theme === 'ice';
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, ice ? mix('#4a86b8', '#08122e', t) : mix('#ff9fd0', '#3a1a6b', t));
+    sky.addColorStop(1, ice ? mix('#d8eefc', '#1c2f5c', t) : mix('#ffe2ef', '#8a3f9e', t));
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    if (t > 0.2) { g.fillStyle = '#fff'; for (const [x, y, r] of STARS) { g.globalAlpha = (t - 0.2) * (0.5 + 0.5 * Math.sin(now / 700 + x)); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1; }
+    if (ice) { // the northern lights, swaying
+      for (let k = 0; k < 3; k++) {
+        g.strokeStyle = ['rgba(90, 255, 170, ', 'rgba(110, 200, 255, ', 'rgba(200, 120, 255, '][k] + (0.12 + 0.18 * t) + ')';
+        g.lineWidth = 26 - k * 6;
+        g.beginPath();
+        for (let x = 0; x <= W; x += 30) g.lineTo(x, 90 + k * 34 + Math.sin(x / 140 + now / 2200 + k) * 26);
+        g.stroke();
+      }
+    } else { // candy-floss clouds drifting by
+      g.fillStyle = 'rgba(255, 255, 255, .55)';
+      for (let k = 0; k < 4; k++) { const x = ((k * 290 + now / 40 - camX * 0.1) % (W + 200)) - 100, y = 70 + k * 60; [[0, 0, 30], [30, -12, 26], [58, 0, 28]].forEach(([a, b, r]) => { g.beginPath(); g.arc(x + a, y + b, r, 0, Math.PI * 2); g.fill(); }); }
+    }
+    const below = course.h - H - camY;
+    for (const [k, base, amp, c1, c2] of [[0.16, 340, 50, ice ? '#a9c6de' : '#ffb6d9', ice ? '#2a3d63' : '#5a2a7a'], [0.3, 420, 40, ice ? '#e6f3fb' : '#ff94c6', ice ? '#3b4f78' : '#6b3088']]) {
+      const ox = -camX * k, oy = below * k;
+      g.fillStyle = mix(c1, c2, t);
+      g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W; x += 24) g.lineTo(x, base + oy - Math.abs(Math.sin((x - ox) / 160)) * amp * (ice ? 1.6 : 0.6));
+      g.lineTo(W, H); g.closePath(); g.fill();
+    }
   }
 
   // Things that are only there to look at: the ladder's rails, the sign at the start.
@@ -1197,6 +1331,11 @@ function play(ctx) {
         g.moveTo(d.a[0], d.a[1]); g.lineTo(d.b[0], d.b[1]);
         g.moveTo(d.a[0] + 60, d.a[1]); g.lineTo(d.b[0] + 60, d.b[1]);
         g.stroke();
+      } else if (d.k === 'lolly' && !front) { // a giant lollipop, just to look at
+        g.strokeStyle = '#f4f4f4'; g.lineWidth = 6;
+        g.beginPath(); g.moveTo(d.x, d.y); g.lineTo(d.x, d.y - 60); g.stroke();
+        g.fillStyle = '#ff5fa8'; g.beginPath(); g.arc(d.x, d.y - 78, 22, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#ffffff'; g.lineWidth = 4; g.beginPath(); g.arc(d.x, d.y - 78, 13, 0, Math.PI * 1.5); g.stroke();
       } else if (d.k === 'sign' && !front) {
         g.fillStyle = '#6b4424';
         g.fillRect(d.x - 4, d.y - 70, 8, 70);
@@ -1329,7 +1468,9 @@ function play(ctx) {
     }
     if (!v.fish) { limb(c.arm2, c.fur, true); const e = c.arm2[c.arm2.length - 1]; pawDot(e.x, e.y, c.fur, 6.5); }
     const talk = F.mouth(mine ? 'talk-me' : 'talk-opp') > 0.15;
-    const pic = c.pics[talk ? 1 : 0] || c.pics[0];
+    // (its face: dazed, worn out, falling, at the top, or swinging the fish)
+    const face = v.stun ? 'dizzy' : mine && (me.tired || 0) > TIRED_T - 2 ? 'hurt' : c.done ? 'happy' : v.vy > 650 ? 'shock' : v.fish ? 'angry' : null;
+    const pic = (face && c.pics.face(face)) || c.pics[talk ? 1 : 0] || c.pics[0];
     if (pic) g.drawImage(pic, v.x - 40, v.y - 67.2, 80, 76.8);
     else { g.fillStyle = c.fur.mid; dot(v.x, v.y - 30, 26); dot(v.x, v.y, 15); }
     // the climbing arm, claws out while it holds on
@@ -1406,7 +1547,8 @@ function play(ctx) {
     else if (phase === 'over') text = '';
     else if (me.done) text = 'You made it! Checking who was first…';
     else if (fine && !locked && !everLocked) text = 'Click the game, then move your mouse: the paw follows it';
-    else if (me.stun > 0) text = 'Slapped! 🐟';
+    else if (me.stun > 0) text = me.tired === 0 && msgText === 'tired' ? 'Your paws got tired!' : 'Slapped! 🐟';
+    else if ((me.tired || 0) > TIRED_T - 2) text = '😓 Your paws are getting tired! Move to a new spot!';
     else if (me.fish) text = '🐟 Swing the fish fast at ' + them.name + '! Your other paw keeps holding on. Space puts the fish away';
     else if (clock < 15) text = 'Press your paw on the boulder, then ' + (fine ? 'move the mouse' : 'drag') + ' down to push yourself up. No jumping: just your arm!';
     else text = 'Push off things · fast moves fling you · shiny metal is slippery · Space: 🐟 fish (' + me.uses + ' slap' + (me.uses === 1 ? '' : 's') + ' left)';

@@ -20,10 +20,33 @@ function fur(eq) {
   return { light: skin.c[0], mid: skin.c[1], dark: skin.c[2], sleeve: shirt ? shirt.sleeve : null };
 }
 
+// The cat with an expression (angry, hurt, happy…: see FACES in common.js), drawn the first time a game asks for it and
+// kept after that: get(face, look, open) gives the picture, or null while it's still being drawn (show the plain one).
+function faceCache(eq, svgOpts, w, h) {
+  const cache = {};
+  return (face, look, open) => {
+    const k = face + ':' + look + ':' + (open ? 1 : 0);
+    if (k in cache) return cache[k];
+    cache[k] = null;
+    const svg = CA.catSVG(eq, Object.assign({ bg: false, anim: false, mouth: open ? 'open' : 'closed', look: look * 6, face }, svgOpts))
+      .replace('<svg ', '<svg width="200" height="240" ');
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      cache[k] = c;
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    return null;
+  };
+}
+
 // A cat's picture (without its arms: those are drawn separately, nice and long), looking right or left, with its
-// mouth closed or open (it opens when that player talks): pics[1 or -1][0 or 1].
+// mouth closed or open (it opens when that player talks): pics[1 or -1][0 or 1]. pics.face: the same with an expression.
 function pictures(eq) {
-  const pics = { 1: [null, null], '-1': [null, null] };
+  const pics = { 1: [null, null], '-1': [null, null], face: faceCache(eq, { arms: false }, Math.round(IMG_W * 2.5), Math.round(IMG_H * 2.5)) };
   [1, -1].forEach(look => [0, 1].forEach(open => {
     const svg = CA.catSVG(eq, { bg: false, anim: false, arms: false, mouth: open ? 'open' : 'closed', look: look * 6 })
       .replace('<svg ', '<svg width="200" height="240" ');
@@ -46,10 +69,10 @@ function mouth(cls) {
   return el ? parseFloat(el.style.getPropertyValue('--mouth')) || 0 : 0;
 }
 
-// Draws a cat's picture with its feet at (x, y). o: { tilt, squash (0 to 1), lookRight, open (mouth), alpha }.
+// Draws a cat's picture with its feet at (x, y). o: { tilt, squash (0 to 1), lookRight, open (mouth), alpha, face }.
 function drawBody(g, c, x, y, o) {
-  const pics = c.pics[o.lookRight ? 1 : -1];
-  const pic = pics[o.open ? 1 : 0] || pics[0];
+  const look = o.lookRight ? 1 : -1, pics = c.pics[look];
+  const pic = (o.face && c.pics.face && c.pics.face(o.face, look, o.open)) || pics[o.open ? 1 : 0] || pics[0];
   const sq = 1 - (o.squash || 0) * 0.16;
   if (o.alpha !== undefined) g.globalAlpha = o.alpha;
   g.save();
@@ -384,6 +407,6 @@ function painter(g, w) {
   return { dot, star, heart, roundRect, label, bigText, speedLines, dizzy };
 }
 
-CA.floppy = { IMG_W, IMG_H, IMG_FEET, ARM_N, FONT, fur, pictures, mouth, drawBody, stepArms, whip, drawArms, controls, sample, party, painter };
+CA.floppy = { IMG_W, IMG_H, IMG_FEET, ARM_N, FONT, fur, pictures, faceCache, mouth, drawBody, stepArms, whip, drawArms, controls, sample, party, painter };
 
 })();

@@ -2,7 +2,9 @@
    what your flashlight shows, plus noises.
    The mouse has a mission: steal the cheese (1 point each) and get out through the exit (2 more), which opens once it has
    at least one. It leaps over walls with Space (noisily), squeezes through tunnels the cat can't use, and can throw a
-   squeak to fool the cat (E). The cat is a little faster, dashes with Space, and can set one trap (E).
+   squeak to fool the cat (E). The cat is a little faster, dashes with Space, and can set one trap (E), though never one
+   that blocks the only way to the exit. The cat doesn't know where the cheese and the exit are: it only sees them in its
+   flashlight, like everything else.
    After both have been the mouse, the most points wins. A tie goes to sudden death: lights almost out, one cheese, one exit.
    Every steal makes a noise the cat can hear through the dark. (The host's app runs the game: see games-duel.js.) */
 (() => {
@@ -102,6 +104,26 @@ function distances(m, x, y) {
   }
   return d;
 }
+// Would a trap at (x, y) block the only way to the exit? Yes if the exit is that cell or next to it, or if the mouse
+// couldn't walk to the exit any more without going through that cell.
+function blocksExit(s, x, y) {
+  const [tx, ty] = cellOf(x, y);
+  if (Math.abs(tx - EXIT[0]) + Math.abs(ty - EXIT[1]) <= 1) return true;
+  const m = s.movers.find(c => c.role === 'mouse');
+  const [mx, my] = m ? cellOf(m.x, m.y) : START.mouse;
+  if (mx === tx && my === ty) return false; // (on top of the mouse: it can still go any way)
+  const seen = new Array(CW * CH).fill(false), q = [[mx, my]];
+  seen[my * CW + mx] = seen[ty * CW + tx] = true;
+  for (let h = 0; h < q.length; h++) {
+    const [cx, cy] = q[h];
+    if (cx === EXIT[0] && cy === EXIT[1]) return false;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const k = (cy + dy) * CW + cx + dx;
+      if (canGo(s.maze, cx, cy, dx, dy) && !seen[k]) { seen[k] = true; q.push([cx + dx, cy + dy]); }
+    }
+  }
+  return true;
+}
 const cellOf = (x, y) => [Math.max(0, Math.min(CW - 1, Math.floor((x - X0) / TILE))), Math.max(0, Math.min(CH - 1, Math.floor((y - Y0) / TILE)))];
 
 function init(api) {
@@ -191,9 +213,12 @@ function step(s, inp, dt, api) {
     const free = c.stun <= 0 && c.hold <= 0;
     if (c.role === 'cat' && free && n.hit.a && c.wait <= 0) { c.dash = DASH_TIME; c.wait = DASH_WAIT; api.ev('dash', { x: c.x, y: c.y }); }
     if (c.role === 'cat' && free && n.hit.e && !c.used && !s.sudden) { // one trap a round, where you stand
-      c.used = 1;
-      s.trap = { x: c.x, y: c.y };
-      api.ev('settrap', { i });
+      if (blocksExit(s, c.x, c.y)) api.ev('notrap', { i }); // (not on the only way out)
+      else {
+        c.used = 1;
+        s.trap = { x: c.x, y: c.y };
+        api.ev('settrap', { i });
+      }
     }
     if (c.role === 'mouse' && free && n.hit.e && c.used < DECOYS) { // a squeak, thrown ahead, to fool the cat
       c.used++;
@@ -301,7 +326,8 @@ function stepTowards(s, st, me, goal) {
 }
 
 // The bot plays by what it could know. As the cat: it goes for the mouse when it's close enough to notice it (better bots
-// notice from further), to the last noise it heard, or else guards the cheese and the exit. As the mouse: it goes for the
+// notice from further), to the last noise it heard, or else wanders the maze (it doesn't know where the cheese and the
+// exit are either). As the mouse: it goes for the
 // nearest cheese and then the exit (better bots take all the cheese first), and runs when the cat gets close.
 function bot(s, i, dt, api) {
   const st = s.bs || (s.bs = { think: 0, tx: 0, ty: 0, dash: false, jump: false, patrol: null, heard: null, heardAt: -1 });
@@ -320,8 +346,9 @@ function bot(s, i, dt, api) {
       else if (st.heard) { goal = st.heard; if (mx === goal[0] && my === goal[1]) st.heard = null; }
       else {
         if (!st.patrol || (mx === st.patrol[0] && my === st.patrol[1])) {
-          const left = s.cheese.filter(c => c.on).map(c => cellOf(c.x, c.y)).concat([EXIT]);
-          st.patrol = left[Math.floor(Math.random() * left.length)];
+          let p = null; // (somewhere at random, a few steps away)
+          for (let k = 0; k < 20 && !p; k++) { const x = Math.floor(Math.random() * CW), y = Math.floor(Math.random() * CH); if (!BLOCKED(x, y) && Math.abs(x - mx) + Math.abs(y - my) > 4) p = [x, y]; }
+          st.patrol = p || [mx, my];
         }
         goal = st.patrol;
       }
@@ -367,6 +394,9 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'settrap') v.mood(e.i, 'smug', 1.6);
+  if (e.type === 'notrap') v.mood(e.i, 'sad', 1.2);
   if (e.type === 'dash') v.sound([[640, 0, 0.04], [460, 0.03, 0.05]]);
   if (e.type === 'leap') { v.burst(e.x, e.y, '#ffffff', 8, 200); v.sound([[300, 0, 0.05], [520, 0.05, 0.08]]); }
   if (e.type === 'ping') { // a noise: everyone hears it, through the dark
@@ -377,6 +407,7 @@ function event(v, e) {
   }
   if (e.type === 'steal') { v.pop(e.x, e.y - 30, '🧀 STOLEN! ' + e.n, '#ffd23f'); v.burst(e.x, e.y, '#ffd23f', 14, 220); v.sound('point'); }
   if (e.type === 'tele') { v.ring(e.ax, e.ay, '#c58bff', 12); v.burst(e.x, e.y, '#c58bff', 8, 160); }
+  if (e.type === 'notrap' && e.i === v.me) { v.note("You can't set a trap on the only way to the exit!"); v.sound([[200, 0, 0.08]]); }
   if (e.type === 'settrap') { if (e.i === v.me) v.note('Trap set. The mouse can\'t see it until it\'s close.'); v.sound([[300, 0, 0.04]]); }
   if (e.type === 'trap') { v.pop(e.x, e.y - 24, '🪤 SNAP!', '#ff5a5a'); v.burst(e.x, e.y, '#ff5a5a', 12, 240); v.shake(6); v.sound('miss'); }
   if (e.type === 'caught') { v.burst(e.x, e.y, '#ffd23f', 22, 300); v.pop(e.x, e.y - 30, 'CAUGHT!' + (e.p ? ' Kept ' + e.p : ''), '#ff5a5a'); v.shake(10); v.sound(e.m === v.me ? 'miss' : 'point'); }
@@ -492,6 +523,7 @@ function draw(v, s) {
       g.globalAlpha = 1;
     }
     if (s.tr) { g.globalAlpha = 0.9; v.label('🪤', s.tr[0], s.tr[1], 22, '#000000'); g.globalAlpha = 1; }
+    if (me.r) drawGoals(); // (the cat only knows where the cheese and the exit are once its light finds them)
     drawMover(v, v.them, them);
   });
   if (playing) { // the dark
@@ -501,15 +533,18 @@ function draw(v, s) {
     tracePts(g, shape);
     g.fill('evenodd');
   }
-  // always known: the cheese, the tunnels and the exit
-  const open = s.got > 0;
+  // the mouse always knows where the cheese and the exit are (and the tunnels, which only it fits through)
+  if (!me.r || !playing) drawGoals();
   (s.tu || []).forEach(pair => pair.forEach(([cx, cy]) => { const [x, y] = center(cx, cy); g.globalAlpha = me.r ? 0.35 : 0.85; v.label('🕳️', x, y, 22, '#000000'); g.globalAlpha = 1; }));
-  (s.ch || []).forEach(([x, y, on]) => { if (on) v.label('🧀', x, y + Math.sin(v.now / 250 + x) * 2, 25, '#000000'); });
-  const [ex, ey] = center(...EXIT);
-  g.globalAlpha = open ? 1 : 0.4;
-  v.label('🚪', ex, ey, open ? 30 + Math.sin(v.now / 140) * 3 : 26, '#000000');
-  g.globalAlpha = 1;
-  if (open && !me.r) { g.strokeStyle = '#7dff8a'; g.lineWidth = 3; g.beginPath(); g.arc(ex, ey, 22 + Math.sin(v.now / 140) * 2, 0, Math.PI * 2); g.stroke(); }
+  function drawGoals() {
+    const open = s.got > 0;
+    (s.ch || []).forEach(([x, y, on]) => { if (on) v.label('🧀', x, y + Math.sin(v.now / 250 + x) * 2, 25, '#000000'); });
+    const [ex, ey] = center(...EXIT);
+    g.globalAlpha = open ? 1 : 0.4;
+    v.label('🚪', ex, ey, open ? 30 + Math.sin(v.now / 140) * 3 : 26, '#000000');
+    g.globalAlpha = 1;
+    if (open && !me.r) { g.strokeStyle = '#7dff8a'; g.lineWidth = 3; g.beginPath(); g.arc(ex, ey, 22 + Math.sin(v.now / 140) * 2, 0, Math.PI * 2); g.stroke(); }
+  }
   drawMover(v, v.me, me);
   // the mouse's heart pounds when the cat is close
   if (playing && !me.r) {
@@ -532,7 +567,7 @@ function draw(v, s) {
   v.label(rd + ' · ⏱ ' + left + ' · 🧀 ' + s.got + (s.sd ? '/1' : '/3') + ' · ' + v.names[0] + ' ' + s.sc[0] + ' – ' + s.sc[1] + ' ' + v.names[1], W / 2, 15, 12, left <= 10 ? '#ffb0b0' : '#ffffff');
   if (playing) {
     v.msg(me.r
-      ? "You're the CAT: stop the mouse! Listen for noises." + (me.w > 0 ? ' · dash in ' + me.w.toFixed(1) + 's' : ' · Space to dash') + (me.u || s.sd ? '' : ' · E sets your trap')
+      ? "You're the CAT: stop the mouse! You don't know where the 🧀 or the 🚪 are: listen for noises." + (me.w > 0 ? ' · dash in ' + me.w.toFixed(1) + 's' : ' · Space to dash') + (me.u || s.sd ? '' : ' · E sets your trap')
       : (s.got ? 'The 🚪 is open: get out (+2), or risk it for more 🧀!' : 'Steal a 🧀 to open the 🚪!') + (me.jw > 0 ? ' · jump in ' + me.jw.toFixed(1) + 's' : ' · Space jumps a wall') + (me.u < DECOYS ? ' · E throws a squeak' : '') + (me.cb ? ' · 🔥 Comeback boost' : ''));
   }
 }

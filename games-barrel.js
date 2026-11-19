@@ -114,6 +114,11 @@ function play(ctx) {
   const powerBits = c => (c.pSpd > 0 ? 1 : 0) | (c.pBig > 0 ? 2 : 0) | (c.pShd > 0 ? 4 : 0);
   let shake = 0, lastThud = 0, lastMsg = performance.now();
   const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
+  // The cats' faces: a mood for a moment after something happens (a point, a block, a hit), and otherwise what each
+  // one is up to. (Worked out on each screen, from what that screen sees.)
+  const moods = [{ f: null, until: 0 }, { f: null, until: 0 }];
+  const mood = (i, f, secs) => { moods[i] = { f, until: performance.now() + secs * 1000 }; };
+  const moodNow = (i, now) => (moods[i].f && now < moods[i].until ? moods[i].f : null);
   const fx = [];
   const chunks = [];
 
@@ -463,6 +468,7 @@ function play(ctx) {
   function lifeLost(c) {
     shake = Math.max(shake, 12);
     party.point(c !== me);
+    mood(c.i, 'hurt', 1.8); mood(1 - c.i, 'happy', 1.8);
     sound(c === me ? 'miss' : 'point');
     if (c === me && ctx.bot) ctx.oppCheer();
     ctx.score(LIVES - them.lives, LIVES - me.lives);
@@ -1198,9 +1204,24 @@ function play(ctx) {
     F.drawBody(g, c, sx(v.x), v.y + bob, {
       tilt, squash: c.squash, lookRight, open: F.mouth(c === me ? 'talk-me' : 'talk-opp') > 0.12,
       alpha: v.inv && !v.out && Math.floor(now / 140) % 2 ? 0.75 : 1, // (a gentle flicker: you can't be hit just now)
+      face: faceOf(c, v, holding, now),
     });
     if (!behind) { if (holding) drawHeld(v); F.drawArms(g, c, sx); }
     if (v.stun && !v.out) dizzy(sx(v.x), v.y, now);
+  }
+
+  // Its face: the winner's grin and the loser's K.O. at the end, K.O. when knocked out, dizzy when bonked, a mood
+  // after something happens, gritted teeth winding up a throw, a smug look with a barrel, and scared on its last life.
+  function faceOf(c, v, holding, now) {
+    if (phase === 'ko') return winner < 0 ? 'shock' : winner === c.i ? 'happy' : 'ko';
+    if (v.out) return 'ko';
+    if (v.stun) return 'dizzy';
+    const m = moodNow(c.i, now);
+    if (m) return m;
+    if (v.power >= 0) return 'angry';
+    if (holding) return 'smug';
+    if (c.lives === 1) return 'shock';
+    return null;
   }
 
   function drawHeld(v) {

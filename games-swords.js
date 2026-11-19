@@ -835,6 +835,25 @@ function bot(s, i, dt, api) {
 
 /* ---------- effects and drawing ---------- */
 
+// Each cat's face, from what it's doing: knocked out (or turned to dust, or its head off), dizzy, hurt for a moment
+// when it takes a hit (and the other one pleased with itself), out of breath, gritting its teeth behind its shield or
+// powering up, wide-eyed when it's been grabbed, and smug holding the other cat up.
+const seenHp = [null, null];
+function swordFace(v, c, i) {
+  if (seenHp[i] != null && c.hp < seenHp[i] - 0.5 && !c.ko) { v.mood(i, c.hp < 35 ? 'shock' : 'hurt', 0.9); v.mood(1 - i, 'smug', 0.9); }
+  seenHp[i] = c.hp;
+  if (c.ko || c.du || c.hd) return 'ko';
+  if (c.z) return 'dizzy';
+  if (c.sh) return 'shock';
+  const m = v.faceOf && v.faceOf(i);
+  if (m) return m;
+  if (c.td) return 'sad';
+  if (c.pw >= 0 || c.b) return 'angry';
+  if (c.rp === 2) return 'smug';
+  if (c.hp < 30) return 'squint';
+  return null;
+}
+
 function event(v, e) {
   if (e.type === 'tired') { v.pop(e.x, e.y, 'Out of breath!', '#ff9a9a'); v.sound('miss'); }
   if (e.type === 'hit') { v.burst(e.x, e.y, '#fff3b0', 14, 260); v.pop(e.x, e.y - 20, (e.part === 'head' ? 'BONK! −' : 'WHACK! −') + e.dmg, '#ffd23f'); v.shake((e.part === 'head' ? 10 : 7) * (0.5 + 0.35 * (e.lv || 0))); v.sound([[1400, 0, 0.03], [800, 0.02, 0.06], [300, 0.06, 0.1]]); }
@@ -950,6 +969,7 @@ function drawCat(v, s, c, i) {
     g.globalAlpha = 1;
   }
   drawArm(g, c.ar[0], look.fur);
+  const face = swordFace(v, c, i);
   if (c.hd) { // its head came off: the body without it (a clean, flat cut), and the head on its own
     g.save();
     g.translate(c.x, c.y);
@@ -958,11 +978,11 @@ function drawCat(v, s, c, i) {
     g.beginPath(); g.rect(-70, NECK, 140, 90); g.clip();
     g.rotate(-c.tilt);
     g.translate(-c.x, -c.y);
-    F.drawBody(g, look, c.x, c.y, { tilt: c.tilt, lookRight: c.face > 0 });
+    F.drawBody(g, look, c.x, c.y, { tilt: c.tilt, lookRight: c.face > 0, face });
     g.restore();
     neckCap(g, 0, NECK);
     g.restore();
-  } else F.drawBody(g, look, c.x, c.y, { tilt: c.tilt, lookRight: c.face > 0, squash: c.sq, alpha: c.cl && !c.ko ? 0.75 : 1 });
+  } else F.drawBody(g, look, c.x, c.y, { tilt: c.tilt, lookRight: c.face > 0, squash: c.sq, alpha: c.cl && !c.ko ? 0.75 : 1, face });
   if (c.h >= 0 && s.s[c.h]) drawSword(v, s.s[c.h]);
   drawArm(g, c.ar[1], look.fur);
   if (c.hd) {
@@ -971,7 +991,7 @@ function drawCat(v, s, c, i) {
     g.rotate(c.hd[2]);
     g.save();
     g.beginPath(); g.rect(-70, -70, 140, 70 + NECK - HEAD_Y); g.clip();
-    F.drawBody(g, look, 0, -HEAD_Y, { lookRight: c.face > 0 });
+    F.drawBody(g, look, 0, -HEAD_Y, { lookRight: c.face > 0, face });
     g.restore();
     neckCap(g, 0, NECK - HEAD_Y);
     g.restore();

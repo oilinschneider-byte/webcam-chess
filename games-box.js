@@ -243,7 +243,7 @@ function draw(v, s) {
   g.strokeRect(BOX.x + 8, BOX.y + 8, BOX.w - 16, BOX.h - 16);
   v.label('📦', BOX.x + BOX.w / 2, BOX.y + BOX.h / 2, 30, '#ffffff', 0.35);
   s.c.forEach((c, i) => {
-    v.catTop(i, c.x, c.y, 1, { lookRight: c.f > 0, tilt: c.st ? Math.sin(v.now / 50) * 0.3 : 0 });
+    v.catTop(i, c.x, c.y, 1, { lookRight: c.f > 0, tilt: c.st ? Math.sin(v.now / 50) * 0.3 : 0, face: c.st ? 'dizzy' : null });
     if (c.st) v.star(c.x, c.y - 34, 6);
     if (!c.b) drawBoom(v, c.x + c.f * 18, c.y + 10, c.f > 0 ? 0.5 : -0.5, i); // (in its paws, ready)
   });

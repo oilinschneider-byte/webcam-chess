@@ -1,7 +1,10 @@
 /* Classic Games: Panic Chess. Chess with no turns: both players move at the same time. A piece moves the way it does in
    chess, slides across the board so you can see it coming (and get out of the way), and then has to recharge before it
-   can move again. There's no check: take the king and you win. The board burns away from the edges, a ring at a time, with
-   a warning first, and anything left there is gone. (The host's app runs the game: see games-duel.js.) */
+   can move again. The rules of chess still apply: you can't make a move that leaves your own king in check, you can
+   castle, and when your king is in check you're told so (CHECK!). If it's in check and nothing you have could get it
+   out, that's CHECKMATE: you lose. And since there are no turns, a king left in check can simply be taken: that wins too.
+   The board burns away from the edges, a ring at a time, with a warning first, and anything left there is gone.
+   (The host's app runs the game: see games-duel.js.) */
 (() => {
 'use strict';
 
@@ -124,9 +127,47 @@ function init() {
 
 const onBoard = (x, y, burn) => x >= burn && y >= burn && x < 8 - burn && y < 8 - burn;
 
+// Where everything will be: pieces standing still where they are, moving ones where they're going.
+const squareOf = q => (q.mv ? [q.mv.tx, q.mv.ty] : [Math.round(q.x), Math.round(q.y)]);
+
+// Does piece q attack square (x, y)? (on a board where `on(cx, cy)` says if a square has something on it)
+function attacks(q, x, y, on) {
+  const [qx, qy] = squareOf(q), dx = x - qx, dy = y - qy, ax = Math.abs(dx), ay = Math.abs(dy);
+  if (!dx && !dy) return false;
+  const clear = () => { const sx = Math.sign(dx), sy = Math.sign(dy); for (let cx = qx + sx, cy = qy + sy; cx !== x || cy !== y; cx += sx, cy += sy) if (on(cx, cy)) return false; return true; };
+  switch (q.t) {
+    case 'p': return ax === 1 && dy === (q.c === 0 ? -1 : 1);
+    case 'n': return (ax === 1 && ay === 2) || (ax === 2 && ay === 1);
+    case 'b': return ax === ay && clear();
+    case 'r': return (!dx || !dy) && clear();
+    case 'q': return (!dx || !dy || ax === ay) && clear();
+    case 'k': return ax <= 1 && ay <= 1;
+  }
+  return false;
+}
+
+// Is colour c's king in check (with the pieces as they will be)? pcs can be a changed copy, to try a move out.
+function inCheck(pcs, c) {
+  const king = pcs.find(q => q.t === 'k' && q.c === c);
+  if (!king) return false;
+  const [kx, ky] = squareOf(king);
+  const on = (cx, cy) => pcs.some(q => { const [qx, qy] = squareOf(q); return qx === cx && qy === cy; });
+  return pcs.some(q => q.c !== c && attacks(q, kx, ky, on));
+}
+
 // Can piece p go to square (x, y) right now? pcs: all the pieces. A square a piece of yours is moving to counts as taken.
-function legal(pcs, burn, p, x, y) {
-  if (!p || p.mv || p.cd > 0) return false;
+// anyTime: never mind that it's still recharging (to see if a king in check could get out of it at all).
+function legal(pcs, burn, p, x, y, anyTime) {
+  if (!p || p.mv || (p.cd > 0 && !anyTime)) return false;
+  if (!movesLike(pcs, burn, p, x, y)) return false;
+  // (the rules of chess: not a move that leaves your own king in check)
+  const after = pcs.filter(q => !(q.c !== p.c && !q.mv && Math.round(q.x) === x && Math.round(q.y) === y))
+    .map(q => (q === p || q.id === p.id ? Object.assign({}, q, { x, y, mv: null }) : q));
+  return !inCheck(after, p.c);
+}
+
+// Could piece p get to (x, y) the way it moves in chess (castling included)?
+function movesLike(pcs, burn, p, x, y) {
   if (!Number.isInteger(x) || !Number.isInteger(y) || !onBoard(x, y, burn)) return false;
   const px = Math.round(p.x), py = Math.round(p.y), dx = x - px, dy = y - py, ax = Math.abs(dx), ay = Math.abs(dy);
   if (!dx && !dy) return false;
@@ -153,12 +194,31 @@ function legal(pcs, burn, p, x, y) {
     case 'b': return ax === ay && pathClear();
     case 'r': return (!dx || !dy) && pathClear();
     case 'q': return (!dx || !dy || ax === ay) && pathClear();
-    case 'k': return ax <= 1 && ay <= 1;
+    case 'k': {
+      if (ax <= 1 && ay <= 1) return true;
+      // castling: two squares toward a rook, if neither has moved, nothing is between them, and the king isn't in
+      // check now and doesn't cross a square that's attacked
+      const home = p.c === 0 ? 7 : 0;
+      if (p.moved || dy !== 0 || ax !== 2 || py !== home || px !== 4) return false;
+      const rook = at(dx > 0 ? 7 : 0, py);
+      if (!rook || rook.t !== 'r' || rook.c !== p.c || rook.moved) return false;
+      for (let cx = Math.min(px, rook.x) + 1; cx < Math.max(px, rook.x); cx++) if (at(cx, py)) return false;
+      if (inCheck(pcs, p.c)) return false;
+      const mid = pcs.map(q => (q.id === p.id ? Object.assign({}, q, { x: px + Math.sign(dx), y: py, mv: null }) : q));
+      return !inCheck(mid, p.c);
+    }
   }
   return false;
 }
 
 function startMove(s, p, x, y) {
+  if (p.t === 'k' && Math.abs(x - Math.round(p.x)) === 2) { // castling: the rook comes round the other side
+    const dir = Math.sign(x - p.x), rook = s.pcs.find(q => q.t === 'r' && q.c === p.c && !q.mv && Math.round(q.x) === (dir > 0 ? 7 : 0) && Math.round(q.y) === Math.round(p.y));
+    if (rook) {
+      const rx = x - dir, d = Math.abs(rx - rook.x), time = d / SLIDE;
+      rook.mv = { tx: rx, ty: Math.round(rook.y), fx: Math.round(rook.x), fy: Math.round(rook.y), vx: (rx - rook.x) / time, vy: 0, left: time, at: s.t, hop: 0, quiet: 1, dur: time };
+    }
+  }
   const dx = x - p.x, dy = y - p.y, d = Math.hypot(dx, dy);
   const time = p.t === 'n' ? HOP : d / SLIDE;
   p.mv = { tx: x, ty: y, fx: Math.round(p.x), fy: Math.round(p.y), vx: dx / time, vy: dy / time, left: time, at: s.t, hop: p.t === 'n' ? 1 : 0, quiet: p.t === 'p' && dx === 0 ? 1 : 0, dur: time };
@@ -168,6 +228,7 @@ function arrive(s, p, api) {
   p.x = p.mv.tx;
   p.y = p.mv.ty;
   p.mv = null;
+  p.moved = true;
   const behind = material(s, p.c) + BEHIND <= material(s, 1 - p.c);
   p.cd = RECHARGE * (behind ? BOOST : 1);
   p.max = p.cd;
@@ -242,6 +303,14 @@ function step(s, orders, dt, api) {
     if (s.pcs.includes(p) && p.mv) arrive(s, p, api);
   }
   if (s.over) return;
+  // check, and checkmate: a king in check that nothing of its side could get out of check, even waiting to recharge
+  s.ck = s.ck || [false, false];
+  for (let c = 0; c < 2; c++) {
+    const now = inCheck(s.pcs, c);
+    if (now && !s.ck[c]) api.ev('check', { c });
+    s.ck[c] = now;
+    if (now && !s.pcs.some(p => p.c === c && !p.mv && anyMove(s, p))) { finish(s, 1 - c, 'CHECKMATE!', api); return; }
+  }
   // the board burns
   const next = BURN[s.b];
   if (next !== undefined && s.warned <= s.b && s.t >= next - WARN) { s.warned = s.b + 1; api.ev('warn', {}); }
@@ -262,6 +331,12 @@ function step(s, orders, dt, api) {
   if (s.t >= LENGTH) byPieces(s, "TIME'S UP!", api);
 }
 
+// Has piece p got any move at all (recharging or not) that's allowed?
+function anyMove(s, p) {
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (legal(s.pcs, s.b, p, x, y, true)) return true;
+  return false;
+}
+
 function byPieces(s, text, api) {
   const a = material(s, 0), b = material(s, 1);
   finish(s, a === b ? -1 : a > b ? 0 : 1, text, api);
@@ -271,7 +346,8 @@ const r2 = v => Math.round(v * 100) / 100;
 function snap(s) {
   return {
     t: Math.round(s.t * 10) / 10, b: s.b,
-    p: s.pcs.map(p => [p.id, 'pnbrqk'.indexOf(p.t), p.c, r2(p.x), r2(p.y), Math.round(p.cd * 10) / 10, p.mv ? p.mv.tx : -1, p.mv ? p.mv.ty : -1, p.mv && p.mv.hop ? 1 : 0, r2(p.max || RECHARGE)]),
+    p: s.pcs.map(p => [p.id, 'pnbrqk'.indexOf(p.t), p.c, r2(p.x), r2(p.y), Math.round(p.cd * 10) / 10, p.mv ? p.mv.tx : -1, p.mv ? p.mv.ty : -1, p.mv && p.mv.hop ? 1 : 0, r2(p.max || RECHARGE), p.moved ? 1 : 0]),
+    ck: s.ck ? s.ck.map(v => (v ? 1 : 0)) : [0, 0],
   };
 }
 function lerp(a, b, f) {
@@ -288,7 +364,7 @@ function lerp(a, b, f) {
   });
 }
 function viewPieces(s) {
-  return s.p.map(q => ({ id: q[0], t: 'pnbrqk'[q[1]], c: q[2], x: q[3], y: q[4], cd: q[5], mv: q[6] >= 0 ? { tx: q[6], ty: q[7], hop: q[8] } : null, max: q[9] }));
+  return s.p.map(q => ({ id: q[0], t: 'pnbrqk'[q[1]], c: q[2], x: q[3], y: q[4], cd: q[5], mv: q[6] >= 0 ? { tx: q[6], ty: q[7], hop: q[8] } : null, max: q[9], moved: !!q[10] }));
 }
 
 // The bot looks at the moves its ready pieces can make, and likes taking pieces (above all the king), not moving somewhere
@@ -341,6 +417,7 @@ function event(v, e) {
     v.shake(e.t === 'k' ? 14 : 4);
     v.sound(e.c === v.me ? 'point' : 'miss');
   }
+  if (e.type === 'check') { v.banner(e.c === v.me ? 'CHECK! Save your king!' : 'CHECK!', e.c === v.me ? '#ff5a5a' : '#ffd23f'); v.sound(e.c === v.me ? 'ouch' : 'notify'); v.mood(e.c, 'shock', 1.5); v.mood(1 - e.c, 'smug', 1.5); }
   if (e.type === 'queen') { const [x, y] = screen(v, e.x, e.y); v.pop(x, y - 20, '♛ Queen!', '#ffd23f'); v.sound('notify'); }
   if (e.type === 'warn') { v.note('🔥 The edge of the board is about to burn!'); v.sound('notify'); }
   if (e.type === 'burn') { v.note('🔥 The board burned' + (e.n ? ': ' + e.n + ' piece' + (e.n === 1 ? '' : 's') + ' gone' : '')); v.shake(10); v.sound('boom'); }
@@ -420,6 +497,12 @@ function draw(v, s, pcs, picked, queued) {
     g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
     g.fillStyle = g.strokeStyle;
     v.dot(bx, by, 7);
+  });
+  pcs.forEach(p => { // a king in check glows red
+    if (p.t !== 'k' || !(s.ck && s.ck[p.c])) return;
+    const [x, y] = screen(v, p.x, p.y);
+    v.g.fillStyle = 'rgba(255, 50, 50, ' + (0.35 + 0.25 * Math.sin(v.now / 90)) + ')';
+    v.dot(x, y, 30);
   });
   pcs.forEach(p => { if (!p.mv) drawPiece(v, p, picked); });
   pcs.forEach(p => { if (p.mv) drawPiece(v, p, picked); });

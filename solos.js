@@ -342,64 +342,194 @@ GAMES.rps = {
   },
 };
 
+// Quick Draw: a showdown at high noon. The two cats stand back to back, then pace apart. When the sign says DRAW, the
+// first to click (or press Space) spins round and fires; clicking before DRAW is a foul, and loses the round.
+// The first time a cat loses, it's shot in the belly: it stays hunched over, upset, for the rest of the showdown. The
+// second time, it's shot dead, and crumbles to dust. (Each player's app draws it from the same results.)
 GAMES.draw = {
-  name: 'Quick Draw', icon: '⚡', blurb: 'Wait for GO, then click as fast as you can. Clicking too early loses the round! First to 2.',
+  name: 'Quick Draw', icon: '🤠', blurb: 'A showdown at high noon. Wait for DRAW, then click (or press Space) to spin round and fire first. Too early and you lose the round! First to 2.',
   start(ctx) {
     const delays = [];
-    for (let i = 0; i < 9; i++) delays.push(1600 + Math.floor(ctx.rng() * 3000));
-    ctx.stage.innerHTML =
-      '<div class="g-draw"><button class="draw-pad" id="drawPad"><span class="draw-big" id="drawBig">Get ready…</span>' +
-      '<span class="draw-sub" id="drawSub">Click here or press Space when it turns green</span></button>' +
+    for (let i = 0; i < 9; i++) delays.push(2200 + Math.floor(ctx.rng() * 3000));
+    const W = 960, H = 420, GY = 340;
+    ctx.stage.innerHTML = '<div class="g-draw"><canvas class="draw-cv" id="drawCv" width="' + W * 2 + '" height="' + H * 2 + '"></canvas>' +
       '<p class="g-msg" id="drawMsg"></p></div>';
-    const pad = $('drawPad');
+    const cv = $('drawCv'), g = cv.getContext('2d'), F = CA.floppy, paint = F.painter(g, W);
     let hit = null;
-    ctx.listen(pad, 'pointerdown', e => { e.preventDefault(); if (hit) hit(); });
+    ctx.listen(cv, 'pointerdown', e => { e.preventDefault(); if (hit) hit(); });
     ctx.listen(document, 'keydown', e => {
       if ((e.code === 'Space' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); if (hit) hit(); }
     });
+    // The two cats: 0 is you (on the left), 1 is them.
+    const looks = [
+      { pics: F.pictures(CA.profile.equip), fur: F.fur(CA.profile.equip) },
+      { pics: F.pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) },
+    ];
+    const cats = [0, 1].map(i => ({ x: W / 2, turn: 0, aim: 0, hurt: 0, dead: 0, face: 'smug', recoil: 0, flash: 0, dust: null }));
+    let phase = 'wait', paceT = 0, paceAt = performance.now(), signT = -1, banner = '', bannerT = 0, last = performance.now(), dust = [];
+    const bang = () => sound([[2400, 0, 0.3, { w: 'noise', to: 180, g: 1.8 }], [130, 0, 0.25, { w: 'sine', to: 40, g: 1.6 }]]);
+    function shoot(i) { // cat i spins round and fires at the other
+      const c = cats[i], o = cats[1 - i];
+      c.turn = 1; c.aim = 1; c.recoil = 1; c.flash = 1; c.face = 'smug';
+      bang();
+      CA.buzz(60);
+      return o;
+    }
+    function hitCat(o) { // the one who was shot: the belly the first time, dead the second
+      if (o.hurt) { o.dead = performance.now(); o.face = 'ko'; banner = '💀'; }
+      else { o.hurt = 1; o.face = 'hurt'; setTimeout(() => { if (o.face === 'hurt') o.face = 'sad'; }, 1200); }
+    }
+
+    function frame(now) {
+      if (!ctx.alive()) return;
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      paceT = Math.min(1, (now - paceAt) / 1600); // (pacing apart, over 1.6 seconds)
+      for (const c of cats) { c.recoil = Math.max(0, c.recoil - dt * 3); c.flash = Math.max(0, c.flash - dt * 6); }
+      draw(now, dt);
+      requestAnimationFrame(frame);
+    }
+    function draw(now, dt) {
+      g.setTransform(2, 0, 0, 2, 0, 0);
+      // the sky at noon, a big sun, mesas, the dusty street
+      const sky = g.createLinearGradient(0, 0, 0, GY);
+      sky.addColorStop(0, '#f6b26b'); sky.addColorStop(1, '#ffe0a8');
+      g.fillStyle = sky; g.fillRect(0, 0, W, GY);
+      g.fillStyle = '#fff3c4'; g.beginPath(); g.arc(W / 2, 92, 46, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#c9744a';
+      g.beginPath(); g.moveTo(0, GY); g.lineTo(0, 230); g.lineTo(90, 230); g.lineTo(110, 200); g.lineTo(230, 200); g.lineTo(250, 240); g.lineTo(330, 240); g.lineTo(350, GY); g.fill();
+      g.beginPath(); g.moveTo(W, GY); g.lineTo(W, 210); g.lineTo(840, 210); g.lineTo(820, 186); g.lineTo(720, 186); g.lineTo(700, 250); g.lineTo(620, 250); g.lineTo(600, GY); g.fill();
+      g.fillStyle = '#e4b27c'; g.fillRect(0, GY, W, H - GY);
+      g.fillStyle = 'rgba(150, 90, 50, .25)';
+      for (let k = 0; k < 14; k++) g.fillRect((k * 173) % W, GY + 14 + (k * 37) % 60, 30, 3);
+      // a cactus on each side
+      [[96, 1], [W - 96, -1]].forEach(([x]) => {
+        g.fillStyle = '#4f9a4a';
+        paint.roundRect(x - 9, GY - 110, 18, 110, 9); g.fill();
+        paint.roundRect(x - 34, GY - 80, 12, 40, 6); g.fill(); paint.roundRect(x - 34, GY - 52, 30, 12, 6); g.fill();
+        paint.roundRect(x + 22, GY - 96, 12, 44, 6); g.fill(); paint.roundRect(x + 4, GY - 64, 30, 12, 6); g.fill();
+      });
+      // a tumbleweed rolling across
+      const tw = ((now / 14) % (W + 200)) - 100;
+      g.strokeStyle = '#9a6b3a'; g.lineWidth = 2;
+      g.save(); g.translate(tw, GY - 16); g.rotate(now / 300);
+      for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse(0, 0, 16, 8, k, 0, Math.PI * 2); g.stroke(); }
+      g.restore();
+      // the cats: back to back in the middle, pacing apart
+      const ease = 1 - Math.pow(1 - paceT, 2);
+      cats[0].x = W / 2 - 34 - ease * 210;
+      cats[1].x = W / 2 + 34 + ease * 210;
+      cats.forEach((c, i) => drawCowboy(i, c, now));
+      // dust from a cat that crumbled
+      for (let k = dust.length - 1; k >= 0; k--) {
+        const p = dust[k];
+        p.life -= dt; if (p.life <= 0) { dust.splice(k, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy -= 20 * dt; p.vx += 30 * dt;
+        g.globalAlpha = Math.min(1, p.life); g.fillStyle = p.c; g.fillRect(p.x, p.y, p.r, p.r);
+      }
+      g.globalAlpha = 1;
+      // the sign: WAIT…, then DRAW!
+      if (phase === 'go' || (signT > 0 && now - signT < 900)) {
+        const k = Math.min(1, (now - signT) / 160);
+        paint.label('DRAW!', W / 2, 150, 70 * (1.6 - 0.6 * k), '#ff3b2f', 1);
+      } else if (phase === 'wait') paint.label('Wait for it…', W / 2, 150, 30, '#7a3b16', 0.9);
+      if (banner && now - bannerT < 1600) paint.label(banner, W / 2, 210, 38, '#fff3c4', Math.min(1, (1600 - (now - bannerT)) / 400));
+    }
+    // A cowboy cat: a hat, a gun on its hip, and a face that shows how it's doing.
+    function drawCowboy(i, c, now) {
+      const L = looks[i], f = i === 0 ? -1 : 1, look = c.turn ? -f : f; // (back to back: looking away, until it spins round)
+      let x = c.x, y = GY, alpha = 1;
+      if (c.dead) { // shot dead: it falls, then crumbles to dust
+        const t = (now - c.dead) / 1000;
+        if (t > 0.9 && !c.dust) {
+          c.dust = true;
+          for (let k = 0; k < 160; k++) dust.push({ x: x - 30 + Math.random() * 60, y: y - Math.random() * 90, vx: (Math.random() - 0.3) * 60, vy: -Math.random() * 50, r: 2 + Math.random() * 3, life: 1 + Math.random() * 1.4, c: [L.fur.light, L.fur.mid, L.fur.dark, '#c9a67a'][k % 4] });
+          sound([[600, 0, 0.8, { w: 'noise', to: 3000, q: 0.8, g: 0.6 }]]);
+        }
+        if (t > 0.9) return;
+        alpha = 1;
+      }
+      const bob = c.turn ? 0 : Math.abs(Math.sin(paceT * Math.PI * 5)) * (paceT < 1 ? 5 : 0);
+      const hunch = c.hurt ? 0.18 : 0, fall = c.dead ? Math.min(1, (now - c.dead) / 500) * 1.3 : 0;
+      g.save();
+      g.translate(x, y - bob);
+      g.rotate(look * (hunch + fall));
+      g.scale(1.3, 1.3);
+      // the arm with the gun (behind the body when holstered, out front when aiming)
+      const sx = look * 12, sy = -33;
+      if (!c.aim) drawArm(L, sx, sy, look * 14, -14, false);
+      F.drawBody(g, L, 0, 0, { lookRight: look > 0, face: c.face, alpha });
+      // the hat
+      g.fillStyle = '#7a4a22';
+      g.beginPath(); g.ellipse(0, -84, 30, 6, 0, 0, Math.PI * 2); g.fill();
+      paint.roundRect(-15, -104, 30, 22, 8); g.fill();
+      g.fillStyle = '#4a2a10'; g.fillRect(-15, -88, 30, 4);
+      if (c.aim) drawArm(L, sx, sy, look * (46 - c.recoil * 8), -40 - c.recoil * 6, true, look);
+      else if (c.hurt) drawArm(L, -sx, sy + 6, look * 6, -22, false); // (holding its belly)
+      if (c.hurt) { g.fillStyle = '#c0262b'; g.beginPath(); g.arc(look * 3, -24, 4, 0, Math.PI * 2); g.fill(); }
+      g.restore();
+      if (c.flash) { // the muzzle flash
+        const mx = x + look * 1.3 * 58, my = y - 1.3 * 46;
+        g.fillStyle = 'rgba(255, 230, 120, ' + c.flash + ')';
+        paint.star(mx, my, 26 * c.flash + 6);
+      }
+      paint.label(i === 0 ? 'You' : ctx.oppName, x, y + 26, 13, i === 0 ? '#7a3b16' : '#3b2a16');
+    }
+    function drawArm(L, sx, sy, px, py, gun, look) {
+      g.lineCap = 'round';
+      g.strokeStyle = L.fur.dark; g.lineWidth = 11; g.beginPath(); g.moveTo(sx, sy); g.lineTo(px, py); g.stroke();
+      g.strokeStyle = L.fur.mid; g.lineWidth = 7.5; g.beginPath(); g.moveTo(sx, sy); g.lineTo(px, py); g.stroke();
+      if (gun) { // a little revolver in its paw
+        g.fillStyle = '#3a3a44';
+        g.fillRect(px + (look > 0 ? 0 : -22), py - 5, 22, 6);
+        g.fillStyle = '#6b4a2a';
+        g.fillRect(px + (look > 0 ? -2 : -4), py - 2, 6, 11);
+      }
+      g.fillStyle = L.fur.light; g.beginPath(); g.arc(px, py, 5.5, 0, Math.PI * 2); g.fill();
+    }
+    requestAnimationFrame(frame);
+
     roundMatch(ctx, {
       target: 2,
       maxRounds: 5,
+      revealMs: 2600,
       play(r, submit) {
         ctx.note('Round ' + r + ' · first to 2');
-        let state = 'wait';
+        phase = 'wait';
+        paceAt = performance.now();
+        signT = -1;
+        banner = '';
+        cats.forEach(c => { c.turn = 0; c.aim = 0; c.face = c.hurt ? 'sad' : 'angry'; });
+        setMsg('drawMsg', "Wait for DRAW… don't click yet!");
         let goAt = 0;
-        pad.className = 'draw-pad wait';
-        setMsg('drawBig', 'Wait for it…');
-        setMsg('drawSub', "Don't click yet!");
-        setMsg('drawMsg', '');
         const goTimer = ctx.later(() => {
-          state = 'go';
+          phase = 'go';
           goAt = performance.now();
-          pad.className = 'draw-pad go';
-          setMsg('drawBig', 'GO!');
-          setMsg('drawSub', 'Click!');
-          sound('go');
+          signT = goAt;
+          setMsg('drawMsg', 'DRAW! Click!');
+          sound([[1200, 0, 0.12, { w: 'square', g: 0.5 }], [1600, 0.1, 0.2, { w: 'square', g: 0.5 }]]);
           ctx.later(() => {
-            if (state !== 'go') return;
-            state = 'done';
+            if (phase !== 'go') return;
+            phase = 'done';
             hit = null;
-            pad.className = 'draw-pad done';
-            setMsg('drawBig', 'Too slow!');
+            setMsg('drawMsg', 'Too slow!');
             submit({ ms: 3000 });
           }, 3000);
         }, delays[r - 1]);
         hit = () => {
-          if (state === 'wait') {
-            state = 'done';
+          if (phase === 'wait') { // a foul: you went for your gun too soon
+            phase = 'done';
             hit = null;
             ctx.cancel(goTimer);
-            pad.className = 'draw-pad foul';
-            setMsg('drawBig', 'Too early!');
-            setMsg('drawSub', 'You clicked before GO');
+            cats[0].face = 'shock';
+            setMsg('drawMsg', 'Too early! You went for your gun before DRAW.');
             submit({ foul: true });
-          } else if (state === 'go') {
-            state = 'done';
+          } else if (phase === 'go') {
+            phase = 'done';
             hit = null;
             const ms = Math.round(performance.now() - goAt);
-            pad.className = 'draw-pad done';
-            setMsg('drawBig', ms + ' ms');
-            setMsg('drawSub', 'Waiting for ' + ctx.oppName + '…');
+            cats[0].turn = 1;          // (spin round now; who fires first shows when both are in)
+            setMsg('drawMsg', ms + ' ms · waiting for ' + ctx.oppName + '…');
             submit({ ms });
           }
         };
@@ -414,9 +544,15 @@ GAMES.draw = {
       },
       reveal(r, a, b, w) {
         const f = v => (!v || v.foul ? 'too early' : v.ms >= 3000 ? 'too slow' : v.ms + ' ms');
-        setMsg('drawSub', '');
+        phase = 'done';
+        bannerT = performance.now();
+        if (w !== 0) {
+          const o = shoot(w > 0 ? 0 : 1);
+          setTimeout(() => hitCat(o), 120);
+          banner = w > 0 ? 'BANG!' : 'BANG!';
+        } else { banner = 'Both too early!'; cats.forEach(c => { c.face = 'shock'; }); }
         setMsg('drawMsg', 'You: ' + f(a) + ' · ' + ctx.oppName + ': ' + f(b) + ' · ' +
-          (w > 0 ? 'point for you!' : w < 0 ? 'point for ' + ctx.oppName + '.' : 'tie!'));
+          (w > 0 ? 'you were faster!' : w < 0 ? ctx.oppName + ' was faster.' : 'tie!'));
       },
       botValue() {
         if (Math.random() < 0.05) return { foul: true };

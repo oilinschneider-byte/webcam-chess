@@ -1,9 +1,10 @@
 /* Classic Games: Cheese Grab. A side-on kitchen with the floppy-armed cats from Floppy Sword Cats (see games-swords.js
    and games-floppy.js). Now and then a piece of cheese drops from a hole in the ceiling into the middle (only a couple
    at a time). A and D walk (not fast), W or Space jumps. Hold the mouse button and your front paw reaches for the mouse
-   pointer: it grabs any cheese it touches and holds it while you keep holding. Let go and the paw opens: the cheese
-   drops, or flies off if you were swinging, so you can toss it. Get it into your pot (on your side) to score: 1 point,
-   golden cheese 3. E shoots your arm out a long way (then 5 seconds to cool down): catch the other cat and they drop
+   pointer: it grabs any cheese it touches and holds it while you keep holding. Let go and you THROW it: it flies in an
+   arc to wherever the mouse pointer is. Get it into your pot (on your side) to score: 1 point,
+   golden cheese 3. E shoots your arm out a long way (then 5 seconds to cool down): catch the other cat (even right next
+   to you) and they drop
    their cheese, and you can swing them about and throw them (let go of E). Most points after 60 seconds wins.
    The host's app runs it all (see games-duel.js). */
 (() => {
@@ -21,7 +22,7 @@ const REACH = 78, HAND_MAX = 12;
 const HEAD_Y = -56;
 const GRAB_RANGE = 430, GRAB_SPEED = 1900, GRAB_WAIT = 5;
 const GRIP_MAX = 2, CARRY = 900, THROW_MAX = 1300, SPLAT = 700;
-const CR = 13, TOSS_MAX = 950, GOLD_P = 0.15;
+const CR = 13, TOSS_MAX = 950, THROW_FAST = 1500, GOLD_P = 0.15;
 const SPAWN_EVERY = 5, MAX_CHEESE = 2;             // very little cheese: one every 5 seconds, never more than 2 about
 const POTS = [{ x: 62, rim: 392 }, { x: W - 62, rim: 392 }], POT_W = 46; // (half the pot's width at the rim)
 const LEN = 60;
@@ -40,7 +41,7 @@ CA.games.add('cheese', {
       id: 'cheese', mouse: true, keys: { KeyE: 'e' }, letters: { e: 'e' },
       jump: 120, angles: ['tilt'],
       pad: { stick: true, buttons: [{ k: 'e', label: '✋ Grab cat' }, { k: 'a', label: '⤒ Jump', main: true }] },
-      help: 'A/D walk · W or Space jump · hold the mouse to grab cheese, let go to drop or toss it into your pot · E grabs the other cat',
+      help: 'A/D walk · W or Space jump · hold the mouse button to grab cheese, let go to THROW it where the pointer is · E grabs the other cat',
       helpTouch: 'Stick walks · drag on the arena to reach and grab cheese, lift to let go · Grab cat · Jump',
       note: LEN + ' seconds · most cheese in your pot wins',
       init, step, snap, bot, draw, event,
@@ -223,6 +224,20 @@ function stepCheese(s, dt, api) {
   }
 }
 
+// Let go of the mouse button: the cheese flies in an arc that comes down where the pointer is (n.ax, n.ay).
+function throwCheese(s, c, n) {
+  const q = s.cheese.find(z => z.id === c.hold);
+  c.hold = -1;
+  c.pickWait = 0.3;
+  if (!q) return;
+  q.holder = -1;
+  const dx = n.ax - q.x, dy = n.ay - q.y, T = clamp(0.3 + Math.hypot(dx, dy) / 1300, 0.3, 0.95), g = G * 0.8;
+  q.vx = dx / T;
+  q.vy = dy / T - 0.5 * g * T;
+  const sp = Math.hypot(q.vx, q.vy);
+  if (sp > THROW_FAST) { q.vx *= THROW_FAST / sp; q.vy *= THROW_FAST / sp; }
+}
+
 function dropCheese(s, c, toss) {
   if (c.hold < 0) return;
   const q = s.cheese.find(z => z.id === c.hold);
@@ -258,8 +273,8 @@ function step(s, inp, dt, api) {
     c.jumpBuf = n.hit.a || n.hit.u ? 0.12 : Math.max(0, c.jumpBuf - dt);
     if (c.jumpBuf > 0 && c.ground) { c.jumpBuf = 0; c.vy = -JUMP; c.ground = false; api.ev('jump', {}); }
     if (n.hit.e && c.grabWait <= 0) launchGrab(s, c, i, n, api);
-    // the paw opens when you let go of the mouse button: the cheese drops (or flies, if you were swinging)
-    if (c.hold >= 0 && !n.held.fire) { dropCheese(s, c, true); api.ev('toss', { i }); }
+    // let go of the mouse button: you throw the cheese to where the pointer is
+    if (c.hold >= 0 && !n.held.fire) { throwCheese(s, c, n); api.ev('toss', { i }); }
   });
   const h = dt / SUB;
   for (let k = 0; k < SUB; k++) {
@@ -305,8 +320,9 @@ function stepReach(s, c, i, n, dt, api) {
     r.d += GRAB_SPEED * dt;
     r.x = sh[0] + r.dx * r.d;
     r.y = sh[1] + r.dy * r.d;
-    const hd = headAt(o), body = at(o, 0, -24);
-    const got = o.caught < 0 && (Math.hypot(r.x - hd[0], r.y - hd[1]) < 40 || Math.hypot(r.x - body[0], r.y - body[1]) < 34);
+    // (anywhere along the arm counts, not just the paw: so a cat right next to you can be grabbed too)
+    const hd = headAt(o), body = at(o, 0, -24), along = (px, py) => CA.duel.nearest(px, py, sh[0], sh[1], r.x, r.y).d;
+    const got = o.caught < 0 && (along(hd[0], hd[1]) < 40 || along(body[0], body[1]) < 36);
     if (got) {
       if (o.reach) { o.reach = null; o.grabWait = GRAB_WAIT; }
       const had = o.hold >= 0;
@@ -402,10 +418,11 @@ function bot(s, i, dt, api) {
     if (c.hold >= 0) {
       const edge = i ? W - EDGE : EDGE;
       me.mx = Math.abs(c.x - edge) > 8 ? Math.sign(edge - c.x) : 0;
-      me.ax = pot.x;
-      me.ay = pot.rim - 30;
-      const hand = c.arms[1][ARM_N];
-      me.hold = !(Math.abs(hand.x - pot.x) < POT_W - 12 && hand.y < pot.rim - 6);
+      // (close enough: it throws the cheese at its pot, a little off on easier levels)
+      me.ax = pot.x + (me.err == null ? (me.err = CA.games.kit.gauss(0, 4 + 34 * (1 - api.skill))) : me.err);
+      me.ay = pot.rim + 4;
+      me.hold = Math.abs(c.x - pot.x) > 300 + 120 * api.skill;
+      if (!me.hold) me.err = null;
     } else {
       const free = s.cheese.filter(q => q.holder < 0);
       if (o.hold >= 0 && c.grabWait <= 0 && Math.abs(o.x - c.x) < GRAB_RANGE - 80 && Math.random() < 0.15 + 0.3 * api.skill) {
@@ -542,10 +559,23 @@ function drawPot(v, i, n) {
   v.label(i === v.me ? 'Your pot' : v.names[i], p.x, p.rim - 22, 12, i === v.me ? '#ffd23f' : col.light);
 }
 
+// Each cat's face: dizzy after a splat, wide-eyed when it's been grabbed, the engine's happy or sad after a point,
+// gritting its teeth as it reaches out, smug holding the other cat up, and pleased with itself carrying a cheese.
+function grabFace(v, c, i) {
+  if (c.z) return 'dizzy';
+  if (c.sh) return 'shock';
+  const m = v.faceOf && v.faceOf(i);
+  if (m) return m;
+  if (c.rp === 2) return 'smug';
+  if (c.rp === 1) return 'angry';
+  if (c.h) return 'happy';
+  return null;
+}
+
 function drawCat(v, c, i) {
   const g = v.g, look = (looks && looks[i]) || v.looks[i];
   drawArm(g, c.ar[0], look.fur);
-  F.drawBody(g, look, c.x, c.y, { tilt: c.tilt, lookRight: c.face > 0, squash: c.sq });
+  F.drawBody(g, look, c.x, c.y, { tilt: c.tilt, lookRight: c.face > 0, squash: c.sq, face: grabFace(v, c, i) });
   drawArm(g, c.ar[1], look.fur);
   const hd = at(c, 0, -92);
   if (c.z) {

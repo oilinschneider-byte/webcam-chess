@@ -69,7 +69,7 @@ function nearest(px, py, ax, ay, bx, by) {
 // A cat's picture (with its arms: these cats are small), looking right or left, with its mouth closed or open:
 // pics[1 or -1][0 or 1]. (F.drawBody draws it.)
 function pictures(eq) {
-  const pics = { 1: [null, null], '-1': [null, null] };
+  const pics = { 1: [null, null], '-1': [null, null], face: F.faceCache(eq, {}, 200, 240) }; // (pics.face: with an expression)
   [1, -1].forEach(look => [0, 1].forEach(open => {
     const svg = CA.catSVG(eq, { bg: false, anim: false, mouth: open ? 'open' : 'closed', look: look * 6 })
       .replace('<svg ', '<svg width="200" height="240" ');
@@ -144,6 +144,11 @@ function play(ctx) {
   const playT = () => T() - READY;
   let shake = 0, lastBounce = 0, lastMsg = performance.now();
   const party = F.party(W, H); // (confetti and flashes for a point and the win: see games-floppy.js)
+  // The cats' faces: a mood for a moment after something happens (a point, a block, a hit), and otherwise what each
+  // one is up to. (Worked out on each screen, from what that screen sees.)
+  const moods = [{ f: null, until: 0 }, { f: null, until: 0 }];
+  const mood = (i, f, secs) => { moods[i] = { f, until: performance.now() + secs * 1000 }; };
+  const moodNow = (i, now) => (moods[i].f && now < moods[i].until ? moods[i].f : null);
   const fx = [];
 
   // The space inside the hedge around the arena.
@@ -539,6 +544,7 @@ function play(ctx) {
     pop(v.x, v.y - 40, 'SHIELD BROKEN!', '#7dd3ff');
     shake = Math.max(shake, 8);
     party.point(c !== me);
+    mood(c.i, 'hurt', 1.6); mood(1 - c.i, 'happy', 1.6);
     sound([[1800, 0, 0.04], [1200, 0.03, 0.06], [700, 0.07, 0.12]]);
     showScore();
   }
@@ -1308,6 +1314,18 @@ function play(ctx) {
     }
   }
 
+  // Its face: the winner's grin at the end, K.O. when knocked out, a mood after something happens (a broken shield),
+  // and worried with no shield left.
+  function faceOf(c, hurting, now) {
+    if (c.dead) return 'ko';
+    if (winner != null) return winner < 0 ? 'shock' : winner === c.i ? 'happy' : 'ko';
+    if (hurting) return 'hurt';
+    const m = moodNow(c.i, now);
+    if (m) return m;
+    if (!c.shield && !c.extra && phase === 'play') return 'shock';
+    return null;
+  }
+
   function drawCat(c, now) {
     const v = vw(c);
     const X = sx(v.x), Y = v.y, col = TEAM[c.i];
@@ -1344,7 +1362,7 @@ function play(ctx) {
     g.scale(0.48, 0.48);
     F.drawBody(g, c, 0, 0, {
       tilt: c.dead ? c.spin : 0, lookRight: ax >= 0, open: F.mouth(c === me ? 'talk-me' : 'talk-opp') > 0.12,
-      alpha: c.dead ? 0.6 : safe ? 0.5 : 1,
+      alpha: c.dead ? 0.6 : safe ? 0.5 : 1, face: faceOf(c, hurting, now),
     });
     g.restore();
     if (c.shield && !c.dead) { // the shield: a shimmering bubble

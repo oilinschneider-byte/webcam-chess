@@ -486,7 +486,7 @@ a.stat-chip:hover { background: var(--surface-2); }
 .rps-pick.picked { border-color: var(--accent); background: var(--accent-soft); opacity: 1; }
 .rps-pick kbd { position: absolute; top: 6px; right: 9px; color: var(--muted); font-family: inherit; font-size: 11px; }
 
-.g-draw { width: 100%; max-width: 620px; }
+.g-draw { width: 100%; max-width: 980px; }
 .draw-pad {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
   width: 100%; min-height: 270px; border: 0; border-radius: 20px; background: var(--surface-2);
@@ -2264,3 +2264,39 @@ h1, h2, h3 { font-weight: 800; letter-spacing: -.01em; }
 .rx-bet.up > span { color: #7ee07a; }
 .rx-bet.down > span { color: #ff8a8a; }
 .rx-bet .bet-pot { animation: none; color: #fff; }
+
+/* Quick Draw: the showdown is drawn on a canvas (see GAMES.draw in solos.js) */
+.draw-cv { display: block; width: 100%; aspect-ratio: 960 / 420; border-radius: 14px; cursor: crosshair; touch-action: none; }
+
+/* Rock Paper Scissors on camera (see games-rounds.js): each player's camera (or cat), with their hand popping up over it */
+.g-claw { max-width: 820px; }
+.clw-arena { gap: 18px; }
+.clw-cam { position: relative; flex: 1; max-width: 330px; overflow: hidden; aspect-ratio: 4 / 3; border-radius: 16px; border: 2px solid var(--border);
+  background: radial-gradient(circle at 50% 30%, #2f7fd6, #0f2f55 75%); box-shadow: var(--shadow); }
+.clw-cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.clw-cat { position: absolute; inset: 6% 0 0; display: flex; justify-content: center; }
+.clw-cat svg { height: 100%; width: auto; }
+.clw-name { position: absolute; left: 10px; bottom: 10px; padding: 3px 10px; border-radius: 8px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; font-weight: 800; }
+.clw-cam .rps-hand { position: absolute; right: 10px; bottom: 10px; width: 78px; height: 78px; font-size: 42px; background: rgba(255, 255, 255, .92); }
+.clw-cam .rps-hand.thrown { animation: clw-throw .45s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes clw-throw { from { transform: scale(.2) rotate(-30deg); } }
+.clw-bob { animation: clw-bob .3s ease; }
+@keyframes clw-bob { 50% { transform: translateY(8px); } }
+@media (max-width: 640px) { .clw-cam .rps-hand { width: 56px; height: 56px; font-size: 30px; } }
+
+/* Hot Potato Bomb, bigger: the kitchen fills more of the screen, with bigger cats, a bigger potato and a bigger question */
+.g-potato, .g-potato.kitchen { max-width: 1040px; }
+.g-potato.kitchen .pot-row { grid-template-columns: 1fr 1fr 1fr; margin-top: 96px; }
+.g-potato.kitchen .pot-cat svg { width: 170px; }
+.g-potato.kitchen .pot-cat b { font-size: 17px; }
+.g-potato.kitchen .pot-lane { height: 150px; }
+.g-potato.kitchen .pot-bomb { width: 110px; height: 110px; margin: -55px 0 0 -55px; }
+.g-potato.kitchen .pot-who { font-size: 22px; }
+.g-potato.kitchen .pot-task { max-width: 560px; }
+.pot-task b { font-size: 52px; }
+@media (max-width: 760px) { .g-potato.kitchen .pot-row { grid-template-columns: 130px 1fr 130px; margin-top: 90px; } .g-potato.kitchen .pot-cat svg { width: 96px; } .g-potato.kitchen .pot-lane { height: 140px; } }
+/* (Rock Paper Scissors: the two cameras stay in the middle, clear of the corner camera blocks) */
+.clw-arena { max-width: 640px; margin: 0 auto; }
+.clw-cam { max-width: 270px; }
+.g-potato.kitchen .kit-bg { height: 400px; }
+@media (max-width: 760px) { .g-potato.kitchen .kit-bg { height: 300px; } }

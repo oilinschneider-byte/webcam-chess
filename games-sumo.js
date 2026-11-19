@@ -101,13 +101,13 @@ function step(s, inp, dt, api) {
     a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
     const va = a.vx * nx + a.vy * ny, vb = b.vx * nx + b.vy * ny;
     if (va - vb > 0) {
-      const charging = a.charge > 0 || b.charge > 0;
+      const charging = a.charge > 0 || b.charge > 0, by = a.charge > 0 ? 0 : b.charge > 0 ? 1 : -1;
       const together = charging ? (va + vb) / 2 : Math.max(-SHOVE, Math.min(SHOVE, (va + vb) / 2));
       a.vx += (together - va) * nx; a.vy += (together - va) * ny;
       b.vx += (together - vb) * nx; b.vy += (together - vb) * ny;
       if (a.charge > 0) { const kk = KNOCK * (1 + 1.5 * a.pw); b.vx += nx * kk; b.vy += ny * kk; a.charge = 0; a.rec = RECOVER * (1 + 1.6 * a.pw); }
       if (b.charge > 0) { const kk = KNOCK * (1 + 1.5 * b.pw); a.vx -= nx * kk; a.vy -= ny * kk; b.charge = 0; b.rec = RECOVER * (1 + 1.6 * b.pw); }
-      if (Math.abs(va - vb) > 260) api.ev('thump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, big: charging ? 1 : 0 });
+      if (Math.abs(va - vb) > 260) api.ev('thump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, big: charging ? 1 : 0, by });
     }
   }
   const rr = ringR(s.t);
@@ -160,9 +160,51 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
-  if (e.type === 'thump') { v.burst(e.x, e.y, '#fff3b0', e.big ? 16 : 8, 260); v.shake(e.big ? 10 : 4); v.sound([[150, 0, 0.08], [100, 0.05, 0.12]]); if (e.big) v.pop(e.x, e.y - 40, 'OOF!'); }
+  if (e.type === 'thump') {
+    v.burst(e.x, e.y, '#fff3b0', e.big ? 16 : 8, 260); v.shake(e.big ? 10 : 4); v.sound([[150, 0, 0.08], [100, 0.05, 0.12]]);
+    if (e.big) v.pop(e.x, e.y - 60, 'OOF!');
+    if (e.by >= 0) { v.mood(1 - e.by, 'shock', 0.7); v.mood(e.by, 'smug', 0.7); } // (a charge that landed)
+  }
   if (e.type === 'charge') v.sound([[520, 0, 0.05], [360, 0.04, 0.08]]);
   if (e.type === 'out') { v.burst(e.x, e.y, '#e8c99a', 22, 300); v.pop(e.x, e.y - 50, 'OUT!', '#ff5a5a'); v.sound('boom'); v.shake(12); }
+}
+
+// A sumo cat, standing on its own coloured mat, seen from the side, always facing the other one. Its arms show what it's
+// doing: out in front, pushing (with a > < face when it's shoving the other cat); fists clenched down at its sides,
+// angry, while it winds up a charge; thrown forward while it charges; wobbly after.
+function drawSumo(v, i, c, o, pushing) {
+  const g = v.g, K = 1.15, right = o.x > c.x, f = right ? 1 : -1, feet = c.y + 26;
+  const wind = c.cm > 0, shakeX = wind ? Math.sin(v.now / 25) * 2 * c.cm : 0;
+  const lean = c.ch ? 0.22 : pushing ? 0.14 : wind ? -0.04 : 0.05; // (leaning into it)
+  // the mat
+  g.fillStyle = v.team[i].main;
+  g.beginPath(); g.ellipse(c.x, feet + 2, 40, 15, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(255, 255, 255, .22)';
+  g.beginPath(); g.ellipse(c.x - 8, feet - 1, 24, 6, 0, 0, Math.PI * 2); g.fill();
+  if (c.ch) { // speed lines behind a charging cat
+    g.strokeStyle = 'rgba(255, 255, 255, .7)'; g.lineWidth = 3; g.lineCap = 'round';
+    g.beginPath();
+    for (const dy of [-70, -50, -30]) { g.moveTo(c.x - f * 40, feet + dy); g.lineTo(c.x - f * 78, feet + dy); }
+    g.stroke();
+  }
+  const face = wind || c.ch ? 'angry' : c.rc ? 'dizzy' : pushing ? 'squint' : undefined;
+  // (each cat stands a little back from its spot, so when two are touching, their paws meet in the middle)
+  const x = c.x - f * 19 + shakeX, tilt = f * lean + (c.rc ? Math.sin(v.now / 60) * 0.12 : 0);
+  // (shoulders, turned with the lean)
+  const sh = k => { const lx = k * 12.4 * K * f, ly = -33 * K; return [x + lx * Math.cos(tilt) - ly * Math.sin(tilt), feet + lx * Math.sin(tilt) + ly * Math.cos(tilt)]; };
+  const [bx, by] = sh(-1), [fx, fy] = sh(1); // (the back shoulder and the front one)
+  const paws = wind ? [[x - f * 16, feet - 10], [x + f * 16, feet - 10]] // fists down at its sides
+    : c.ch ? [[x + f * 54, feet - 44], [x + f * 58, feet - 32]]          // thrown forward
+    : pushing ? [[x + f * 46, feet - 44], [x + f * 48, feet - 31]]       // pushing
+    : [[x + f * 36, feet - 38], [x + f * 38, feet - 26]];                // ready to push
+  v.arm(i, bx, by, paws[0][0], paws[0][1], { w: 10, fist: wind, bend: -f });
+  v.catBare(i, x, feet, K, { lookRight: right, tilt, face });
+  v.arm(i, fx, fy, paws[1][0], paws[1][1], { w: 10, fist: wind, bend: -f });
+  if (wind) { // steam puffing off an angry cat
+    g.fillStyle = 'rgba(255, 255, 255, .55)';
+    for (let k = 0; k < 2; k++) { const t = (v.now / 500 + k / 2) % 1; g.globalAlpha = 0.6 * (1 - t); g.beginPath(); g.arc(x + (k ? 18 : -18) * f, feet - 118 - t * 26, 5 + t * 7, 0, Math.PI * 2); g.fill(); }
+    g.globalAlpha = 1;
+  }
 }
 
 let floor = null;
@@ -201,21 +243,16 @@ function draw(v, s) {
   g.beginPath(); g.arc(CX, CY, s.rr, 0, Math.PI * 2); g.stroke();
   g.setLineDash([]);
   if (s.rr < RING0 - 1) { g.strokeStyle = 'rgba(255, 80, 80, .5)'; g.lineWidth = 2; g.beginPath(); g.arc(CX, CY, s.rr + 9, 0, Math.PI * 2); g.stroke(); }
-  s.c.forEach((c, i) => {
-    g.fillStyle = 'rgba(0, 0, 0, .25)';
-    g.beginPath(); g.ellipse(c.x, c.y + 26, 30, 9, 0, 0, Math.PI * 2); g.fill();
-    if (c.ch) { g.globalAlpha = 0.45; g.fillStyle = v.team[i].light; v.dot(c.x - c.f * 20, c.y, 24); g.globalAlpha = 1; }
-    g.fillStyle = v.team[i].main; // a round belly, for a sumo cat
-    v.dot(c.x, c.y + 4, R);
-    g.fillStyle = 'rgba(255, 255, 255, .25)';
-    v.dot(c.x - 8, c.y - 6, 10);
-    v.catTop(i, c.x, c.y - 12, 1.15, { ring: false, lookRight: c.f > 0, tilt: c.rc ? Math.sin(v.now / 60) * 0.15 : 0, label: false });
-    v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 44, 12, i === v.me ? '#ffd23f' : '#ffffff');
+  const pushing = Math.hypot(s.c[0].x - s.c[1].x, s.c[0].y - s.c[1].y) < R * 2 + 8; // (leaning on each other)
+  [0, 1].sort((a, b) => s.c[a].y - s.c[b].y).forEach(i => { // (the one nearer the front is drawn last)
+    const c = s.c[i];
+    drawSumo(v, i, c, s.c[1 - i], pushing);
+    v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 50, 12, i === v.me ? '#ffd23f' : '#ffffff');
     if (c.cm > 0) { // the charge meter
       g.fillStyle = 'rgba(0, 0, 0, .6)';
-      v.roundRect(c.x - 26, c.y - 58, 52, 9, 4.5); g.fill();
+      v.roundRect(c.x - 26, c.y - 112, 52, 9, 4.5); g.fill();
       g.fillStyle = c.cm < 0.5 ? '#7dff8a' : c.cm < 0.85 ? '#ffd23f' : '#ff5a5a';
-      v.roundRect(c.x - 25, c.y - 57, Math.max(3, 50 * c.cm), 7, 3.5); g.fill();
+      v.roundRect(c.x - 25, c.y - 111, Math.max(3, 50 * c.cm), 7, 3.5); g.fill();
     }
   });
   v.label('🤼 ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd, W / 2, 24, 16, '#ffffff');

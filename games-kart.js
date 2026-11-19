@@ -175,6 +175,9 @@ function bot(s, i, dt, api) {
 }
 
 function event(v, e) {
+  // (the cats' faces: see view.mood in games-duel.js)
+  if (e.type === 'lap') v.mood(e.i, 'happy', 1.5);
+  if (e.type === 'bump') { v.mood(0, 'shock', 0.7); v.mood(1, 'shock', 0.7); }
   if (e.type === 'boost') { v.burst(e.x, e.y, '#ffd23f', 10, 200); v.sound([[300, 0, 0.06], [600, 0.05, 0.1]]); }
   if (e.type === 'wall') v.sound([[140, 0, 0.05]]);
   if (e.type === 'bump') { v.burst(e.x, e.y, '#ffffff', 8, 180); v.sound([[200, 0, 0.05], [120, 0.04, 0.08]]); v.shake(4); }
