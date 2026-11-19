@@ -46,7 +46,7 @@ function faceCache(eq, svgOpts, w, h) {
 // A cat's picture (without its arms: those are drawn separately, nice and long), looking right or left, with its
 // mouth closed or open (it opens when that player talks): pics[1 or -1][0 or 1]. pics.face: the same with an expression.
 function pictures(eq) {
-  const pics = { 1: [null, null], '-1': [null, null], face: faceCache(eq, { arms: false }, Math.round(IMG_W * 2.5), Math.round(IMG_H * 2.5)) };
+  const pics = { 1: [null, null], '-1': [null, null], bare: true, face: faceCache(eq, { arms: false }, Math.round(IMG_W * 2.5), Math.round(IMG_H * 2.5)) };
   [1, -1].forEach(look => [0, 1].forEach(open => {
     const svg = CA.catSVG(eq, { bg: false, anim: false, arms: false, mouth: open ? 'open' : 'closed', look: look * 6 })
       .replace('<svg ', '<svg width="200" height="240" ');
@@ -70,15 +70,21 @@ function mouth(cls) {
 }
 
 // Draws a cat's picture with its feet at (x, y). o: { tilt, squash (0 to 1), lookRight, open (mouth), alpha, face }.
+// o.anim: false for none of the life below (see alive). o.top: seen from above (all its moving counts as walking, and
+// there's no jumping). o.bob: how much it bounces as it walks (1; less for a cat riding something).
 function drawBody(g, c, x, y, o) {
   const look = o.lookRight ? 1 : -1, pics = c.pics[look];
-  const pic = (o.face && c.pics.face && c.pics.face(o.face, look, o.open)) || pics[o.open ? 1 : 0] || pics[0];
-  const sq = 1 - (o.squash || 0) * 0.16;
   if (o.alpha !== undefined) g.globalAlpha = o.alpha;
   g.save();
   g.translate(x, y);
-  g.rotate(o.tilt || 0);
-  g.scale(2 - sq, sq);
+  const a = o.anim === false ? null : alive(g, c, o);
+  const face = o.face || (a && a.blink ? 'blink' : null);
+  const pic = (face && c.pics.face && c.pics.face(face, look, o.open)) || pics[o.open ? 1 : 0] || pics[0];
+  const sq = 1 - (o.squash || 0) * 0.16;
+  const moves = a && o.anim !== 'blink'; // (anim: 'blink' only blinks: for a cat with a hat on, say)
+  if (moves) { drawPuffs(g, a); g.translate(0, a.dy); }
+  g.rotate((o.tilt || 0) + (moves ? a.tilt : 0));
+  g.scale((2 - sq) * (moves ? a.sx : 1), sq * (moves ? a.sy : 1));
   if (pic) g.drawImage(pic, -IMG_W / 2, -IMG_FEET, IMG_W, IMG_H);
   else { // (while the picture loads)
     g.fillStyle = c.fur.mid;
@@ -86,6 +92,89 @@ function drawBody(g, c, x, y, o) {
     g.fillRect(-16, -30, 32, 30);
   }
   g.restore();
+  g.globalAlpha = 1;
+}
+
+/* ---------- life: how a cat moves when it's drawn ---------- */
+
+// Each cat picture keeps a little record of where it was last drawn, so it can tell how it's moving without the game
+// saying anything: standing still, it breathes (a slow swell), sways a bit and blinks now and then; walking, it bounces
+// along and leans into it; in the air it stretches, and when it lands it squashes down with a puff of dust; turning
+// round, it pinches thin for a moment. All of it is only for show (the game never sees any of it). The pictures
+// without arms (see pictures) only breathe, blink and turn: their arms are drawn from where the game says the
+// shoulders are, so a bounce would pull the body away from them.
+const lives = new WeakMap();
+function alive(g, c, o) {
+  const now = performance.now(), m = g.getTransform(), k = Math.hypot(m.a, m.b) || 1;
+  const wx = m.e / k, wy = m.f / k; // (where its feet are, in the picture's own units)
+  let st = lives.get(c);
+  if (!st) {
+    st = { t: now, x: wx, y: wy, vx: 0, vy: 0, fall: 0, ph: 0, land: 0, turn: 0, look: o.lookRight, seed: Math.random() * 10, blink: now + 800 + Math.random() * 2500, puffs: [], out: null };
+    lives.set(c, st);
+  }
+  if (now - st.t < 4 && st.out) return st.out; // (drawn twice in one frame: the same pose)
+  const dt = Math.min(0.25, (now - st.t) / 1000);
+  const dx = wx - st.x, dy = wy - st.y;
+  st.t = now; st.x = wx; st.y = wy;
+  if (dt <= 0 || dt >= 0.25 || Math.hypot(dx, dy) > 90) { st.vx = 0; st.vy = 0; st.fall = 0; } // (a pause, or a jump to somewhere new)
+  else {
+    const f = 1 - Math.exp(-dt / 0.07);
+    st.vx += (dx / dt - st.vx) * f;
+    st.vy += (dy / dt - st.vy) * f;
+  }
+  const full = !c.pics.bare, top = !!o.top, T = now / 1000;
+  const speed = top ? Math.hypot(st.vx, st.vy) : Math.abs(st.vx);
+  const walk = clamp((speed - 15) / 110, 0, 1), still = 1 - clamp(speed / 45, 0, 1);
+  // landing: it was falling fast, and now it isn't
+  if (!top && full) {
+    if (st.vy > 230) { st.fallT = (st.fallT || 0) + dt; if (st.fallT > 0.12) st.fall = Math.max(st.fall, st.vy); } // (really falling, not just a shake of the screen)
+    else st.fallT = 0;
+    if (st.fall && st.vy < 60) {
+      st.land = clamp(st.fall / 700, 0.35, 1);
+      for (let n = 0; n < 5; n++) st.puffs.push({ x: wx + (n - 2) * 9, y: wy, vx: (n - 2) * 30, vy: -18 - Math.random() * 14, r: 3 + Math.random() * 3, life: 0.45, max: 0.45 });
+      st.fall = 0;
+    }
+  }
+  st.land = Math.max(0, st.land - dt * 5);
+  // turning round
+  if (o.lookRight !== st.look) { st.turn = 1; st.look = o.lookRight; }
+  st.turn = Math.max(0, st.turn - dt * 7);
+  // a step: the bounce goes round once every 26 units walked (a puff behind now and then, on the ground)
+  const before = Math.floor(st.ph / Math.PI);
+  st.ph += speed * dt / 26 * Math.PI;
+  if (full && !top && walk > 0.7 && Math.floor(st.ph / Math.PI) !== before && Math.abs(st.vy) < 60) st.puffs.push({ x: wx - Math.sign(st.vx) * 14, y: wy, vx: -Math.sign(st.vx) * 25, vy: -10, r: 2.5, life: 0.3, max: 0.3 });
+  for (let n = st.puffs.length - 1; n >= 0; n--) { const p = st.puffs[n]; p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.r += dt * 12; if (p.life <= 0) st.puffs.splice(n, 1); }
+  // blinking: every 2 to 5 seconds, sometimes twice
+  let blink = false;
+  if (now >= st.blink) {
+    blink = now < st.blink + 120;
+    if (!blink) st.blink = now + (Math.random() < 0.2 ? 180 : 2000 + Math.random() * 3200);
+  }
+  const breath = Math.sin(T * 2.5 + st.seed);
+  let sx = 1 - 0.014 * breath * still, sy = 1 + 0.028 * breath * still;
+  let tilt = 0.03 * Math.sin(T * 1.2 + st.seed * 2) * still, bob = 0;
+  if (full) {
+    const step = Math.abs(Math.sin(st.ph)), amount = o.bob == null ? 1 : o.bob;
+    bob = -step * 5 * walk * amount;
+    sy *= 1 + 0.05 * walk * amount * (step - 0.5);
+    if (!o.tilt && !o.squash) tilt += clamp(st.vx / 520, -1, 1) * 0.13 * (top ? 0.6 : 1);
+    if (!top && !o.squash) { const air = clamp((Math.abs(st.vy) - 160) / 450, 0, 1) * 0.1; sy *= 1 + air; sx *= 1 - air * 0.5; }
+    sx *= 1 + 0.24 * st.land; sy *= 1 - 0.2 * st.land;
+  }
+  sx *= 1 - 0.32 * st.turn;
+  st.out = { sx, sy, tilt, dy: bob, blink, st, wx, wy };
+  return st.out;
+}
+
+// The puffs of dust round a cat's feet (in the world: they stay where they were kicked up).
+function drawPuffs(g, a) {
+  const ps = a.st.puffs;
+  if (!ps.length) return;
+  g.fillStyle = 'rgb(236, 228, 214)';
+  for (const p of ps) {
+    g.globalAlpha = 0.55 * (p.life / p.max);
+    g.beginPath(); g.arc(p.x - a.wx, p.y - a.wy, p.r, 0, Math.PI * 2); g.fill();
+  }
   g.globalAlpha = 1;
 }
 

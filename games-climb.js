@@ -1470,8 +1470,11 @@ function play(ctx) {
     const talk = F.mouth(mine ? 'talk-me' : 'talk-opp') > 0.15;
     // (its face: dazed, worn out, falling, at the top, or swinging the fish)
     const face = v.stun ? 'dizzy' : mine && (me.tired || 0) > TIRED_T - 2 ? 'hurt' : c.done ? 'happy' : v.vy > 650 ? 'shock' : v.fish ? 'angry' : null;
-    const pic = (face && c.pics.face(face)) || c.pics[talk ? 1 : 0] || c.pics[0];
-    if (pic) g.drawImage(pic, v.x - 40, v.y - 67.2, 80, 76.8);
+    // (otherwise it blinks now and then, and breathes: a slow swell, from its feet up)
+    const blink = !face && (now + c.i * 1900) % 4300 < 130;
+    const pic = (face && c.pics.face(face)) || (blink && c.pics.face('blink')) || c.pics[talk ? 1 : 0] || c.pics[0];
+    const swell = 1 + 0.025 * Math.sin(now / 400 + c.i * 2), ph = 76.8 * swell, pw = 80 / Math.sqrt(swell);
+    if (pic) g.drawImage(pic, v.x - pw / 2, v.y + 9.6 - ph, pw, ph);
     else { g.fillStyle = c.fur.mid; dot(v.x, v.y - 30, 26); dot(v.x, v.y, 15); }
     // the climbing arm, claws out while it holds on
     const S = { x: v.x + SHOULDERS[0].x, y: v.y + SHOULDERS[0].y }, P = { x: v.px, y: v.py };

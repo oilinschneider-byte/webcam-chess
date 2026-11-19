@@ -499,7 +499,7 @@ function drawCat(v, s, i, c) {
   drawButt(v, i, c);
   // (its face: dizzy, straining, about to do its special, or stuck in sludge; otherwise whatever its mood is)
   const face = c.dz ? 'dizzy' : c.st ? 'squint' : c.hd ? 'angry' : c.sl ? 'hurt' : undefined;
-  v.catSide(i, c.x, c.y, 1, { lookRight: c.f > 0, face, tilt: c.st ? Math.sin(v.now / 30) * 0.05 : c.dz ? Math.sin(v.now / 90) * 0.14 : 0 });
+  v.catSide(i, c.x, c.y, 1, { lookRight: c.f > 0, face, bob: 0.25, tilt: c.st ? Math.sin(v.now / 30) * 0.05 : c.dz ? Math.sin(v.now / 90) * 0.14 : 0 });
   if (c.dz) { g.fillStyle = '#ffe14d'; for (let k = 0; k < 3; k++) { const a = v.now / 150 + k * 2.1; v.star(c.x + Math.cos(a) * 26, c.y - 104 + Math.sin(a) * 8, 7); } } // dizzy: stars going round the head
   if (c.hd) { // charging up the special: a glow round it
     g.strokeStyle = poopoo ? 'rgba(160, 100, 40, .7)' : 'rgba(255, 225, 77, .8)';

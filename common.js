@@ -484,6 +484,8 @@ const FACES = {
     eyes: () => ink('M63 83 L79 99 M79 83 L63 99 M121 83 L137 99 M137 83 L121 99', 4.5),
     mouth: () => ink('M89 113 L111 113', 3.2) + '<path d="M101 113 Q101 125 107 124 Q112 122 110 113 Z" fill="#ff8a9a" stroke="' + INK + '" stroke-width="2"/>',
   },
+  // a blink: eyes shut for a moment (the cats on the game canvases blink now and then: see drawBody in games-floppy.js)
+  blink: { eyes: () => ink('M61 91 Q71 97 81 91 M119 91 Q129 97 139 91', 4.5) },
   // smug, sure of a win: half-closed eyes, a sideways smile
   smug: {
     eyes: rim => plainEyes(rim, 6.5) + ink('M60 82 L82 82 M118 82 L140 82', 4),

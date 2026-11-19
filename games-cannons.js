@@ -372,8 +372,10 @@ function drawCat(v, s, i, c) {
   const k = 0.4, look = i === 0 ? 1 : -1;
   const shake = doomed && !dead ? Math.sin(v.now / 22) * 2.5 : 0;
   const face = dead ? 'ko' : doomed ? 'dizzy' : s.tn === i && s.ph === 'aim' ? (s.ch[i] ? 'squint' : 'angry') : s.ph === 'fly' && s.tn !== i ? 'shock' : 'normal';
-  const pic = catPic(v, i, face === 'normal' ? 'smug' : face, look);
-  const x = x0 + shake, y = y0;
+  // (waiting in its room, it blinks now and then, and breathes: its head rises and falls a little)
+  const blink = face === 'normal' && (v.now + i * 1700) % 3900 < 130;
+  const pic = catPic(v, i, blink ? 'blink' : face === 'normal' ? 'smug' : face, look);
+  const x = x0 + shake, y = y0, breath = dead ? 0 : Math.sin(v.now / 420 + i * 2) * 0.9;
   const w = 200 * 0.4 * k * 2, hgt = 240 * 0.4 * k * 2; // (the picture is 200 × 240; drawn 80 × 96 at size 1)
   if (!pic) { v.catSide(i, x, y, k, { lookRight: look > 0 }); return; }
   const SPLIT = 138 / 240; // (where the head meets the body, in the picture)
@@ -381,7 +383,7 @@ function drawCat(v, s, i, c) {
   g.drawImage(pic, 0, 240 * SPLIT, 200, 240 * (1 - SPLIT), x - w / 2, y - hgt * (1 - SPLIT) - 2, w, hgt * (1 - SPLIT));
   // the head: on its shoulders, or flying off
   const hd = heads[i];
-  let hx = x, hy = y - hgt * (1 - SPLIT) - 2, rot = 0;
+  let hx = x, hy = y - hgt * (1 - SPLIT) - 2 + breath, rot = 0;
   if (dead && hd) {
     const t = (v.now - hd.t0) / 1000;
     hx = x + hd.vx * t;

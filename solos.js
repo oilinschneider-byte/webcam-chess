@@ -458,7 +458,7 @@ GAMES.draw = {
       // the arm with the gun (behind the body when holstered, out front when aiming)
       const sx = look * 12, sy = -33;
       if (!c.aim) drawArm(L, sx, sy, look * 14, -14, false);
-      F.drawBody(g, L, 0, 0, { lookRight: look > 0, face: c.face, alpha });
+      F.drawBody(g, L, 0, 0, { lookRight: look > 0, face: c.face, alpha, anim: 'blink' }); // (its own pacing and bounce: see above)
       // the hat
       g.fillStyle = '#7a4a22';
       g.beginPath(); g.ellipse(0, -84, 30, 6, 0, 0, Math.PI * 2); g.fill();

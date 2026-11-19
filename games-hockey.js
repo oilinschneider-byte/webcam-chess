@@ -226,7 +226,7 @@ function draw(v, s) {
     v.dot(x, y, PR - 5);
     g.fillStyle = v.team[i].light;
     v.dot(x, y, PR - 16);
-    v.catTop(i, x, y - 4, 0.62, { ring: false, label: false, lookRight: i === 0 });
+    v.catTop(i, x, y - 4, 0.62, { ring: false, label: false, lookRight: i === 0, bob: 0.3 });
   });
   v.label(s.sc[0] + '  :  ' + s.sc[1], MID, 32, 28, '#ffffff');
   v.label(v.names[0], MID - 120, 32, 14, v.team[0].light);

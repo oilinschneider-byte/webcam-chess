@@ -231,7 +231,7 @@ function draw(v, s) {
     g.fillStyle = '#ffffff';
     g.fillRect(8, -3, 5, 6);
     g.restore();
-    v.catTop(i, b.x, b.y - 8, 0.62, { ring: false, lookRight: b.d !== 2, label: false });
+    v.catTop(i, b.x, b.y - 8, 0.62, { ring: false, lookRight: b.d !== 2, label: false, bob: 0.2 });
     v.label(i === v.me ? 'You' : v.names[i], b.x, b.y + 20, 11, i === v.me ? '#ffd23f' : '#ffffff');
   });
   v.label('🏍️ ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd, 480, 22, 15, '#ffffff');

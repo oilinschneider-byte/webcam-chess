@@ -621,7 +621,7 @@ function run(ctx, def) {
       g.save();
       g.translate(x, y + 17 * k);
       g.scale(0.48 * k, 0.48 * k);
-      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, face: faceOf(i, o) });
+      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, face: faceOf(i, o), top: true, bob: o.bob, anim: o.anim });
       g.restore();
       if (o.label !== false) paint.label(i === meI ? 'You' : names[i], x, y + 31 * k + 2, 12, i === meI ? '#ffd23f' : '#ffffff');
     },
@@ -631,7 +631,7 @@ function run(ctx, def) {
       g.save();
       g.translate(x, y);
       g.scale(size || 1, size || 1);
-      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, squash: o.squash || 0, face: faceOf(i, o) });
+      F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, squash: o.squash || 0, face: faceOf(i, o), bob: o.bob, anim: o.anim });
       g.restore();
     },
     // The same, without its arms, so the game can draw them in any pose (see view.arm). o is as for catSide. The picture

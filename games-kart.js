@@ -242,7 +242,7 @@ function draw(v, s) {
     g.fillStyle = v.team[i].light;
     g.fillRect(10, -7, 5, 14);
     g.restore();
-    v.catTop(i, k.x, k.y - 6, 0.55, { ring: false, label: false, lookRight: Math.cos(k.h) >= 0 });
+    v.catTop(i, k.x, k.y - 6, 0.55, { ring: false, label: false, lookRight: Math.cos(k.h) >= 0, bob: 0.2 });
     v.label(i === v.me ? 'You' : v.names[i], k.x, k.y + 22, 11, i === v.me ? '#ffd23f' : '#ffffff');
   });
   const me = s.k[v.me];

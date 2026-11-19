@@ -1361,7 +1361,7 @@ function play(ctx) {
     g.translate(X, Y + 17);
     g.scale(0.48, 0.48);
     F.drawBody(g, c, 0, 0, {
-      tilt: c.dead ? c.spin : 0, lookRight: ax >= 0, open: F.mouth(c === me ? 'talk-me' : 'talk-opp') > 0.12,
+      tilt: c.dead ? c.spin : 0, lookRight: ax >= 0, top: true, open: F.mouth(c === me ? 'talk-me' : 'talk-opp') > 0.12,
       alpha: c.dead ? 0.6 : safe ? 0.5 : 1, face: faceOf(c, hurting, now),
     });
     g.restore();
