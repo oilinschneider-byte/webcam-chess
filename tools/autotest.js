@@ -287,6 +287,41 @@ async function main() {
         const top = setTimeout(() => {}, 0);
         for (let k = 0; k <= top; k++) { clearTimeout(k); clearInterval(k); } // (nothing moves on after this)
       }
+      if (q.get('duo') && CA.route === 'perm') { $('permSkip').click(); await sleep(1500); location.hash = '#/duos'; await sleep(1500); }
+      if (q.get('duonet')) { // (four browsers in one Duos match, connected straight to each other: see testMatch in duos.js)
+        window.__testHooks = true;
+        const seat = Number(q.get('seat')), tag = q.get('duonet');
+        window.__duoGame = 'sumo2';
+        CA.duos.testMatch(seat, tag).catch(e => log('duos net: peer', false, String(e)));
+        await until(() => CA.duos.state === 'playing', 40000, 'the match').catch(() => {});
+        await check('duos net: seat ' + seat + ' is in the match', CA.duos.state === 'playing', CA.duos.state);
+        await until(() => window.__duo && window.__duo.phase() === 'play', 20000, 'play').catch(() => {});
+        const pos = () => { const sn = window.__duo && window.__duo.snap(); return sn && sn.c ? sn.c.map(c => [Math.round(c.x), Math.round(c.y)]) : null; };
+        await sleep(500);
+        const before = pos();
+        const key = ['KeyD', 'KeyS', 'KeyA', 'KeyW'][seat];
+        dispatchEvent(new KeyboardEvent('keydown', { code: key }));
+        await sleep(600);
+        dispatchEvent(new KeyboardEvent('keyup', { code: key }));
+        await sleep(1500);
+        const after = pos();
+        await log('duos net: seat ' + seat + ' sees', !!(before && after), { phase: window.__duo && window.__duo.phase(), before, after });
+        await log('done', true);
+      }
+      if (q.get('duo')) { // (Duos games with bots: &duo=sumo2,box2, a picture of each after &duoms; &duoshots=1 logs them)
+        window.__testHooks = true;
+        for (const id of q.get('duo').split(',')) {
+          window.__duoGame = id;
+          location.hash = '#/games'; await sleep(400); location.hash = '#/duos'; await sleep(600);
+          $('duoBots').click();
+          await sleep(Number(q.get('duoms') || 5000));
+          const d = window.__duo;
+          await log('duos ' + id, !!d && d.id === id && d.phase() !== 'count', { phase: d && d.phase(), id: d && d.id });
+          if (q.get('duoshots')) await log('duoshot ' + id, true, $('duoCanvas').toDataURL('image/png'));
+        }
+        if (!q.get('duoshots')) window.requestAnimationFrame = () => 0;
+        await log('done', true);
+      }
       if (q.get('stagelog')) { // (what's on the stage after a while, for checking what a screenshot shows)
         await sleep(Number(q.get('stagelog')));
         await log('the stage', true, { html: $('stage').innerHTML.slice(0, 300), route: CA.route, vs: !$('vs').classList.contains('hidden'), react: !$('vsReact').classList.contains('hidden') });

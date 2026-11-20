@@ -1285,6 +1285,151 @@ begin
   end loop;
 end $$;
 
+/* ================= DUOS (2 vs 2) ================= */
+-- Duos: four players, two teams of two. Press Duos and you join this queue; as soon as four players are looking,
+-- the server puts them together in random teams: seats 0 and 1 are the blue team, 2 and 3 the orange team, and seat 0
+-- (the player whose poll made the match) runs the games. The other three collect the match on their next poll and
+-- connect to seat 0. Duos games are just for fun: they never change streaks or fish. (Nothing here touches the 1 vs 1
+-- queue above.)
+create table if not exists camarcade.duo_queue (
+  player_id bigint primary key references camarcade.players on delete cascade,
+  peer_id text not null,
+  net text not null,
+  adult boolean not null,
+  joined_at timestamptz not null default now(),
+  seen_at timestamptz not null default now(),
+  match_id bigint
+);
+
+create table if not exists camarcade.duo_matches (
+  id bigint generated always as identity primary key,
+  players bigint[] not null,               -- the four seats (see above)
+  peers text[] not null,                   -- their PeerJS ids, in the same order
+  cats_only boolean not null,              -- someone is under 18: no cameras or microphones
+  status text not null default 'open',
+  created_at timestamptz not null default now()
+);
+create index if not exists duo_matches_made on camarcade.duo_matches (created_at);
+
+create or replace function camarcade.duo_json(p_match bigint, p_viewer bigint) returns jsonb
+language plpgsql stable set search_path = '' as $$
+declare
+  m camarcade.duo_matches;
+  o camarcade.players;
+  ps jsonb := '[]'::jsonb;
+  k int;
+begin
+  select * into m from camarcade.duo_matches where id = p_match;
+  for k in 1..4 loop
+    select * into o from camarcade.players where id = m.players[k];
+    ps := ps || jsonb_build_array(jsonb_build_object('seat', k - 1, 'id', o.id, 'name', o.name, 'peer', m.peers[k]));
+  end loop;
+  return jsonb_build_object('id', m.id, 'seat', array_position(m.players, p_viewer) - 1, 'cats_only', m.cats_only, 'players', ps);
+end $$;
+
+create or replace function camarcade.duo_poll(p_me bigint, p_peer text, p_net text) returns jsonb
+language plpgsql set search_path = '' as $$
+declare
+  me camarcade.players;
+  mine camarcade.duo_queue;
+  m camarcade.duo_matches;
+  q record;
+  picks bigint[];
+  adults boolean;
+  ids bigint[];
+  pids text[];
+begin
+  select * into me from camarcade.players where id = p_me;
+  if me.banned_until > now() then
+    delete from camarcade.duo_queue where player_id = p_me;
+    return jsonb_build_object('banned', true, 'until', me.banned_until, 'reason', me.ban_reason);
+  end if;
+  if p_peer is null or p_peer !~ '^[A-Za-z0-9_-]{8,64}$' then raise exception 'bad_peer'; end if;
+
+  -- Did a match get made with us in it since we last asked? (Only one made for this very search.)
+  select * into mine from camarcade.duo_queue where player_id = p_me for update;
+  if found and mine.match_id is not null then
+    select * into m from camarcade.duo_matches
+    where id = mine.match_id and status = 'open' and created_at > now() - interval '40 seconds' and p_peer = any(peers);
+    delete from camarcade.duo_queue where player_id = p_me;
+    if m.id is not null then
+      return jsonb_build_object('match', camarcade.duo_json(m.id, p_me));
+    end if;
+  end if;
+
+  insert into camarcade.duo_queue as d (player_id, peer_id, net, adult)
+  values (p_me, p_peer, p_net, me.born + interval '18 years' <= current_date)
+  on conflict (player_id) do update set peer_id = excluded.peer_id, net = excluded.net, seen_at = now(), match_id = null
+  returning * into mine;
+
+  -- Three more players who are still looking (whoever has waited longest), none of whom blocked us or we them.
+  picks := array[]::bigint[];
+  adults := mine.adult;
+  for q in
+    select d.player_id, d.adult from camarcade.duo_queue d
+    join camarcade.players o on o.id = d.player_id
+    where d.player_id <> p_me
+      and d.match_id is null
+      and d.seen_at > now() - interval '8 seconds'
+      and not coalesce(o.banned_until > now(), false)
+      and (not o.is_test or o.test_with = me.name_key) and (not me.is_test or me.test_with = o.name_key) -- (test players)
+      and not exists (select 1 from camarcade.blocks b
+                      where (b.blocker = p_me and b.blocked = d.player_id) or (b.blocker = d.player_id and b.blocked = p_me))
+    order by d.joined_at
+    limit 3
+    for update of d skip locked
+  loop
+    picks := picks || q.player_id;
+    adults := adults and q.adult;
+  end loop;
+
+  if coalesce(array_length(picks, 1), 0) < 3 then
+    return jsonb_build_object('waiting', true, 'looking', 1 + (select count(*) from camarcade.duo_queue d
+                                                                   where d.player_id <> p_me and d.match_id is null and d.seen_at > now() - interval '8 seconds'),
+      'online', (select count(*) from camarcade.players where last_seen > now() - interval '2 minutes'));
+  end if;
+
+  -- Random seats for the other three (so random teams); we're seat 0.
+  select array_agg(x.player_id order by x.r), array_agg(x.peer_id order by x.r) into ids, pids
+  from (select d.player_id, d.peer_id, random() as r from camarcade.duo_queue d where d.player_id = any(picks)) x;
+  insert into camarcade.duo_matches (players, peers, cats_only)
+  values (array[p_me] || ids, array[p_peer] || pids, not adults)
+  returning * into m;
+  update camarcade.duo_queue set match_id = m.id where player_id = any(ids);
+  delete from camarcade.duo_queue where player_id = p_me;
+  if random() < 0.05 then delete from camarcade.duo_matches where created_at < now() - interval '2 days'; end if;
+  return jsonb_build_object('match', camarcade.duo_json(m.id, p_me));
+end $$;
+
+create or replace function public.ca_duo_poll(p_token text, p_peer text) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  return camarcade.duo_poll(camarcade.auth(p_token), p_peer, camarcade.net());
+end $$;
+
+create or replace function public.ca_duo_leave(p_token text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  delete from camarcade.duo_queue where player_id = camarcade.auth(p_token);
+end $$;
+
+-- (A browser that couldn't reach the others: the match is off, and everyone looks again.)
+create or replace function public.ca_duo_fail(p_token text, p_match bigint) returns void
+language plpgsql security definer set search_path = '' as $$
+declare v_id bigint := camarcade.auth(p_token);
+begin
+  update camarcade.duo_matches set status = 'failed' where id = p_match and v_id = any(players) and status = 'open';
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['ca_duo_poll(text, text)', 'ca_duo_leave(text)', 'ca_duo_fail(text, bigint)'] loop
+    execute format('revoke all on function public.%s from public', f);
+    execute format('grant execute on function public.%s to anon, authenticated, service_role', f);
+  end loop;
+end $$;
+
 /* ================= SELF-TEST ================= */
 -- Run it in the SQL Editor with:   select camarcade.self_test();
 -- It plays out sign-ups, matchmaking for 40 players at once, results, disputes, cheating attempts, blocks and reports

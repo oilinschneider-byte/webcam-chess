@@ -2300,3 +2300,68 @@ h1, h2, h3 { font-weight: 800; letter-spacing: -.01em; }
 .clw-cam { max-width: 270px; }
 .g-potato.kitchen .kit-bg { height: 400px; }
 @media (max-width: 760px) { .g-potato.kitchen .kit-bg { height: 300px; } }
+
+/* ================= DUOS: 2 vs 2 (see duos.js) ================= */
+/* The button at the bottom of the games page. */
+.duos-btn {
+  display: flex; align-items: center; gap: 16px; margin: 4px 0 28px; padding: 18px 22px;
+  border-radius: 18px; text-decoration: none; color: #fff;
+  background: linear-gradient(100deg, #2f6fe0 0%, #2f6fe0 46%, #ff8a1f 54%, #ff8a1f 100%);
+  box-shadow: var(--shadow); transition: transform .12s ease, filter .12s ease;
+}
+.duos-btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.duos-btn .duos-ic { font-size: 34px; }
+.duos-btn b { display: block; font-size: 24px; line-height: 1.1; }
+.duos-btn small { display: block; font-size: 14px; opacity: .92; font-weight: 700; }
+.duos-btn .duos-go { margin-left: auto; background: #fff; color: #1d3c6a; font-weight: 900; padding: 10px 22px; border-radius: 12px; font-size: 16px; }
+
+/* The Duos screen: four cameras across the top, then the game. */
+#scr-duos { padding: 12px 16px 24px; }
+.duo-wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.duo-cams { display: grid; grid-template-columns: 1fr 1fr auto 1fr 1fr; gap: 10px; align-items: center; }
+.duo-cam { position: relative; aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden; background: var(--surface-2); border: 4px solid #3d8bff; }
+.duo-cam.t1 { border-color: #ff8a1f; }
+.duo-cam.me { box-shadow: 0 0 0 3px #ffd23f; }
+.duo-cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.duo-cam.live video { opacity: 1; }
+.duo-cam .duo-cat { position: absolute; inset: 6% 18% 14%; display: flex; align-items: center; justify-content: center; }
+.duo-cam .duo-cat svg { width: 100%; height: 100%; }
+.duo-cam.live .duo-cat { display: none; }
+.duo-empty { font-size: 34px; font-weight: 900; color: var(--muted); }
+.duo-name { position: absolute; left: 6px; bottom: 6px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 8px; }
+.duo-name em { font-style: normal; opacity: .7; }
+.duo-vs { font-weight: 900; font-size: 20px; color: var(--muted); padding: 0 2px; }
+.duo-bar { display: flex; align-items: center; gap: 14px; min-height: 34px; }
+.duo-score { font-weight: 900; font-size: 18px; color: var(--text); }
+.duo-score .t0, .duo-tally .t0 { color: #3d8bff; }
+.duo-score .t1, .duo-tally .t1 { color: #ff8a1f; }
+.duo-gname { font-weight: 800; color: var(--muted); }
+.duo-quit { margin-left: auto; }
+.duo-play { position: relative; }
+.duo-canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; background: #10182a; touch-action: none; }
+.duo-msg { text-align: center; font-weight: 800; color: var(--muted); margin: 4px 0 0; }
+.duo-over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 14, 28, .55); border-radius: 16px; animation: fade .3s ease; }
+.duo-result { background: var(--surface); color: var(--text); padding: 22px 34px; border-radius: 18px; text-align: center; box-shadow: var(--shadow); animation: pop .35s ease; }
+.duo-result h2 { margin: 0 0 6px; font-size: 28px; }
+.duo-over.win .duo-result h2 { color: var(--go); }
+.duo-over.lose .duo-result h2 { color: var(--danger); }
+.duo-tally { font-size: 30px; font-weight: 900; margin: 6px 0; }
+.duo-next { color: var(--muted); font-weight: 700; margin: 0; }
+.duo-lobby { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 28px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.duo-lobby h1 { margin: 0; font-size: 36px; }
+.duo-lobby h1 small { font-size: 18px; color: var(--muted); }
+.duo-sub { color: var(--muted); max-width: 560px; margin: 0; font-weight: 600; }
+.duo-note { color: var(--warn); font-weight: 800; margin: 0; }
+.duo-games { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 640px; }
+.duo-chip { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-weight: 800; font-size: 14px; }
+.duo-go { font-size: 18px; padding: 14px 30px; }
+.duo-back { color: var(--muted); font-weight: 700; }
+.duo-radar { position: relative; width: 90px; height: 90px; }
+.duo-radar i { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--accent); animation: ping 1.8s ease-out infinite; }
+.duo-radar i:nth-child(2) { animation-delay: .6s; }
+.duo-radar i:nth-child(3) { animation-delay: 1.2s; }
+@media (max-width: 700px) {
+  .duo-cams { grid-template-columns: 1fr 1fr; }
+  .duo-vs { display: none; }
+  .duos-btn b { font-size: 20px; }
+}
