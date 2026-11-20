@@ -33,7 +33,7 @@
 (() => {
 'use strict';
 
-const { $, setMsg, sound, skillOf } = CA.games.kit;
+const { $: kit$, sound, skillOf } = CA.games.kit;
 const F = CA.floppy;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const num = (v, d) => (Number.isFinite(v) ? v : d);
@@ -133,13 +133,22 @@ function nearest(px, py, ax, ay, bx, by) {
 }
 
 function run(ctx, def) {
+  // (the game's own parts, found inside its stage: Duos plays it on another screen)
+  const $ = id => ctx.stage.querySelector('#' + id) || kit$(id);
+  const setMsg = (id, text) => { const el = $(id); if (el) el.textContent = text; };
   const W = def.W || 960, H = def.H || 540;
   const online = !ctx.bot;
   const host = ctx.isHost;                // (against a bot, you're always the host)
-  const meI = host ? 0 : 1, themI = 1 - meI;
+  // Duos (see duos.js): ctx.players is 4, in two teams (ctx.teamOf), and ctx.seat is this player's seat. In a normal
+  // game there are 2 players and each is their own team.
+  const N = ctx.players || 2, duo = N > 2;
+  const teamOf = duo ? ctx.teamOf : (i => i);
+  const meI = duo ? ctx.seat : host ? 0 : 1, themI = duo ? -1 : 1 - meI;
+  const myTeam = teamOf(meI);
+  const isBot = i => (duo ? ctx.isBot(i) : i === themI && !!ctx.bot);
   const own = def.mode === 'own';
   const points = !!POINTS[def.id];
-  const sendMs = def.sendMs || SEND_MS;
+  const sendMs = Math.max(def.sendMs || SEND_MS, ctx.players > 2 ? 33 : 0); // (Duos: the host sends to three, so half as often)
   const sendTicks = Math.max(1, Math.round(sendMs / (DT * 1000))); // (the host sends after every this many steps)
   // A big part of what the host sends that changes slowly (like Turf War's floor) only goes with some of the updates, so
   // the others stay small and can go after every step: def.heavy lists those parts, def.heavyMs says how often they go.
@@ -148,18 +157,19 @@ function run(ctx, def) {
   const kept = {};                                                 // (guest) the newest of each heavy part
   const calm = !!(CA.calmMotion && CA.calmMotion());               // (this player asked their device for less motion)
   const buzz = ms => { if (CA.buzz) CA.buzz(ms); };
-  const skill = skillOf(ctx);
+  const skill = duo ? ctx.skill : skillOf(ctx);
   const names = [];
-  names[meI] = 'You';
-  names[themI] = ctx.oppName || 'Bot';
-  if (def.bigCams) { // (see style.css: the camera blocks hide while the game shows the cameras itself)
+  if (duo) ctx.names.forEach((n, i) => { names[i] = i === meI ? 'You' : n; });
+  else { names[meI] = 'You'; names[themI] = ctx.oppName || 'Bot'; }
+  const equipOf = i => (duo ? ctx.equips[i] : i === meI ? CA.profile.equip : ctx.oppEquip);
+  if (def.bigCams && !duo) { // (see style.css: the camera blocks hide while the game shows the cameras itself)
     const mv = document.getElementById('matchView');
     mv.classList.add('cams-in-stage');
     ctx.onEnd(() => mv.classList.remove('cams-in-stage'));
   }
   const looks = [];
-  looks[meI] = { pics: pictures(CA.profile.equip), fur: F.fur(CA.profile.equip) };
-  looks[themI] = { pics: pictures(ctx.oppEquip), fur: F.fur(ctx.oppEquip) };
+  for (let i = 0; i < N; i++) looks[i] = { pics: pictures(equipOf(i)), fur: F.fur(equipOf(i)) };
+  const COLORS = duo ? looks.map((l, i) => TEAM[teamOf(i)]) : TEAM; // (each player's color: their team's)
 
   const pad = def.pad || {};
   ctx.stage.innerHTML =
@@ -292,7 +302,7 @@ function run(ctx, def) {
   }
 
   // Raw controls → what step() gets. A press counts once (if there were two between steps, the second waits a step).
-  const used = [{}, {}];
+  const used = Array.from({ length: N }, () => ({}));
   function toStep(raw, i) {
     if (!raw) return NO_INPUT;
     const hit = {}, h = {};
@@ -313,6 +323,7 @@ function run(ctx, def) {
   let score = [0, 0];
   let lastMsg = performance.now();
   let guestRaw = null;                // (host) the guest's latest controls
+  const guestRaws = [];               // (host, Duos) each guest's latest controls, by seat
   const T = () => (host || off === null ? simT : simT + off);
 
   // The game's own random numbers, and running its rules with them (see "The replay check" above).
@@ -326,10 +337,10 @@ function run(ctx, def) {
     try { return fn(); } finally { Math.random = real; inSim = false; after.splice(0).forEach(f => f()); }
   }
   // What the host's app writes down (and the guest's: every set of controls it sent). Practice games too, for the tests.
-  const rec = host && !own && (online || window.__testHooks)
+  const rec = host && !own && !duo && (online || window.__testHooks)
     ? { v: 1, role: 'host', game: def.id, ver: siteVersion(), seed: Number.isFinite(ctx.seed) ? ctx.seed >>> 0 : null, skill, eng: V8 ? 'v8' : 'other', bot: !!ctx.bot, W, H, walls: [], in: [[], []], ticks: 0, end: null }
     : null;
-  const sent = online && !host && !own ? [] : null;
+  const sent = online && !host && !own && !duo ? [] : null;
   let tick = 0, recN = 0;
   const lastRec = ['', '', ''];
   function note(slot, t, k, v) {
@@ -342,6 +353,10 @@ function run(ctx, def) {
   const api = {
     rng: () => Math.random(), // (inside the game's rules, Math.random is the game's own: see sim())
     skill, bot: !!ctx.bot, names, W, H, host, me: meI,
+    // How many players, and who is on whose team (in a normal game: 2 players, each their own team).
+    n: N, duo, team: teamOf,
+    mate: i => { for (let j = 0; j < N; j++) if (j !== i && teamOf(j) === teamOf(i)) return j; return -1; },
+    foes: i => { const f = []; for (let j = 0; j < N; j++) if (teamOf(j) !== teamOf(i)) f.push(j); return f; },
     get t() { return simT; },
     T,
     ev(type, data) {
@@ -353,7 +368,7 @@ function run(ctx, def) {
       if (a === score[0] && b === score[1]) return;
       const was = score;
       score = [a, b];
-      const go = () => { ctx.score(score[meI], score[themI], !points); scored(was, [a, b]); };
+      const go = () => { ctx.score(score[myTeam], score[1 - myTeam], !points); scored(was, [a, b]); };
       if (inSim) after.push(go); else go();
     },
     note(text) { api.ev('note', { text }); },
@@ -400,23 +415,23 @@ function run(ctx, def) {
     if (rec && ctx.gameLog) { rec.ticks = tick; ctx.gameLog(rec); }
     if (sent && ctx.gameLog) ctx.gameLog({ v: 1, role: 'guest', game: def.id, ver: siteVersion(), sent });
     koAt = performance.now();
-    sound(w === meI ? 'fanfare' : w < 0 ? 'draw' : 'thud');
-    if (w >= 0) { view.mood(w, 'happy', 99); view.mood(1 - w, 'ko', 99); } else { view.mood(0, 'shock', 99); view.mood(1, 'shock', 99); }
+    sound(w === myTeam ? 'fanfare' : w < 0 ? 'draw' : 'thud');
+    for (let i = 0; i < N; i++) view.mood(i, w < 0 ? 'shock' : teamOf(i) === w ? 'happy' : 'ko', 99);
     if (ready) { // (the big finish: see render)
       view.shake(14);
-      if (w === meI) {
+      if (w === myTeam) {
         view.confetti(70);
         ctx.later(() => view.confetti(45), 450);
         ctx.later(() => sound('sparkle'), 900);
         buzz([30, 40, 30, 40, 70]);
       } else if (w >= 0) buzz(120);
     }
-    ctx.note(w < 0 ? "It's a draw!" : w === meI ? 'You win!' : names[themI] + ' wins!');
-    ctx.later(() => ctx.finish(w < 0 ? 'draw' : w === meI ? 'win' : 'lose'), 2600);
+    ctx.note(w < 0 ? "It's a draw!" : w === myTeam ? (duo ? 'Your team wins!' : 'You win!') : duo ? 'The other team wins!' : names[themI] + ' wins!');
+    ctx.later(() => ctx.finish(w < 0 ? 'draw' : w === myTeam ? 'win' : 'lose', duo ? { w } : undefined), 2600);
   }
 
   // The owner's test player (testplayer.js) plays online by itself, with the Practice bot's moves.
-  const auto = online && !!window.__autoplay;
+  const auto = online && !duo && !!window.__autoplay;
   const autoCount = {};
   function autoInput() {
     try {
@@ -447,7 +462,10 @@ function run(ctx, def) {
     const inp = [];
     const raw = auto ? null : readInput();
     inp[meI] = auto ? autoInput() : toStep(raw, meI);
-    inp[themI] = ctx.bot ? Object.assign({}, NO_INPUT, def.bot(S, themI, DT, api) || {}) : toStep(guestRaw, themI);
+    for (let i = 0; i < N; i++) {
+      if (i === meI) continue;
+      inp[i] = isBot(i) ? Object.assign({}, NO_INPUT, def.bot(S, i, DT, api) || {}) : toStep(duo ? guestRaws[i] : guestRaw, i);
+    }
     if (rec && !rec.end && !rec.overflow) {
       // (controls as they came in, or for the test player and the bot, as the game got them)
       const p0 = auto ? { s: inp[meI] } : pack(raw), p1 = ctx.bot ? { s: inp[themI] } : pack(guestRaw);
@@ -463,7 +481,7 @@ function run(ctx, def) {
   /* ---------- online ---------- */
 
   const sbuf = [];                    // (guest) the host's recent snaps
-  ctx.on(m => {
+  ctx.on((m, from) => {
     if (!m || typeof m !== 'object') return;
     lastMsg = performance.now();
     if (m.t === 's' && !host && !own) {
@@ -484,7 +502,7 @@ function run(ctx, def) {
       clock(m.T);
       if (Array.isArray(m.sc)) gotScore(m.sc);
     } else if (m.t === 'i' && host && m.i && typeof m.i === 'object') {
-      guestRaw = m.i;
+      if (duo) { if (from >= 0 && from < N && from !== meI) guestRaws[from] = m.i; } else guestRaw = m.i;
     } else if (m.t === 'o' && own) {
       theirs = m.p;
       if (!host) clock(m.T);
@@ -509,7 +527,7 @@ function run(ctx, def) {
     if (a === score[0] && b === score[1]) return;
     const was = score;
     score = [a, b];
-    ctx.score(score[meI], score[themI], !points);
+    ctx.score(score[myTeam], score[1 - myTeam], !points);
     ctx.later(() => scored(was, [a, b]), own ? 0 : ctx.viewDelay(sendMs));
   }
 
@@ -550,13 +568,12 @@ function run(ctx, def) {
     streak.who = i;
     const quick = t - streak.at < 1300; // (points coming fast, like punches: just the sound, higher each time)
     streak.at = t;
-    view.mood(i, 'happy', 1.6);
-    view.mood(1 - i, quick ? 'hurt' : 'sad', 1.6);
-    if (i === meI) {
+    for (let j = 0; j < N; j++) view.mood(j, teamOf(j) === i ? 'happy' : quick ? 'hurt' : 'sad', 1.6);
+    if (i === myTeam) {
       sound('cheer', 1 + Math.min(7, streak.n - 1) * 0.06);
       buzz([18, 30, 30]);
-      if (!quick) { view.confetti(16 + Math.min(4, streak.n) * 8); view.flash(TEAM[meI].light, 0.16); }
-      const word = was[themI] - was[meI] >= 2 && to[meI] >= to[themI] ? 'COMEBACK! 💪' : STREAK_WORDS[Math.min(streak.n, STREAK_WORDS.length - 1)];
+      if (!quick) { view.confetti(16 + Math.min(4, streak.n) * 8); view.flash(TEAM[myTeam].light, 0.16); }
+      const word = was[1 - myTeam] - was[myTeam] >= 2 && to[myTeam] >= to[1 - myTeam] ? 'COMEBACK! 💪' : STREAK_WORDS[Math.min(streak.n, STREAK_WORDS.length - 1)];
       if (word && t - streak.said > 1500) { streak.said = t; view.banner(word, '#ffd23f'); }
     } else {
       sound('ouch');
@@ -571,7 +588,12 @@ function run(ctx, def) {
   let shake = 0, msgText = '', msgBad = false;
   const addFx = p => { if (fx.length > 420) fx.shift(); fx.push(p); };
   const view = {
-    g, W, H, me: meI, them: themI, host, online, bot: !!ctx.bot, skill, names, team: TEAM, looks, rng: ctx.rng,
+    g, W, H, me: meI, them: themI, host, online, bot: !!ctx.bot, skill, names, team: COLORS, looks, rng: ctx.rng,
+    n: N, duo, teamOf, myTeam, mate: api.mate, foes: api.foes,
+    // A side's name (a player in 1 vs 1, a team in Duos), and the line for a side winning a round.
+    side: t => (duo ? (t ? 'Orange' : 'Blue') : names[t]),
+    sideColor: t => TEAM[t],
+    roundWin: t => (t === myTeam ? (duo ? 'Your team wins the round!' : 'You win the round!') : (duo ? (t ? 'Orange' : 'Blue') : names[t]) + ' wins the round!'),
     now: 0, dt: 0, aim, held, touch: () => touchMode, T, t: () => simT, phase: () => phase,
     dot: paint.dot, star: paint.star, heart: paint.heart, roundRect: paint.roundRect, label: paint.label, bigText: paint.bigText,
     press, hold(k, on) { if (on) press(k); else release(k); },
@@ -610,10 +632,10 @@ function run(ctx, def) {
       const k = (size || 1);
       if (o.ring !== false) {
         g.globalAlpha = 0.25 * (o.alpha == null ? 1 : o.alpha);
-        g.fillStyle = TEAM[i].main;
+        g.fillStyle = COLORS[i].main;
         paint.dot(x, y, 18 * k);
         g.globalAlpha = o.alpha == null ? 1 : o.alpha;
-        g.strokeStyle = TEAM[i].main;
+        g.strokeStyle = COLORS[i].main;
         g.lineWidth = 2.5;
         g.beginPath(); g.arc(x, y, 18 * k, 0, Math.PI * 2); g.stroke();
         g.globalAlpha = 1;
@@ -623,7 +645,7 @@ function run(ctx, def) {
       g.scale(0.48 * k, 0.48 * k);
       F.drawBody(g, looks[i], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, open: talking(i), alpha: o.alpha == null ? 1 : o.alpha, face: faceOf(i, o), top: true, bob: o.bob, anim: o.anim });
       g.restore();
-      if (o.label !== false) paint.label(i === meI ? 'You' : names[i], x, y + 31 * k + 2, 12, i === meI ? '#ffd23f' : '#ffffff');
+      if (o.label !== false) paint.label(i === meI ? 'You' : names[i], x, y + 31 * k + 2, 12, i === meI ? '#ffd23f' : duo ? COLORS[i].light : '#ffffff');
     },
     // A cat seen from the side, standing with its feet at (x, y).
     catSide(i, x, y, size, o) {
@@ -639,7 +661,7 @@ function run(ctx, def) {
     catBare(i, x, y, size, o) {
       o = o || {};
       const L = looks[i];
-      if (!L.bare) L.bare = { pics: F.pictures(i === meI ? CA.profile.equip : ctx.oppEquip), fur: L.fur };
+      if (!L.bare) L.bare = { pics: F.pictures(equipOf(i)), fur: L.fur };
       g.save();
       g.translate(x, y);
       g.scale(size || 1, size || 1);
@@ -667,11 +689,11 @@ function run(ctx, def) {
       if (o.fist) { g.beginPath(); g.moveTo(px - r * 0.5, py - r * 0.1); g.lineTo(px + r * 0.5, py - r * 0.1); g.stroke(); } // (the knuckles)
     },
   };
-  const talking = i => F.mouth(i === meI ? 'talk-me' : 'talk-opp') > 0.12;
+  const talking = i => (duo ? !!(ctx.talking && ctx.talking(i)) : F.mouth(i === meI ? 'talk-me' : 'talk-opp') > 0.12);
   // Each cat's mood: an expression (see FACES in common.js) for a moment, like 'hurt' after a hit. A game can give one
   // itself (o.face when it draws the cat), or set one with view.mood(i, face, seconds). The engine sets some on its own:
   // happy or sad for a point, and at the end the winner is happy and the loser knocked out.
-  const moods = [{ face: null, until: 0 }, { face: null, until: 0 }];
+  const moods = Array.from({ length: N }, () => ({ face: null, until: 0 }));
   view.mood = (i, face, secs) => { if (moods[i]) { moods[i].face = face; moods[i].until = performance.now() + (secs == null ? 1 : secs) * 1000; } };
   const faceOf = (i, o) => o.face || (moods[i] && performance.now() < moods[i].until ? moods[i].face : null);
   view.faceOf = i => faceOf(i, {}); // (the mood just now, or null: for a game that draws its cats itself)
@@ -835,7 +857,7 @@ function run(ctx, def) {
       if (s) def.draw(view, s);
       else { g.fillStyle = '#1a1530'; g.fillRect(0, 0, W, H); paint.bigText('Connecting…', H / 2, 34, '#ffffff', 1); }
     }
-    if (!def.bigCams) CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
+    if (!def.bigCams && !duo) CA.camWalls.draw(g); // (the camera walls in the top corners: see cam-walls.js)
     drawFx();
     g.setTransform(DPR, 0, 0, DPR, 0, 0);
     party.draw(g, dt);
@@ -849,8 +871,8 @@ function run(ctx, def) {
       const age = (now - koAt) / 1000, k = popIn(age / 0.38);
       g.fillStyle = 'rgba(10, 8, 24, ' + (0.35 * clamp(age / 0.25, 0, 1)).toFixed(3) + ')';
       g.fillRect(0, 0, W, H);
-      if (k > 0.05) paint.bigText(endText || (winner < 0 ? 'DRAW!' : 'WINNER!'), H / 2 - 40, (endText.length > 8 ? 70 : 100) * k, winner === meI ? '#ffd23f' : '#ff5a5a', 1);
-      paint.bigText(winner < 0 ? "It's a draw!" : winner === meI ? 'You win! 🏆' : names[themI] + ' wins!', H / 2 + 40, 40, '#ffffff', clamp((age - 0.25) / 0.25, 0, 1));
+      if (k > 0.05) paint.bigText(endText || (winner < 0 ? 'DRAW!' : 'WINNER!'), H / 2 - 40, (endText.length > 8 ? 70 : 100) * k, winner === myTeam ? '#ffd23f' : '#ff5a5a', 1);
+      paint.bigText(winner < 0 ? "It's a draw!" : winner === myTeam ? (duo ? 'Your team wins! 🏆' : 'You win! 🏆') : duo ? (winner ? 'Orange' : 'Blue') + ' team wins!' : names[themI] + ' wins!', H / 2 + 40, 40, '#ffffff', clamp((age - 0.25) / 0.25, 0, 1));
     }
     const text = phase === 'ready' ? 'Get ready!' : phase === 'ko' ? '' : msgText || (touchMode && def.helpTouch ? def.helpTouch : def.help || '');
     const el = $('dlMsg');
@@ -868,7 +890,7 @@ function run(ctx, def) {
     if (own) ctx.every(() => { if (performance.now() - lastStream > 90) sendMine(); }, 50);
     else if (host) ctx.every(() => { const now = performance.now(); if (S && now - lastStream > 90) sendSnap(curSnap = def.snap(S), now, simT, true); }, 50);
     else ctx.every(() => sendRaw(auto ? autoRaw() : readInput()), INPUT_MS);
-    ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
+    if (!duo) ctx.every(() => { if (phase !== 'ko' && performance.now() - lastMsg > 15000) ctx.afk(); }, 1000);
   }
   ctx.score(0, 0);
   if (def.note) ctx.note(def.note);
@@ -878,6 +900,7 @@ function run(ctx, def) {
       state: () => (own ? { mine, theirs: botP || theirs } : host ? S : guestView(performance.now())),
       snaps: () => sbuf.length, guestInput: () => guestRaw, end: (w, x) => endGame(w, x || 'TEST'),
       snapBytes: () => JSON.stringify(own ? def.snapMine(mine) : def.snap(S)).length,
+      snapNow: () => (own ? null : host ? def.snap(S) : guestView(performance.now())),
       rec: () => rec, sent: () => sent, fx: () => fx.map(p => p.k + (p.text ? ":" + p.text : "")),
     };
   }

@@ -22,6 +22,7 @@ const CLAIM_EVERY = 0.25, CLAIM_MIN = 8;         // how often closed loops are l
 const LENGTH = 45, GOLD_AT = LENGTH - 10, GOLD_R = 120;
 const BEHIND = 0.12, BOOST_SPEED = 1.06, BOOST_FILL = 1.3; // the comeback boost: for whoever's this far behind (of the whole floor)
 const HOME = [[120, H / 2], [W - 120, H / 2]];
+const HOME4 = [[120, H / 2 - 100], [120, H / 2 + 100], [W - 120, H / 2 - 100], [W - 120, H / 2 + 100]]; // (Duos)
 // The floor under the camera walls (top corners: see cam-walls.js) is wall (3): it can't be painted, and isn't counted.
 const WALLED = [];
 for (let gy = 0; gy < GR; gy++) for (let gx = 0; gx < GC; gx++) if (CA.camWalls.inWall((gx + 0.5) * CS, (gy + 0.5) * CS)) WALLED.push(gy * GC + gx);
@@ -32,7 +33,7 @@ const GOLD = [];
 for (let gy = 0; gy < GR; gy++) for (let gx = 0; gx < GC; gx++) if (Math.hypot((gx + 0.5) * CS - W / 2, (gy + 0.5) * CS - H / 2) <= GOLD_R) GOLD.push(gy * GC + gx);
 
 CA.games.add('paint', {
-  name: 'Turf War', icon: '🎨',
+  name: 'Turf War', icon: '🎨', duos: true,
   blurb: 'Hold the mouse button to spray! You run faster on your own color. Spray the other cat to burst them, and paint a closed loop to claim all the land inside. In the last 10 seconds the middle counts triple. 45 seconds.',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -46,29 +47,31 @@ CA.games.add('paint', {
   },
 });
 
-function init() {
+function init(api) {
+  const n = (api && api.n) || 2, team = (api && api.team) || (i => i);
   return {
-    t: 0, grid: new Uint8Array(GC * GR).map((v, k) => (WALLED.includes(k) ? 3 : 0)), count: [0, 0], sc: [0, 0],
+    // (Duos has no camera walls in the corners: the whole floor is open)
+    n, team, home: n > 2 ? HOME4 : HOME, floor: n > 2 ? GC * GR : FLOOR, t: 0, grid: new Uint8Array(GC * GR).map((v, k) => (n <= 2 && WALLED.includes(k) ? 3 : 0)), count: [0, 0], sc: [0, 0],
     lock: new Float32Array(GC * GR), pu: [], bombs: [], nextPu: 4, nextClaim: CLAIM_EVERY, claimer: 0, seen: new Uint8Array(GC * GR),
-    best: [0, 0], splats: [0, 0], ended: false,
-    cats: HOME.map(([x, y], i) => ({ x, y, vx: 0, vy: 0, ax: i ? -1 : 1, ay: 0, ink: 100, spray: false, rest: 0, sh: 0, bomb: 0, inf: 0, hp: 100, hurt: 0, dead: 0, safe: 0, boost: false })),
+    best: new Array(n).fill(0), splats: new Array(n).fill(0), ended: false,
+    cats: (n > 2 ? HOME4 : HOME).map(([x, y], i) => ({ x, y, vx: 0, vy: 0, ax: i ? -1 : 1, ay: 0, ink: 100, spray: false, rest: 0, sh: 0, bomb: 0, inf: 0, hp: 100, hurt: 0, dead: 0, safe: 0, boost: false })),
   };
 }
 
 function paintCell(s, i, k, sh) {
-  const own = i + 1, was = s.grid[k];
+  const t = s.team(i), own = t + 1, was = s.grid[k];
   if (was === 3 || was === own) return false;
   if (was && s.lock[k] > s.t) return false; // (shielded paint can't be painted over)
   if (was) s.count[was - 1]--;
   s.grid[k] = own;
-  s.count[i]++;
+  s.count[t]++;
   if (sh) s.lock[k] = s.t + sh + 2;
   return true;
 }
 
 function paintCone(s, i, c) {
   const sh = c.sh > 0 ? c.sh : 0;
-  const own = i + 1;
+  const own = s.team(i) + 1;
   const x0 = Math.max(0, Math.floor((c.x - REACH) / CS)), x1 = Math.min(GC - 1, Math.floor((c.x + REACH) / CS));
   const y0 = Math.max(0, Math.floor((c.y - REACH) / CS)), y1 = Math.min(GR - 1, Math.floor((c.y + REACH) / CS));
   const cos = Math.cos(CONE);
@@ -112,16 +115,19 @@ function flood(s, start, own, keep) {
   }
 }
 function claimLand(s, i, api) {
-  const own = i + 1, o = s.cats[1 - i];
+  const own = s.team(i) + 1;
   s.seen.fill(0);
-  const ok = o.dead <= 0 ? Math.floor(o.y / CS) * GC + Math.floor(o.x / CS) : -1;
-  if (ok >= 0 && s.grid[ok] !== own && s.grid[ok] !== 3) flood(s, ok, own, null); // (the patch they're in stays open)
+  s.cats.forEach((o, j) => { // (the patch any of the other side is in stays open)
+    if (s.team(j) === s.team(i) || o.dead > 0) return;
+    const ok = Math.floor(o.y / CS) * GC + Math.floor(o.x / CS);
+    if (ok >= 0 && !s.seen[ok] && s.grid[ok] !== own && s.grid[ok] !== 3) flood(s, ok, own, null);
+  });
   let total = 0, sx = 0, sy = 0;
   for (let k = 0; k < GC * GR; k++) {
     if (s.seen[k] || s.grid[k] === own || s.grid[k] === 3) continue;
     const land = [];
     flood(s, k, own, land);
-    if (land.length < CLAIM_MIN || land.length > CLAIM_MAX) continue;
+    if (land.length < CLAIM_MIN || land.length > Math.round(s.floor * 0.14)) continue;
     for (const c of land) {
       if (paintCell(s, i, c, 0)) { total++; sx += (c % GC + 0.5) * CS; sy += (Math.floor(c / GC) + 0.5) * CS; }
     }
@@ -173,14 +179,14 @@ function step(s, inp, dt, api) {
       c.dead -= dt;
       c.spray = false;
       if (c.dead <= 0) {
-        [c.x, c.y] = HOME[i];
+        [c.x, c.y] = s.home[i];
         Object.assign(c, { dead: 0, hp: 100, safe: SAFE, ink: 100, vx: 0, vy: 0, rest: 0 });
         api.ev('back', { x: c.x, y: c.y, i });
       }
       return;
     }
     const under = s.grid[Math.max(0, Math.min(GR - 1, Math.floor(c.y / CS))) * GC + Math.max(0, Math.min(GC - 1, Math.floor(c.x / CS)))];
-    const onOwn = under === i + 1, onTheirs = under === 2 - i;
+    const onOwn = under === s.team(i) + 1, onTheirs = under === 2 - s.team(i);
     const sp = SPEED * (onOwn ? ON_OWN : onTheirs ? ON_THEIRS : 1) * (c.boost ? BOOST_SPEED : 1);
     const tx = n.mx * sp, ty = n.my * sp;
     const dx = tx - c.vx, dy = ty - c.vy, d = Math.hypot(dx, dy), a = ACCEL * dt;
@@ -215,9 +221,9 @@ function step(s, inp, dt, api) {
       c.rest -= dt;
       if (c.rest <= 0) c.ink = Math.min(100, c.ink + FILL * (onOwn ? FILL_OWN : onTheirs ? FILL_THEIRS : 1) * (c.boost ? BOOST_FILL : 1) * dt);
     }
-    // being sprayed
-    const o = s.cats[1 - i];
-    if (o.spray && o.dead <= 0 && c.safe <= 0 && inCone(o, c.x, c.y)) {
+    // being sprayed (by anyone on the other side)
+    const by = s.cats.findIndex((o, j) => s.team(j) !== s.team(i) && o.spray && o.dead <= 0 && inCone(o, c.x, c.y));
+    if (by >= 0 && c.safe <= 0) {
       c.hp -= HIT * dt;
       c.hurt = HEAL_WAIT;
       if (c.hp <= 0) {
@@ -225,9 +231,9 @@ function step(s, inp, dt, api) {
         c.dead = RESPAWN;
         c.bomb = 0;
         c.spray = false;
-        s.splats[1 - i]++;
-        paintCircle(s, 1 - i, c.x, c.y, SPLAT_R);
-        api.ev('splat', { x: Math.round(c.x), y: Math.round(c.y), i: 1 - i, v: i });
+        s.splats[by]++;
+        paintCircle(s, by, c.x, c.y, SPLAT_R);
+        api.ev('splat', { x: Math.round(c.x), y: Math.round(c.y), i: by, v: i });
       }
     } else {
       c.hurt -= dt;
@@ -239,14 +245,14 @@ function step(s, inp, dt, api) {
   if (s.nextClaim <= 0) {
     s.nextClaim = CLAIM_EVERY / 2;
     s.claimer = 1 - s.claimer;
-    if (s.cats[s.claimer].dead <= 0) claimLand(s, s.claimer, api);
+    const who = s.cats.findIndex((c, j) => s.team(j) === s.claimer && c.dead <= 0); // (a cat of that side still in it)
+    if (who >= 0) claimLand(s, who, api);
   }
   const gold = s.t >= GOLD_AT;
   if (gold && !s.goldOn) { s.goldOn = true; api.ev('gold', {}); }
   for (let i = 0; i < 2; i++) s.sc[i] = s.count[i] + (gold ? goldCount(s, i) * 2 : 0);
-  const whole = FLOOR + (gold ? GOLD.length * 2 : 0);
-  s.cats[0].boost = (s.sc[1] - s.sc[0]) / whole > BEHIND;
-  s.cats[1].boost = (s.sc[0] - s.sc[1]) / whole > BEHIND;
+  const whole = s.floor + (gold ? GOLD.length * 2 : 0);
+  s.cats.forEach((c, j) => { const t = s.team(j); c.boost = (s.sc[1 - t] - s.sc[t]) / whole > BEHIND; });
   api.score(Math.round(s.sc[0] / whole * 100), Math.round(s.sc[1] / whole * 100));
   if (s.t >= LENGTH && !s.ended) {
     s.ended = true;
@@ -257,7 +263,7 @@ function step(s, inp, dt, api) {
 
 function snap(s) {
   return {
-    t: Math.round(s.t * 10) / 10, g: Array.prototype.join.call(s.grid, ''), n: s.sc,
+    t: Math.round(s.t * 10) / 10, g: Array.prototype.join.call(s.grid, ''), n: s.sc, fl: s.floor,
     c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), ax: Math.round(c.ax * 100) / 100, ay: Math.round(c.ay * 100) / 100, i: Math.round(c.ink), s: c.spray ? 1 : 0, sh: c.sh > 0 ? 1 : 0, bb: c.bomb, inf: c.inf > 0 ? 1 : 0,
       hp: Math.round(c.hp), dd: c.dead > 0 ? 1 : 0, sf: c.safe > 0 ? 1 : 0, cb: c.boost ? 1 : 0 })),
     pu: s.pu.map(p => [Math.round(p.x), Math.round(p.y), PICKS.indexOf(p.type)]), bm: s.bombs.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.t * 100) / 100]),
@@ -267,8 +273,11 @@ function snap(s) {
 // The bot goes to the nearby patch with the most floor that isn't its color yet, spraying ahead of itself, and (if it's
 // good) keeps a little paint back so it never runs completely dry. When the other cat comes close, it goes for them.
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i];
-  const st = s.bs || (s.bs = { think: 0, gx: c.x, gy: c.y, spray: false, hunt: false });
+  const c = s.cats[i];
+  let o = s.cats[1 - i];
+  if (s.n > 2) { let bd = 1e9; s.cats.forEach((q, j) => { if (s.team(j) !== s.team(i) && q.dead <= 0) { const d = Math.hypot(q.x - c.x, q.y - c.y); if (d < bd) { bd = d; o = q; } } }); if (bd === 1e9) o = s.cats[(i + 2) % 4]; }
+  const fresh = () => ({ think: 0, gx: c.x, gy: c.y, spray: false, hunt: false });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.bs || (s.bs = fresh());
   if (c.dead > 0) return { hit: {}, held: {} };
   st.think -= dt;
   if (st.think <= 0) {
@@ -281,7 +290,7 @@ function bot(s, i, dt, api) {
         const gx = Math.floor(x / CS) + dx, gy = Math.floor(y / CS) + dy;
         if (gx < 0 || gy < 0 || gx >= GC || gy >= GR) continue;
         const v = s.grid[gy * GC + gx];
-        sc += v === i + 1 || v === 3 ? 0 : v ? 1.5 * api.skill + 0.5 : 1; // (good bots go for the other cat's paint; 3 is wall)
+        sc += v === s.team(i) + 1 || v === 3 ? 0 : v ? 1.5 * api.skill + 0.5 : 1; // (good bots go for the other cat's paint; 3 is wall)
       }
       sc -= Math.hypot(x - c.x, y - c.y) * 0.02;
       if (s.t >= GOLD_AT - 3 && Math.hypot(x - W / 2, y - H / 2) < GOLD_R) sc *= 1 + api.skill; // (good bots head for the middle at the end)
@@ -314,8 +323,9 @@ function event(v, e) {
   if (e.type === 'claim') {
     v.ring(e.x, e.y, v.team[e.i].light, 40);
     v.burst(e.x, e.y, v.team[e.i].main, Math.min(40, 8 + e.n / 4), 300);
-    v.pop(e.x, e.y, (e.i === v.me ? 'CLAIMED +' : 'THEY CLAIMED +') + e.n + '!', e.i === v.me ? '#ffd23f' : '#ff9a9a');
-    v.sound(e.i === v.me ? 'point' : 'miss');
+    const ours = v.teamOf(e.i) === v.myTeam;
+    v.pop(e.x, e.y, (ours ? (e.i === v.me ? 'CLAIMED +' : 'TEAM CLAIMED +') : 'THEY CLAIMED +') + e.n + '!', ours ? '#ffd23f' : '#ff9a9a');
+    v.sound(ours ? 'point' : 'miss');
     if (e.n > 60) v.shake(5);
   }
   if (e.type === 'splat') {
@@ -409,19 +419,19 @@ function draw(v, s) {
     v.roundRect(c.x - 21, c.y - 41, Math.max(2, 42 * c.i / 100), 5, 2); g.fill();
     if (c.cb) v.label('🔥', c.x - 28, c.y - 42, 13, '#000000');
   });
-  const total = (s.n[0] + s.n[1]) || 1, whole = FLOOR + (s.t >= GOLD_AT ? GOLD.length * 2 : 0);
+  const total = (s.n[0] + s.n[1]) || 1, whole = (s.fl || FLOOR) + (s.t >= GOLD_AT ? GOLD.length * 2 : 0);
   // the tug of war: who has how much of the painted floor
   g.fillStyle = 'rgba(20, 20, 40, .8)';
   v.roundRect(W / 2 - 150, 8, 300, 24, 12); g.fill();
   const split = 296 * s.n[0] / total;
-  g.fillStyle = s.n[0] + s.n[1] ? v.team[0].main : '#666';
+  g.fillStyle = s.n[0] + s.n[1] ? v.sideColor(0).main : '#666';
   v.roundRect(W / 2 - 148, 10, Math.max(4, split), 20, 10); g.fill();
   if (s.n[1]) {
-    g.fillStyle = v.team[1].main;
+    g.fillStyle = v.sideColor(1).main;
     v.roundRect(W / 2 - 148 + split, 10, Math.max(4, 296 - split), 20, 10); g.fill();
   }
-  v.label(Math.round(s.n[0] / whole * 100) + '%', W / 2 - 180, 21, 16, v.team[0].main);
-  v.label(Math.round(s.n[1] / whole * 100) + '%', W / 2 + 180, 21, 16, v.team[1].main);
+  v.label(Math.round(s.n[0] / whole * 100) + '%', W / 2 - 180, 21, 16, v.sideColor(0).main);
+  v.label(Math.round(s.n[1] / whole * 100) + '%', W / 2 + 180, 21, 16, v.sideColor(1).main);
   const left = Math.max(0, Math.ceil(LENGTH - s.t));
   v.label('⏱ ' + left, W / 2, 48, left <= 10 ? 22 : 16, left <= 10 ? '#d4141e' : '#333');
   const me = s.c[v.me];

@@ -314,9 +314,9 @@ async function main() {
         await sleep(500);
         const before = pos();
         const key = ['KeyD', 'KeyS', 'KeyA', 'KeyW'][seat];
-        dispatchEvent(new KeyboardEvent('keydown', { code: key }));
+        document.dispatchEvent(new KeyboardEvent('keydown', { code: key, bubbles: true }));
         await sleep(600);
-        dispatchEvent(new KeyboardEvent('keyup', { code: key }));
+        document.dispatchEvent(new KeyboardEvent('keyup', { code: key, bubbles: true }));
         await sleep(1500);
         const after = pos();
         await log('duos net: seat ' + seat + ' sees', !!(before && after), { phase: window.__duo && window.__duo.phase(), before, after });
@@ -331,7 +331,7 @@ async function main() {
           await sleep(Number(q.get('duoms') || 5000));
           const d = window.__duo;
           await log('duos ' + id, !!d && d.id === id && d.phase() !== 'count', { phase: d && d.phase(), id: d && d.id });
-          if (q.get('duoshots')) await log('duoshot ' + id, true, $('duoCanvas').toDataURL('image/png'));
+          if (q.get('duoshots')) await log('duoshot ' + id, true, (document.querySelector('#duoStage .dl-canvas') || $('duoCanvas')).toDataURL('image/png'));
         }
         if (!q.get('duoshots')) window.requestAnimationFrame = () => 0;
         await log('done', true);

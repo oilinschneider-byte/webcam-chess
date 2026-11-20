@@ -43,10 +43,10 @@ const pawAt = (v, i, p) => (i === v.me && !v.host && v.aim.seen ? { x: clamp(v.a
 
 function bigScores(v, a, b, fmt) {
   const f = fmt || (n => String(n));
-  v.label(f(a), W / 2 - 110, 44, 46, v.team[0].main);
-  v.label(f(b), W / 2 + 110, 44, 46, v.team[1].main);
-  v.label(v.names[0], W / 2 - 110, 76, 14, v.team[0].light);
-  v.label(v.names[1], W / 2 + 110, 76, 14, v.team[1].light);
+  v.label(f(a), W / 2 - 110, 44, 46, v.sideColor(0).main);
+  v.label(f(b), W / 2 + 110, 44, 46, v.sideColor(1).main);
+  v.label(v.side(0), W / 2 - 110, 76, 14, v.sideColor(0).light);
+  v.label(v.side(1), W / 2 + 110, 76, 14, v.sideColor(1).light);
 }
 
 /* ================= LASER POINTER ================= */
@@ -54,7 +54,7 @@ function bigScores(v, a, b, fmt) {
 const LASER_LEN = 30, SPLIT_AT = 20, ON_R = 34;
 
 CA.games.add('laser', {
-  name: 'Laser Pointer', icon: '🔴',
+  name: 'Laser Pointer', icon: '🔴', duos: true,
   blurb: 'A red laser dot zips around the floor. Keep your paw on it! Every moment on the dot scores. It gets faster, and for the last 10 seconds it splits in two. 30 seconds, most time on the dot wins!',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -62,7 +62,8 @@ CA.games.add('laser', {
       help: 'Move the mouse to move your paw · keep it on the red dot · it splits in two at the end!',
       helpTouch: 'Drag your finger to move your paw · stay on the red dot!',
       note: '30 seconds · most time on the dot wins',
-      init: api => ({ t: 0, on: [0, 0], paws: [{ x: 300, y: 300, vx: 0, vy: 0 }, { x: 660, y: 300, vx: 0, vy: 0 }], dots: [newDot(api, W / 2, H / 2)], tick: 0 }),
+      // (Duos: four paws; a team scores while either of its paws is on a dot)
+      init: api => ({ n: api.n || 2, team: api.team || (i => i), t: 0, on: [0, 0], paws: (api.n > 2 ? [[300, 220], [300, 380], [660, 220], [660, 380]] : [[300, 300], [660, 300]]).map(([x, y]) => ({ x, y, vx: 0, vy: 0 })), dots: [newDot(api, W / 2, H / 2)], tick: 0 }),
       step: laserStep,
       snap: s => ({ sc: s.on.map(n => Math.round(n * 10)), r: Math.max(0, Math.ceil(LASER_LEN - s.t)), p: s.paws.map(p => [Math.round(p.x), Math.round(p.y)]), d: s.dots.map(d => [Math.round(d.x), Math.round(d.y)]) }),
       lerp: (a, b, f) => ({ sc: b.sc, r: b.r, p: lerpPts(a.p, b.p, f), d: lerpPts(a.d, b.d, f) }),
@@ -85,7 +86,7 @@ function pickTarget(d, api, far) {
 
 function laserStep(s, inp, dt, api) {
   s.t += dt;
-  for (let i = 0; i < 2; i++) movePaw(s.paws[i], inp[i].ax, inp[i].ay, dt, inp[i].top || 1300, 9000);
+  for (let i = 0; i < s.paws.length; i++) movePaw(s.paws[i], inp[i].ax, inp[i].ay, dt, inp[i].top || 1300, 9000);
   if (s.t >= SPLIT_AT && s.dots.length < 2) {
     const d = s.dots[0];
     s.dots.push(newDot(api, d.x, d.y));
@@ -109,10 +110,9 @@ function laserStep(s, inp, dt, api) {
     d.x += d.vx * dt;
     d.y += d.vy * dt;
   });
-  for (let i = 0; i < 2; i++) {
-    const p = s.paws[i];
-    if (s.dots.some(d => Math.hypot(d.x - p.x, d.y - p.y) < ON_R)) s.on[i] += dt;
-  }
+  const onDot = [false, false];
+  s.paws.forEach((p, i) => { if (s.dots.some(d => Math.hypot(d.x - p.x, d.y - p.y) < ON_R)) onDot[s.team(i)] = true; });
+  for (let t = 0; t < 2; t++) if (onDot[t]) s.on[t] += dt;
   s.tick += dt;
   if (s.tick > 0.5) { s.tick = 0; api.score(Math.round(s.on[0] * 10) / 10, Math.round(s.on[1] * 10) / 10); }
   if (s.t >= LASER_LEN) {
@@ -123,13 +123,18 @@ function laserStep(s, inp, dt, api) {
 }
 
 function laserBot(s, i, dt, api) {
-  const st = s.bs || (s.bs = { think: 0, tx: s.paws[i].x, ty: s.paws[i].y, pick: 0 });
+  const fresh = () => ({ think: 0, tx: s.paws[i].x, ty: s.paws[i].y, pick: 0 });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.bs || (s.bs = fresh());
   st.think -= dt;
   if (st.think <= 0) {
     st.think = 0.05 + (1 - api.skill) * 0.22;
     const p = s.paws[i];
     let d = s.dots[0];
-    if (s.dots[1] && Math.hypot(s.dots[1].x - p.x, s.dots[1].y - p.y) < Math.hypot(d.x - p.x, d.y - p.y)) d = s.dots[1];
+    const far = q => Math.hypot(q.x - p.x, q.y - p.y);
+    if (s.n > 2 && s.dots[1]) { // (with two dots, teammates take one each: whichever way round is shorter for both)
+      const m = s.paws[api.mate(i)], fm = q => Math.hypot(q.x - m.x, q.y - m.y);
+      d = far(s.dots[0]) + fm(s.dots[1]) <= far(s.dots[1]) + fm(s.dots[0]) ? s.dots[0] : s.dots[1];
+    } else if (s.dots[1] && far(s.dots[1]) < far(d)) d = s.dots[1];
     st.tx = d.x + d.vx * 0.06 * api.skill + (Math.random() - 0.5) * 50 * (1 - api.skill);
     st.ty = d.y + d.vy * 0.06 * api.skill + (Math.random() - 0.5) * 50 * (1 - api.skill);
   }

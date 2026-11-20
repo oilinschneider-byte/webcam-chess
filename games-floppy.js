@@ -109,7 +109,7 @@ function alive(g, c, o) {
   const wx = m.e / k, wy = m.f / k; // (where its feet are, in the picture's own units)
   let st = lives.get(c);
   if (!st) {
-    st = { t: now, x: wx, y: wy, vx: 0, vy: 0, fall: 0, ph: 0, land: 0, turn: 0, look: o.lookRight, seed: Math.random() * 10, blink: now + 800 + Math.random() * 2500, puffs: [], out: null };
+    st = { t: now, x: wx, y: wy, vx: 0, vy: 0, fall: 0, ph: 0, walk: 0, land: 0, turn: 0, look: o.lookRight, seed: Math.random() * 10, blink: now + 800 + Math.random() * 2500, puffs: [], out: null };
     lives.set(c, st);
   }
   if (now - st.t < 4 && st.out) return st.out; // (drawn twice in one frame: the same pose)
@@ -118,13 +118,15 @@ function alive(g, c, o) {
   st.t = now; st.x = wx; st.y = wy;
   if (dt <= 0 || dt >= 0.25 || Math.hypot(dx, dy) > 90) { st.vx = 0; st.vy = 0; st.fall = 0; } // (a pause, or a jump to somewhere new)
   else {
-    const f = 1 - Math.exp(-dt / 0.07);
+    const f = 1 - Math.exp(-dt / 0.12);
     st.vx += (dx / dt - st.vx) * f;
     st.vy += (dy / dt - st.vy) * f;
   }
   const full = !c.pics.bare, top = !!o.top, T = now / 1000;
   const speed = top ? Math.hypot(st.vx, st.vy) : Math.abs(st.vx);
-  const walk = clamp((speed - 15) / 110, 0, 1), still = 1 - clamp(speed / 45, 0, 1);
+  // (how much it's walking eases in and out, so a wobble in speed doesn't make it twitch)
+  st.walk += (clamp((speed - 20) / 120, 0, 1) - st.walk) * (1 - Math.exp(-dt * 6));
+  const walk = st.walk, still = 1 - clamp(speed / 45, 0, 1);
   // landing: it was falling fast, and now it isn't
   if (!top && full) {
     if (st.vy > 230) { st.fallT = (st.fallT || 0) + dt; if (st.fallT > 0.12) st.fall = Math.max(st.fall, st.vy); } // (really falling, not just a shake of the screen)
@@ -139,9 +141,9 @@ function alive(g, c, o) {
   // turning round
   if (o.lookRight !== st.look) { st.turn = 1; st.look = o.lookRight; }
   st.turn = Math.max(0, st.turn - dt * 7);
-  // a step: the bounce goes round once every 26 units walked (a puff behind now and then, on the ground)
+  // a step: the bounce goes round once every 40 units walked (a puff behind now and then, on the ground)
   const before = Math.floor(st.ph / Math.PI);
-  st.ph += speed * dt / 26 * Math.PI;
+  st.ph += Math.min(speed, 320) * dt / 40 * Math.PI;
   if (full && !top && walk > 0.7 && Math.floor(st.ph / Math.PI) !== before && Math.abs(st.vy) < 60) st.puffs.push({ x: wx - Math.sign(st.vx) * 14, y: wy, vx: -Math.sign(st.vx) * 25, vy: -10, r: 2.5, life: 0.3, max: 0.3 });
   for (let n = st.puffs.length - 1; n >= 0; n--) { const p = st.puffs[n]; p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.r += dt * 12; if (p.life <= 0) st.puffs.splice(n, 1); }
   // blinking: every 2 to 5 seconds, sometimes twice
@@ -154,9 +156,9 @@ function alive(g, c, o) {
   let sx = 1 - 0.014 * breath * still, sy = 1 + 0.028 * breath * still;
   let tilt = 0.03 * Math.sin(T * 1.2 + st.seed * 2) * still, bob = 0;
   if (full) {
-    const step = Math.abs(Math.sin(st.ph)), amount = o.bob == null ? 1 : o.bob;
-    bob = -step * 5 * walk * amount;
-    sy *= 1 + 0.05 * walk * amount * (step - 0.5);
+    const step = (1 - Math.cos(st.ph * 2)) / 2, amount = o.bob == null ? 1 : o.bob; // (a smooth rise and fall, no sharp bottom)
+    bob = -step * 3 * walk * amount;
+    sy *= 1 + 0.03 * walk * amount * (step - 0.5);
     if (!o.tilt && !o.squash) tilt += clamp(st.vx / 520, -1, 1) * 0.13 * (top ? 0.6 : 1);
     if (!top && !o.squash) { const air = clamp((Math.abs(st.vy) - 160) / 450, 0, 1) * 0.1; sy *= 1 + air; sx *= 1 - air * 0.5; }
     sx *= 1 + 0.24 * st.land; sy *= 1 - 0.2 * st.land;

@@ -15,7 +15,10 @@ const LENGTH = 60, GOLD_AT = LENGTH - 15;
 const WATER = { x: W / 2, y: 330, rx: 300, ry: 125 };
 const inWater = (x, y) => ((x - WATER.x) / WATER.rx) ** 2 + ((y - WATER.y) / WATER.ry) ** 2 < 1;
 const BANK = [{ x: 118, y: 330 }, { x: 842, y: 330 }];        // where each cat sits
-const SHORE = [{ x: 205, y: 330 }, { x: 755, y: 330 }];       // where a fish ends up when it's reeled in
+const SHORE = [{ x: 205, y: 330 }, { x: 755, y: 330 }];       // where a fish ends up when it's reeled in (by side)
+// (Duos: two cats on each bank, one above the other; a fish is pulled toward a team's shore, and a team's points add up)
+const BANK4 = [{ x: 118, y: 268 }, { x: 118, y: 392 }, { x: 842, y: 268 }, { x: 842, y: 392 }];
+const bankOf = (n, i) => (n > 2 ? BANK4[i] : BANK[i]);
 const FISH = [
   { n: 'Minnow', i: '🐟', p: 1, w: 34, win: 0.7, d: 0.15, s: 11 }, // (d: how hard it fights on the line, 0 to 1; s: its size)
   { n: 'Trout', i: '🐠', p: 3, w: 30, win: 0.62, d: 0.35, s: 15 },
@@ -39,7 +42,7 @@ const ROCK_WAIT = 7, ROCK_FLY = 0.5, ROCK_R = 85, ROCK_JOLT = 0.32;
 const BEHIND = 6, BOOST = 0.85;                  // the comeback boost: tension rises slower for whoever's this far behind
 
 CA.games.add('pond', {
-  name: 'Pond War', icon: '🎣',
+  name: 'Pond War', icon: '🎣', duos: true,
   blurb: 'One pond, one fish at a time! Cast near a fish, click when it bites, then MASH Space to reel it in, and press the letter that pops up, quick, or it pulls line back. Cast onto their fish for a tug of war, and throw rocks. A golden fish comes at the end!',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -58,7 +61,7 @@ function spawnFish(s, type) {
   const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 0.8;
   const f = {
     t: type, x: WATER.x + Math.cos(a) * WATER.rx * r, y: WATER.y + Math.sin(a) * WATER.ry * r,
-    a: Math.random() * Math.PI * 2, st: 'swim', k: 0, on: [false, false], p: 0, hx: 0, hy: 0, run: false, runK: 1, fade: 0, by: -1,
+    a: Math.random() * Math.PI * 2, st: 'swim', k: 0, on: new Array(s.n || 2).fill(false), p: 0, hx: 0, hy: 0, run: false, runK: 1, fade: 0, by: -1,
   };
   s.fish.push(f);
   return f;
@@ -69,17 +72,22 @@ function randomType() {
   return 0;
 }
 
-function init() {
+function init(api) {
+  const n = (api && api.n) || 2;
   const s = {
-    t: 0, fish: [], rocks: [], gold: false, ended: false,
-    cats: [0, 1].map(() => ({ ph: 'idle', k: 0, bx: 0, by: 0, tx: 0, ty: 0, fish: null, ten: 0, slack: 0, tapAt: -1, sc: 0, got: 0, rock: 0, ax: WATER.x, ay: WATER.y, big: 0, boost: false, last: -1 })),
+    n, team: (api && api.team) || (i => i), t: 0, fish: [], rocks: [], gold: false, ended: false,
+    cats: Array.from({ length: n }, () => ({ ph: 'idle', k: 0, bx: 0, by: 0, tx: 0, ty: 0, fish: null, ten: 0, slack: 0, tapAt: -1, sc: 0, got: 0, rock: 0, ax: WATER.x, ay: WATER.y, big: 0, boost: false, last: -1 })),
   };
   for (let k = 0; k < POND_FISH; k++) spawnFish(s, randomType());
   return s;
 }
 
+// A side's points (in Duos, both cats' added up), and whether anyone on the other side of cat i has fish f on the line.
+const sidePts = (s, t) => s.cats.reduce((a, c, j) => a + (s.team(j) === t ? c.sc : 0), 0);
+const otherOn = (s, f, i) => f.on.some((v, j) => v && s.team(j) !== s.team(i));
+
 function letGoFish(s, f, except) {
-  f.on = [false, false];
+  f.on = f.on.map(() => false);
   f.st = 'flee';
   f.k = 1.5;
   f.x = Math.max(WATER.x - WATER.rx + 20, Math.min(WATER.x + WATER.rx - 20, f.x));
@@ -94,16 +102,15 @@ function step(s, inp, dt, api) {
     f.x = WATER.x; f.y = WATER.y;
     api.ev('legend', {});
   }
-  s.cats[0].boost = s.cats[1].sc - s.cats[0].sc >= BEHIND;
-  s.cats[1].boost = s.cats[0].sc - s.cats[1].sc >= BEHIND;
+  s.cats.forEach((c, j) => { const t = s.team(j); c.boost = sidePts(s, 1 - t) - sidePts(s, t) >= BEHIND; });
   s.cats.forEach((c, i) => stepCat(s, c, i, inp[i], dt, api));
   stepRocks(s, dt, api);
   stepFish(s, dt, api);
-  api.score(s.cats[0].sc, s.cats[1].sc);
+  api.score(sidePts(s, 0), sidePts(s, 1));
   if (s.t >= LENGTH && !s.ended) {
     s.ended = true;
     api.ev('rec', { big: s.cats.map(c => c.big), got: s.cats.map(c => c.got), sc: s.cats.map(c => c.sc) });
-    const [a, b] = s.cats.map(c => c.sc);
+    const a = sidePts(s, 0), b = sidePts(s, 1);
     api.end(a === b ? -1 : a > b ? 0 : 1, 'TIME!');
   }
 }
@@ -135,7 +142,7 @@ function stepCat(s, c, i, n, dt, api) {
       c.bx = c.tx;
       c.by = c.ty;
       // onto a fish the other cat is reeling in? Then you both have it.
-      const f = s.fish.find(o => o.st === 'hooked' && o.on[1 - i] && !o.on[i] && Math.hypot(o.x - c.bx, o.y - c.by) < SNAG);
+      const f = s.fish.find(o => o.st === 'hooked' && otherOn(s, o, i) && !o.on.some((v, j) => v && s.team(j) === s.team(i)) && Math.hypot(o.x - c.bx, o.y - c.by) < SNAG);
       if (f) {
         f.on[i] = true;
         c.fish = f;
@@ -177,8 +184,8 @@ function stepCat(s, c, i, n, dt, api) {
   } else if (c.ph === 'reel') {
     const f = c.fish;
     if (!f) { c.ph = 'idle'; return; }
-    const d = FISH[f.t].d, dir = i ? 1 : -1, tug = f.on[0] && f.on[1];
-    const back = k => { f.p = i ? Math.max(0, f.p - k) : Math.min(0, f.p + k); }; // (the fish takes line back)
+    const side = s.team(i), d = FISH[f.t].d, dir = side ? 1 : -1, tug = otherOn(s, f, i);
+    const back = k => { f.p = side ? Math.max(0, f.p - k) : Math.min(0, f.p + k); }; // (the fish takes line back)
     const pressed = PROMPT_KEYS.split('').filter(k => n.hit['k' + k]);
     c.slack += dt;
     if (c.pr) { // a letter is up: press it, quick
@@ -217,14 +224,15 @@ function stepCat(s, c, i, n, dt, api) {
       c.ten = 0;
       c.fish = null;
       s.fish = s.fish.filter(o => o !== f);
-      if (f.on[1 - i]) { // the other cat loses the tug of war
-        const o = s.cats[1 - i];
+      f.on.forEach((v, j) => { // the other side loses the tug of war
+        if (!v || s.team(j) === side) return;
+        const o = s.cats[j];
         o.fish = null;
         o.ph = 'back';
         o.k = 0.8;
         o.ten = 0;
-      }
-      api.ev('caught', { i, t: f.t, x: SHORE[i].x, y: SHORE[i].y, tug: tug ? 1 : 0 });
+      });
+      api.ev('caught', { i, t: f.t, x: SHORE[side].x, y: SHORE[side].y, tug: tug ? 1 : 0 });
     }
   } else if (c.k <= 0) c.ph = 'idle'; // (after a catch, a miss, or a snapped line)
 }
@@ -242,14 +250,16 @@ function stepRocks(s, dt, api) {
         f.runK = 0.5;
       }
     }
-    const o = s.cats[1 - r.i];
-    if (o.ph === 'reel' && o.fish && Math.hypot(o.fish.x - r.x, o.fish.y - r.y) < ROCK_R) { o.ten = Math.min(0.97, o.ten + ROCK_JOLT); api.ev('jolt', { i: 1 - r.i }); }
-    else if ((o.ph === 'wait' || o.ph === 'bite') && Math.hypot(o.bx - r.x, o.by - r.y) < ROCK_R * 0.7) {
-      if (o.fish) { o.fish.st = 'flee'; o.fish.k = 1.2; o.fish = null; }
-      o.ph = 'back';
-      o.k = 0.8;
-      api.ev('ruined', { i: 1 - r.i });
-    }
+    s.cats.forEach((o, j) => { // (it jolts the other side's lines, and ruins their waiting casts)
+      if (s.team(j) === s.team(r.i)) return;
+      if (o.ph === 'reel' && o.fish && Math.hypot(o.fish.x - r.x, o.fish.y - r.y) < ROCK_R) { o.ten = Math.min(0.97, o.ten + ROCK_JOLT); api.ev('jolt', { i: j }); }
+      else if ((o.ph === 'wait' || o.ph === 'bite') && Math.hypot(o.bx - r.x, o.by - r.y) < ROCK_R * 0.7) {
+        if (o.fish) { o.fish.st = 'flee'; o.fish.k = 1.2; o.fish = null; }
+        o.ph = 'back';
+        o.k = 0.8;
+        api.ev('ruined', { i: j });
+      }
+    });
     return false;
   });
 }
@@ -271,7 +281,7 @@ function stepFish(s, dt, api) {
         f.runK = f.run ? 0.35 + 0.45 * info.d : Math.max(0.6, 1.5 - 0.8 * info.d) + Math.random() * 0.6;
       }
       if (f.t === LEGEND) f.p *= 1 - 0.05 * dt; // (it fights back all the time)
-      if (!f.on[0] && !f.on[1]) letGoFish(s, f, -1);
+      if (!f.on.some(Boolean)) letGoFish(s, f, -1);
       return;
     }
     if (f.st === 'bite') {
@@ -320,9 +330,9 @@ const r0 = v => Math.round(v);
 function snap(s) {
   return {
     t: Math.round(s.t * 10) / 10,
-    f: s.fish.map(f => [f.t, r0(f.x), r0(f.y), Math.round(f.a * 10) / 10, f.st === 'hooked' ? 1 : f.st === 'bite' ? 2 : 0, f.run ? 1 : 0, f.runK < 0.3 && !f.run ? 1 : 0, f.on[0] && f.on[1] ? 1 : 0, Math.round(f.p * 100) / 100, f.fade > 0 ? 1 : 0]),
+    f: s.fish.map(f => [f.t, r0(f.x), r0(f.y), Math.round(f.a * 10) / 10, f.st === 'hooked' ? 1 : f.st === 'bite' ? 2 : 0, f.run ? 1 : 0, f.runK < 0.3 && !f.run ? 1 : 0, f.on.some((v, j) => v && s.team(j) === 0) && f.on.some((v, j) => v && s.team(j) === 1) ? 1 : 0, Math.round(f.p * 100) / 100, f.fade > 0 ? 1 : 0]),
     r: s.rocks.map(r => [r0(r.x), r0(r.y), Math.round(r.k * 100) / 100, r.i]),
-    c: s.cats.map((c, i) => ({ pr: c.ph === 'reel' ? c.pr || '' : '', pt: c.pr ? Math.round(c.pt * 10) / 10 : 0, ph: c.ph, k: Math.round(Math.max(0, c.k) * 100) / 100, bx: r0(c.ph === 'cast' ? c.tx : c.bx), by: r0(c.ph === 'cast' ? c.ty : c.by), fx: c.fish ? r0(c.fish.x) : -1, fy: c.fish ? r0(c.fish.y) : -1, ten: Math.round(c.ten * 100) / 100, pg: c.fish ? Math.round(Math.max(0, c.fish.p * (i ? 1 : -1)) * 100) / 100 : 0, sc: c.sc, got: c.got, rk: Math.round(c.rock), ax: r0(c.ax), ay: r0(c.ay), cb: c.boost ? 1 : 0, l: c.last })),
+    c: s.cats.map((c, i) => ({ pr: c.ph === 'reel' ? c.pr || '' : '', pt: c.pr ? Math.round(c.pt * 10) / 10 : 0, ph: c.ph, k: Math.round(Math.max(0, c.k) * 100) / 100, bx: r0(c.ph === 'cast' ? c.tx : c.bx), by: r0(c.ph === 'cast' ? c.ty : c.by), fx: c.fish ? r0(c.fish.x) : -1, fy: c.fish ? r0(c.fish.y) : -1, ten: Math.round(c.ten * 100) / 100, pg: c.fish ? Math.round(Math.max(0, c.fish.p * (s.team(i) ? 1 : -1)) * 100) / 100 : 0, sc: c.sc, got: c.got, rk: Math.round(c.rock), ax: r0(c.ax), ay: r0(c.ay), cb: c.boost ? 1 : 0, l: c.last })),
   };
 }
 function lerp(a, b, f) {
@@ -335,7 +345,9 @@ function lerp(a, b, f) {
 // The bot looks for the best fish it can reach, casts near it (better bots cast closer, and go for bigger fish), and reels
 // in, letting go when the line gets tight or the fish runs. Good bots snag your big fish and throw rocks.
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i];
+  const c = s.cats[i];
+  // (the other side's cat to bother: in Duos, one of them waiting for a bite, if any)
+  const o = s.n > 2 ? (s.cats.find((q, j) => s.team(j) !== s.team(i) && q.ph === 'wait') || s.cats[(i + 2) % 4]) : s.cats[1 - i];
   const st = s.bs || (s.bs = {});
   const b = st[i] || (st[i] = { wait: 0.6, react: -1, hold: false, tx: WATER.x, ty: WATER.y, think: 0 });
   const out = { ax: b.tx, ay: b.ty, held: {}, hit: {} };
@@ -344,7 +356,7 @@ function bot(s, i, dt, api) {
 
   if (c.ph === 'idle' && b.wait <= 0) {
     // a fish the other cat has on the line, big enough to fight for?
-    const theirs = s.fish.find(f => f.st === 'hooked' && f.on[1 - i] && !f.on[i] && FISH[f.t].p >= 5);
+    const theirs = s.fish.find(f => f.st === 'hooked' && otherOn(s, f, i) && !f.on.some((v, j) => v && s.team(j) === s.team(i)) && FISH[f.t].p >= 5);
     if (theirs && Math.random() < 0.3 * skill) { b.tx = theirs.x; b.ty = theirs.y; }
     else {
       let best = -1e9, target = null;
@@ -395,10 +407,11 @@ function event(v, e) {
   if (e.type === 'away' && mine) v.sound('miss');
   if (e.type === 'snag') { v.ring(e.x, e.y, '#ffd23f', 18); v.pop(e.x, e.y - 34, '⚔️ TUG OF WAR!', '#ffd23f'); v.shake(5); v.sound('notify'); }
   if (e.type === 'prompt' && mine) v.sound([[1200, 0, 0.06, { w: 'square', g: 0.4 }], [1500, 0.07, 0.08, { w: 'square', g: 0.4 }]]);
-  if (e.type === 'promptok') { if (mine) v.sound('correct'); v.pop(BANK[e.i].x, BANK[e.i].y - 120, 'NICE!', '#7dff8a'); v.mood(e.i, 'happy', 0.6); }
-  if (e.type === 'promptbad') { if (mine) { v.sound('ouch'); v.shake(5); } v.pop(BANK[e.i].x, BANK[e.i].y - 120, e.late ? 'TOO SLOW! Line lost' : 'WRONG KEY! Line lost', '#ff5a5a'); v.mood(e.i, 'hurt', 0.8); }
+  const B = bankOf(v.n, e.i != null ? e.i : 0);
+  if (e.type === 'promptok') { if (mine) v.sound('correct'); v.pop(B.x, B.y - 120, 'NICE!', '#7dff8a'); v.mood(e.i, 'happy', 0.6); }
+  if (e.type === 'promptbad') { if (mine) { v.sound('ouch'); v.shake(5); } v.pop(B.x, B.y - 120, e.late ? 'TOO SLOW! Line lost' : 'WRONG KEY! Line lost', '#ff5a5a'); v.mood(e.i, 'hurt', 0.8); }
   if (e.type === 'snap') {
-    v.pop(BANK[e.i].x, BANK[e.i].y - 110, '💥 SNAP!', '#ff5a5a');
+    v.pop(B.x, B.y - 110, '💥 SNAP!', '#ff5a5a');
     if (mine) { v.shake(7); v.sound('miss'); }
   }
   if (e.type === 'caught') {
@@ -406,13 +419,13 @@ function event(v, e) {
     v.burst(e.x, e.y, '#ffd23f', e.t === LEGEND ? 40 : 12, 240);
     v.pop(e.x, e.y - 50, (e.tug ? '🏆 ' : '') + f.i + ' ' + f.n + (f.p ? ' +' + f.p : ' (no points!)'), f.p ? '#ffd23f' : '#cccccc');
     if (e.t === LEGEND) v.shake(12);
-    v.sound(mine ? (f.p ? 'point' : 'draw') : 'miss');
+    v.sound(mine || (v.duo && v.teamOf(e.i) === v.myTeam) ? (f.p ? 'point' : 'draw') : 'miss');
   }
 
   if (e.type === 'throw' && mine) v.sound([[400, 0, 0.04]]);
   if (e.type === 'splash') { v.burst(e.x, e.y, '#bfe9ff', 16, 220); v.ring(e.x, e.y, '#ffffff', 24); v.sound([[160, 0, 0.1]]); }
-  if (e.type === 'jolt') v.pop(BANK[e.i].x, BANK[e.i].y - 110, '🪨 Jolted!', '#ff9a9a');
-  if (e.type === 'ruined') { v.pop(BANK[e.i].x, BANK[e.i].y - 110, '🪨 Cast ruined!', '#ff9a9a'); if (mine) v.sound('miss'); }
+  if (e.type === 'jolt') v.pop(B.x, B.y - 110, '🪨 Jolted!', '#ff9a9a');
+  if (e.type === 'ruined') { v.pop(B.x, B.y - 110, '🪨 Cast ruined!', '#ff9a9a'); if (mine) v.sound('miss'); }
   if (e.type === 'legend') { v.note('✨ The LEGENDARY golden fish has appeared!'); v.ring(WATER.x, WATER.y, '#ffd23f', 40); v.shake(6); v.sound('notify'); }
   if (e.type === 'rec') { v.record('big', 'Biggest fish (points)', e.big[v.me]); v.record('got', 'Most fish in a game', e.got[v.me]); v.record('sc', 'Best Pond War score', e.sc[v.me]); }
 }
@@ -473,8 +486,8 @@ function draw(v, s) {
   g.drawImage(scene, 0, 0, W, H);
   (s.f || []).forEach(f => drawFish(v, f));
   s.c.forEach((p, i) => {
-    const bank = BANK[i], side = i ? -1 : 1;
-    v.catSide(i, bank.x, bank.y + 40, 0.9, { lookRight: i === 0 });
+    const bank = bankOf(v.n, i), side = v.teamOf(i) ? -1 : 1;
+    v.catSide(i, bank.x, bank.y + 40, 0.9, { lookRight: v.teamOf(i) === 0 });
     v.label(i === v.me ? 'You' : v.names[i], bank.x, bank.y + 60, 13, i === v.me ? '#ffd23f' : '#ffffff');
     const tipX = bank.x + side * 85, tipY = bank.y - 80;
     g.strokeStyle = '#6b3d1c'; // the rod
@@ -496,7 +509,7 @@ function draw(v, s) {
         if (p.ph === 'bite') { g.strokeStyle = 'rgba(255, 255, 255, .8)'; g.lineWidth = 2; for (let k = 0; k < 2; k++) { g.beginPath(); g.ellipse(lx, ly + 4, 12 + ((v.now / 6 + k * 15) % 30), 5 + ((v.now / 12 + k * 7) % 12), 0, 0, Math.PI * 2); g.stroke(); } }
         g.fillStyle = '#ffffff';
         g.beginPath(); g.arc(lx, ly + dip, 7, 0, Math.PI); g.fill();
-        g.fillStyle = i ? '#ff8a1f' : '#2f7bff';
+        g.fillStyle = v.teamOf(i) ? '#ff8a1f' : '#2f7bff';
         g.beginPath(); g.arc(lx, ly + dip, 7, Math.PI, Math.PI * 2); g.fill();
         if (p.ph === 'bite') v.label('!', lx, ly - 26, 34, '#ffd23f');
       }
@@ -521,7 +534,8 @@ function draw(v, s) {
     }
 
     if (p.ph === 'snapped') v.label('Line snapped!', bank.x, bank.y - 96, 14, '#ff9a9a');
-    // the scoreboard (between the camera walls in the top corners)
+    // the scoreboard (between the camera walls in the top corners; in Duos, a team's)
+    if (v.duo) { v.label(p.sc + ' pts' + (p.rk > 0 ? ' · 🪨 ' + p.rk + 's' : ''), bank.x, bank.y + 76, 11, '#ffffff'); return; }
     const x = i ? W - 300 : 300;
     g.fillStyle = 'rgba(20, 30, 50, .78)';
     v.roundRect(x - 120, 16, 240, 56, 14); g.fill();
@@ -529,8 +543,15 @@ function draw(v, s) {
     v.label('🐟 × ' + p.got + (p.rk > 0 ? '   🪨 ' + p.rk + 's' : '   🪨'), x, 56, 12, '#ffffff');
     if (p.cb) v.label('🔥', x - 108, 33, 14, '#000000');
   });
+  if (v.duo) [0, 1].forEach(t => {
+    const x = t ? W - 300 : 300, pts = s.c.reduce((a, c, j) => a + (v.teamOf(j) === t ? c.sc : 0), 0), got = s.c.reduce((a, c, j) => a + (v.teamOf(j) === t ? c.got : 0), 0);
+    g.fillStyle = 'rgba(20, 30, 50, .78)';
+    v.roundRect(x - 120, 16, 240, 56, 14); g.fill();
+    v.label(v.side(t) + (t === v.myTeam ? ' (you)' : '') + ': ' + pts + ' pts', x, 33, 16, v.sideColor(t).light);
+    v.label('🐟 × ' + got, x, 56, 12, '#ffffff');
+  });
   (s.r || []).forEach(([x, y, k, i]) => { // rocks in the air
-    const bank = BANK[i], f = 1 - k / ROCK_FLY, rx = bank.x + (x - bank.x) * f, ry = bank.y - 40 + (y - bank.y + 40) * f - Math.sin(f * Math.PI) * 90;
+    const bank = bankOf(v.n, i), f = 1 - k / ROCK_FLY, rx = bank.x + (x - bank.x) * f, ry = bank.y - 40 + (y - bank.y + 40) * f - Math.sin(f * Math.PI) * 90;
     g.fillStyle = '#6b6b78';
     v.dot(rx, ry, 8);
   });

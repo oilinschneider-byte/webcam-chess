@@ -1235,6 +1235,7 @@ CA.games = {
   add(id, def) { GAMES[id] = def; },
   pick: opts => pickGame(opts), // (the tests use this to check that every game gets the same chance)
   ids: () => Object.keys(GAMES),
+  get: id => GAMES[id], // (Duos starts the same games, with four players: see duos.js)
   name: id => (GAMES[id] ? GAMES[id].name : id),
   kit: {
     $, setMsg, esc, sound, sleep, gauss, shuffle, startTimer, stopTimer, resetTimer, roundMatch, raceBars, fmtTime,

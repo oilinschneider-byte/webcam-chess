@@ -27,7 +27,7 @@ const BLOCKED = (x, y) => y <= 3 && (x <= 3 || x >= CW - 4);
 const center = (cx, cy) => [X0 + (cx + 0.5) * TILE, Y0 + (cy + 0.5) * TILE];
 
 CA.games.add('mouse', {
-  name: 'Cheese Heist', icon: '🐭',
+  name: 'Cheese Heist', icon: '🐭', duos: true,
   blurb: 'A dark maze! As the mouse, steal the cheese and escape through the exit. As the cat, stop them. You only see what your flashlight shows. Then you swap. Most points wins.',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -138,7 +138,7 @@ function init(api) {
   };
   const spots = [pick(3, 8), pick(9, 14), pick(15, 20)];
   const tunnels = [[pick(0, 5), pick(17, 22)], [pick(6, 10), pick(12, 16)]];
-  const s = { maze, mz: maze.join(''), walls: wallsOf(maze), spots, tunnels, round: 0, sc: [0, 0], phase: 'chase', pause: 0, t: 0, movers: [], sudden: false, bestSteal: [0, 0], ping: null, ended: false };
+  const s = { n: api.n || 2, team: api.team || (i => i), maze, mz: maze.join(''), walls: wallsOf(maze), spots, tunnels, round: 0, sc: [0, 0], phase: 'chase', pause: 0, t: 0, movers: [], sudden: false, bestSteal: [0, 0], ping: null, ended: false };
   newRound(s, api);
   return s;
 }
@@ -150,6 +150,7 @@ function newRound(s, api) {
   s.phase = 'chase';
   const mouseI = s.round === 1 ? 0 : s.round === 2 ? 1 : api.rng() < 0.5 ? 0 : 1;
   s.mouseI = mouseI;
+  s.mt = mouseI; // (the mice's side: in Duos a team, in 1 vs 1 the player)
   s.cheese = (s.sudden ? [s.spots[1]] : s.spots).map(([cx, cy]) => { const [x, y] = center(cx, cy); return { x, y, on: true }; });
   s.got = 0;
   s.trap = null;
@@ -157,12 +158,15 @@ function newRound(s, api) {
   s.steps = [];
   s.stepIn = 0;
   const behind = !s.sudden && s.sc[1 - mouseI] - s.sc[mouseI] >= BOOST_BEHIND;
-  s.movers = [0, 1].map(i => {
-    const role = i === mouseI ? 'mouse' : 'cat';
-    const [x, y] = center(...START[role]);
-    return { role, x, y, vx: 0, vy: 0, dash: 0, wait: 0.5, fx: 1, fa: role === 'cat' ? Math.PI : 0, jump: 0, jw: 0, stun: 0, tw: 0, hold: role === 'cat' ? HEAD_START : 0, used: 0, boost: role === 'mouse' && behind };
+  s.traps = [];
+  // (Duos: the mice team's two cats are both mice, side by side; the other two are cats)
+  const spots = { mouse: [START.mouse, [1, CH - 1]], cat: [[10, 6], [12, 6]] };
+  s.movers = Array.from({ length: s.n }, (_, i) => {
+    const role = (s.n > 2 ? s.team(i) : i) === mouseI ? 'mouse' : 'cat';
+    const [x, y] = s.n > 2 ? center(...spots[role][i % 2]) : center(...START[role]);
+    return { out: 0, role, x, y, vx: 0, vy: 0, dash: 0, wait: 0.5, fx: 1, fa: role === 'cat' ? Math.PI : 0, jump: 0, jw: 0, stun: 0, tw: 0, hold: role === 'cat' ? HEAD_START : 0, used: 0, boost: role === 'mouse' && behind };
   });
-  api.ev('round', { m: mouseI, n: s.round, sd: s.sudden ? 1 : 0 });
+  api.ev('round', { m: s.n > 2 ? s.movers.findIndex(c => c.role === 'mouse') : mouseI, n: s.round, sd: s.sudden ? 1 : 0 });
 }
 
 function endRound(s, api, how) {
@@ -197,6 +201,7 @@ function step(s, inp, dt, api) {
     s.pause -= dt;
     if (s.pause <= 0) {
       if (s.round === 1) newRound(s, api);
+      else if (s.n > 2) { s.phase = 'over'; records(s, api); api.end(s.sc[0] === s.sc[1] ? -1 : s.sc[0] > s.sc[1] ? 0 : 1, 'HEIST OVER!'); }
       else if (s.sc[0] === s.sc[1]) newRound(s, api); // (a tie: sudden death)
       else { s.phase = 'over'; records(s, api); api.end(s.sc[0] > s.sc[1] ? 0 : 1, 'HEIST OVER!'); }
     }
@@ -205,6 +210,7 @@ function step(s, inp, dt, api) {
   s.t += dt;
   s.movers.forEach((c, i) => {
     const n = inp[i];
+    if (c.out) return; // (Duos: caught or escaped, for the rest of the round)
     c.wait = Math.max(0, c.wait - dt);
     c.jw = Math.max(0, c.jw - dt);
     c.stun = Math.max(0, c.stun - dt);
@@ -216,7 +222,7 @@ function step(s, inp, dt, api) {
       if (blocksExit(s, c.x, c.y)) api.ev('notrap', { i }); // (not on the only way out)
       else {
         c.used = 1;
-        s.trap = { x: c.x, y: c.y };
+        if (s.n > 2) s.traps.push({ x: c.x, y: c.y }); else s.trap = { x: c.x, y: c.y };
         api.ev('settrap', { i });
       }
     }
@@ -260,6 +266,7 @@ function step(s, inp, dt, api) {
     const [bx, by] = cellOf(c.x, c.y);
     if (BLOCKED(bx, by)) c.y = Y0 + 4.5 * TILE; // (a leap can't land behind a camera)
   });
+  if (s.n > 2) { duoAfter(s, api, dt); return; }
   const m = s.movers[s.mouseI], cat = s.movers[1 - s.mouseI];
   // tunnels: only the mouse fits
   if (m.tw <= 0 && m.jump <= 0) {
@@ -304,12 +311,62 @@ function step(s, inp, dt, api) {
   if (s.t >= (s.sudden ? SUDDEN : ROUND)) endRound(s, api, s.sudden ? 'caught' : 'time');
 }
 
+// (Duos) After everyone moved: tunnels, footprints, cheese, traps, the exit and getting caught, for each mouse still in.
+// A mouse that escapes (+2) or is caught is out until the next round; the round ends when both are out, or on time.
+function duoAfter(s, api, dt) {
+  const mice = s.movers.map((c, i) => i).filter(i => s.movers[i].role === 'mouse' && !s.movers[i].out);
+  const cats = s.movers.filter(c => c.role === 'cat');
+  mice.forEach(i => {
+    const m = s.movers[i];
+    if (m.tw <= 0 && m.jump <= 0) {
+      for (const [a, b] of s.tunnels) for (const [from, to] of [[a, b], [b, a]]) {
+        const [fx, fy] = center(...from);
+        if (m.tw <= 0 && Math.hypot(m.x - fx, m.y - fy) < 15) { [m.x, m.y] = center(...to); m.tw = TUNNEL_WAIT; api.ev('tele', { x: m.x, y: m.y, ax: fx, ay: fy }); }
+      }
+    }
+    m.stepIn = (m.stepIn || 0) - dt;
+    if (m.stepIn <= 0 && (m.vx || m.vy) && m.jump <= 0) { m.stepIn = 0.28; s.steps.push([Math.round(m.x), Math.round(m.y), s.t]); if (s.steps.length > 20) s.steps.shift(); }
+    for (const c of s.cheese) {
+      if (!c.on || Math.hypot(c.x - m.x, c.y - m.y) > R + 12) continue;
+      c.on = false;
+      s.got++;
+      s.sc[s.mt]++;
+      api.score(s.sc[0], s.sc[1]);
+      api.ev('steal', { x: c.x, y: c.y, n: s.got });
+      noise(s, api, c.x, c.y, false);
+    }
+    s.traps = s.traps.filter(t => {
+      if (Math.hypot(t.x - m.x, t.y - m.y) >= R + 8 || m.jump > 0) return true;
+      m.stun = TRAP_STUN;
+      api.ev('trap', { x: t.x, y: t.y });
+      noise(s, api, t.x, t.y, false);
+      return false;
+    });
+    const [ex, ey] = center(...EXIT);
+    if (s.got > 0 && Math.hypot(ex - m.x, ey - m.y) < R + 10) {
+      m.out = 2; s.sc[s.mt] += 2; s.bestSteal[s.mt] = Math.max(s.bestSteal[s.mt], s.got + 2);
+      api.score(s.sc[0], s.sc[1]);
+      api.ev('escaped', { x: m.x, y: m.y, m: i, p: 2 });
+    } else if (m.jump <= 0 && cats.some(c => Math.hypot(m.x - c.x, m.y - c.y) < R * 2 - 2)) {
+      m.out = 1;
+      api.ev('caught', { x: m.x, y: m.y, m: i, p: 0 });
+    }
+  });
+  const left = s.movers.some(c => c.role === 'mouse' && !c.out);
+  if (!left || s.t >= ROUND) {
+    if (left) api.ev('time', {});
+    s.bestSteal[s.mt] = Math.max(s.bestSteal[s.mt], s.got);
+    s.phase = 'pause';
+    s.pause = 2.2;
+  }
+}
+
 function snap(s) {
   return {
-    mz: s.mz, rd: s.round, mi: s.mouseI, t: Math.round(s.t * 10) / 10, ph: s.phase, sc: s.sc, got: s.got, sd: s.sudden ? 1 : 0,
+    mz: s.mz, rd: s.round, mi: s.mouseI, trs: s.n > 2 ? s.traps.map(t => [Math.round(t.x), Math.round(t.y)]) : undefined, t: Math.round(s.t * 10) / 10, ph: s.phase, sc: s.sc, got: s.got, sd: s.sudden ? 1 : 0,
     ch: s.cheese.map(c => [Math.round(c.x), Math.round(c.y), c.on ? 1 : 0]), tu: s.tunnels, tr: s.trap ? [Math.round(s.trap.x), Math.round(s.trap.y)] : 0,
     fp: s.steps.map(p => [p[0], p[1], Math.round((s.t - p[2]) * 10) / 10]),
-    c: s.movers.map(c => ({ x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, r: c.role === 'cat' ? 1 : 0, d: c.dash > 0 ? 1 : 0, f: c.fx, fa: Math.round(c.fa * 100) / 100, w: Math.round(c.wait * 10) / 10, j: c.jump > 0 ? 1 : 0, jw: Math.round(c.jw * 10) / 10, st: c.stun > 0 ? 1 : 0, u: c.used, cb: c.boost ? 1 : 0 })),
+    c: s.movers.map(c => ({ x: Math.round(c.x * 10) / 10, y: Math.round(c.y * 10) / 10, r: c.role === 'cat' ? 1 : 0, d: c.dash > 0 ? 1 : 0, f: c.fx, fa: Math.round(c.fa * 100) / 100, w: Math.round(c.wait * 10) / 10, j: c.jump > 0 ? 1 : 0, jw: Math.round(c.jw * 10) / 10, st: c.stun > 0 ? 1 : 0, u: c.used, cb: c.boost ? 1 : 0, o: c.out })),
   };
 }
 
@@ -330,9 +387,14 @@ function stepTowards(s, st, me, goal) {
 // exit are either). As the mouse: it goes for the
 // nearest cheese and then the exit (better bots take all the cheese first), and runs when the cat gets close.
 function bot(s, i, dt, api) {
-  const st = s.bs || (s.bs = { think: 0, tx: 0, ty: 0, dash: false, jump: false, patrol: null, heard: null, heardAt: -1 });
+  const fresh = () => ({ think: 0, tx: 0, ty: 0, dash: false, jump: false, patrol: null, heard: null, heardAt: -1 });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.bs || (s.bs = fresh());
   if (s.phase !== 'chase') return { hit: {} };
-  const me = s.movers[i], them = s.movers[1 - i];
+  const me = s.movers[i];
+  if (me.out) return { hit: {} };
+  // (Duos: the nearest one of the other role still in the round)
+  let them = s.movers[1 - i];
+  if (s.n > 2) { let bd = 1e9; s.movers.forEach(o => { if (o.role !== me.role && !o.out) { const d = Math.hypot(o.x - me.x, o.y - me.y); if (d < bd) { bd = d; them = o; } } }); }
   st.think -= dt;
   if (st.think <= 0) {
     st.think = 0.12 + (1 - api.skill) * 0.25;
@@ -410,15 +472,15 @@ function event(v, e) {
   if (e.type === 'notrap' && e.i === v.me) { v.note("You can't set a trap on the only way to the exit!"); v.sound([[200, 0, 0.08]]); }
   if (e.type === 'settrap') { if (e.i === v.me) v.note('Trap set. The mouse can\'t see it until it\'s close.'); v.sound([[300, 0, 0.04]]); }
   if (e.type === 'trap') { v.pop(e.x, e.y - 24, '🪤 SNAP!', '#ff5a5a'); v.burst(e.x, e.y, '#ff5a5a', 12, 240); v.shake(6); v.sound('miss'); }
-  if (e.type === 'caught') { v.burst(e.x, e.y, '#ffd23f', 22, 300); v.pop(e.x, e.y - 30, 'CAUGHT!' + (e.p ? ' Kept ' + e.p : ''), '#ff5a5a'); v.shake(10); v.sound(e.m === v.me ? 'miss' : 'point'); }
-  if (e.type === 'escaped') { v.burst(e.x, e.y, '#7dff8a', 26, 320); v.pop(e.x, e.y - 30, 'ESCAPED!' + (e.p ? ' +' + e.p : ''), '#7dff8a'); v.shake(5); v.sound(e.m === v.me ? 'win' : 'miss'); }
+  if (e.type === 'caught') { v.burst(e.x, e.y, '#ffd23f', 22, 300); v.pop(e.x, e.y - 30, 'CAUGHT!' + (e.p ? ' Kept ' + e.p : ''), '#ff5a5a'); v.shake(10); v.sound(v.teamOf(e.m) === v.myTeam ? 'miss' : 'point'); }
+  if (e.type === 'escaped') { v.burst(e.x, e.y, '#7dff8a', 26, 320); v.pop(e.x, e.y - 30, 'ESCAPED!' + (e.p ? ' +' + e.p : ''), '#7dff8a'); v.shake(5); v.sound(v.teamOf(e.m) === v.myTeam ? 'win' : 'miss'); }
   if (e.type === 'time') { v.pop(W / 2, H / 2, "Time's up! No escape bonus", '#ffffff'); v.sound('draw'); }
   if (e.type === 'round') {
     v.sound('notify');
-    const you = e.m === v.me ? 'you are the mouse 🐭: steal the 🧀, get out through the 🚪' : 'you are the cat 🐱: stop the mouse';
+    const you = v.teamOf(e.m) === v.myTeam ? 'you are the mouse 🐭: steal the 🧀, get out through the 🚪' : 'you are the cat 🐱: stop the mouse';
     v.note((e.sd ? '⚡ SUDDEN DEATH, lights almost out: ' : 'Round ' + e.n + ': ') + you);
   }
-  if (e.type === 'rec') v.record('heist', 'Best heist (points in a round)', e.best[v.me]);
+  if (e.type === 'rec') v.record('heist', 'Best heist (points in a round)', e.best[v.myTeam]);
 }
 
 let art = { key: '', c: null, walls: null };
@@ -506,9 +568,54 @@ function drawMover(v, i, c) {
 }
 
 let beatAt = 0;
+let darkC = null;
+
+// (Duos) Your team sees through both its flashlights; the other team shows only where that light falls.
+function drawDuo(v, s, a) {
+  const g = v.g, me = s.c[v.me], playing = s.ph === 'chase', mouseTeam = !me.r;
+  const mine = s.c.map((c, i) => i).filter(i => v.teamOf(i) === v.myTeam && !s.c[i].o);
+  const shapes = playing ? mine.map(i => lightShape(s.c[i].x, s.c[i].y, s.c[i].fa, a.walls, 1)) : [];
+  const inLight = fn => { g.save(); if (playing) { g.beginPath(); shapes.forEach(p => tracePts(g, p)); g.clip(); } fn(); g.restore(); };
+  const goals = () => {
+    (s.ch || []).forEach(([x, y, on]) => { if (on) v.label('🧀', x, y + Math.sin(v.now / 250 + x) * 2, 25, '#000000'); });
+    const [ex, ey] = center(...EXIT), open = s.got > 0;
+    g.globalAlpha = open ? 1 : 0.4; v.label('🚪', ex, ey, open ? 30 + Math.sin(v.now / 140) * 3 : 26, '#000000'); g.globalAlpha = 1;
+  };
+  inLight(() => {
+    if (!mouseTeam) {
+      (s.fp || []).forEach(([x, y, age]) => { g.globalAlpha = Math.max(0, 0.6 - age * 0.12); v.label('🐾', x, y, 13, '#000000'); });
+      g.globalAlpha = 1;
+      goals();
+    }
+    (s.trs || []).forEach(([x, y]) => v.label('🪤', x, y, 22, '#000000'));
+    s.c.forEach((c, i) => { if (v.teamOf(i) !== v.myTeam && !c.o) drawMover(v, i, c); });
+  });
+  if (playing) {
+    if (!darkC) { darkC = document.createElement('canvas'); darkC.width = W; darkC.height = H; }
+    const d = darkC.getContext('2d');
+    d.globalCompositeOperation = 'source-over'; d.clearRect(0, 0, W, H);
+    d.fillStyle = 'rgba(9, 7, 22, .84)'; d.fillRect(0, 0, W, H);
+    d.globalCompositeOperation = 'destination-out'; d.beginPath(); shapes.forEach(p => tracePts(d, p)); d.fill();
+    d.globalCompositeOperation = 'source-over';
+    g.drawImage(darkC, 0, 0, W, H);
+  }
+  if (mouseTeam || !playing) goals();
+  (s.tu || []).forEach(pair => pair.forEach(([cx, cy]) => { const [x, y] = center(cx, cy); g.globalAlpha = me.r ? 0.35 : 0.85; v.label('🕳️', x, y, 22, '#000000'); g.globalAlpha = 1; }));
+  s.c.forEach((c, i) => { if (v.teamOf(i) === v.myTeam && !c.o) drawMover(v, i, c); });
+  g.fillStyle = 'rgba(30, 20, 15, .85)';
+  v.roundRect(W / 2 - 230, 3, 460, 24, 12); g.fill();
+  const left = Math.max(0, Math.ceil(ROUND - s.t));
+  const outs = s.c.map((c, i) => (c.o ? (c.o === 2 ? '🏃' : '🔒') + (i === v.me ? 'You' : v.names[i]) : '')).filter(Boolean).join(' ');
+  v.label('Round ' + s.rd + '/2 · ⏱ ' + left + ' · 🧀 ' + s.got + '/3 · Blue ' + s.sc[0] + ' – ' + s.sc[1] + ' Orange' + (outs ? ' · ' + outs : ''), W / 2, 15, 12, left <= 10 ? '#ffb0b0' : '#ffffff');
+  if (!playing) return;
+  if (me.o) v.msg(me.o === 2 ? 'You escaped! Your teammate is still in there…' : 'You were caught! Cheer on your teammate');
+  else v.msg(me.r ? 'Your team are the CATS: catch both mice! Listen for noises.' + (me.w > 0 ? ' · dash in ' + me.w.toFixed(1) + 's' : ' · Space to dash') + (me.u ? '' : ' · E sets your trap')
+    : (s.got ? 'The 🚪 is open: get out (+2 each), or grab more 🧀!' : 'Steal a 🧀 to open the 🚪!') + (me.jw > 0 ? ' · jump in ' + me.jw.toFixed(1) + 's' : ' · Space jumps a wall') + (me.u < DECOYS ? ' · E throws a squeak' : ''));
+}
 function draw(v, s) {
   const g = v.g, a = mazeArt(s.mz);
   g.drawImage(a.c, 0, 0, W, H);
+  if (v.duo) { drawDuo(v, s, a); return; }
   const me = s.c[v.me], them = s.c[v.them];
   const playing = s.ph === 'chase';
   const shape = playing ? lightShape(me.x, me.y, me.fa, a.walls, s.sd ? 0.62 : 1) : null;

@@ -20,7 +20,7 @@ const r1 = v => Math.round(v * 10) / 10;
 const r2 = v => Math.round(v * 100) / 100;
 
 CA.games.add('cannons', {
-  name: 'Cat Cannons', icon: '💥',
+  name: 'Cat Cannons', icon: '💥', duos: true,
   blurb: 'Hide your cat in your fort, then take turns firing cannons at each other\'s forts! Wood breaks, stone takes two hits, blocks fall. Hit the other cat and it gets one REDEMPTION shot: if it gets you back, you both lose a life. 3 lives each.',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -75,8 +75,11 @@ const pivot = i => ({ x: CANNON[i], y: GY - 22 });
 
 /* ---------- the game ---------- */
 
+// (Duos: each team shares a fort, a cannon and its lives; teammates hide in different rooms and take turns at the cannon.
+// s.team(i) is player i's side; in 1 vs 1 each player is their own side.)
 function init(api) {
-  const s = { lives: [LIVES, LIVES], round: 0, balls: [], wind: 0, a: [-0.7, -Math.PI + 0.7], power: [0, 0], charging: [false, false] };
+  const n = api.n || 2, team = api.team || (i => i);
+  const s = { n, team, lives: [LIVES, LIVES], round: 0, balls: [], wind: 0, a: Array.from({ length: n }, (_, i) => (team(i) ? -Math.PI + 0.7 : -0.7)), power: new Array(n).fill(0), charging: new Array(n).fill(false), ptr: [0, 0] };
   newRound(s, api);
   return s;
 }
@@ -84,7 +87,7 @@ function init(api) {
 function newRound(s, api) {
   s.round++;
   s.forts = [buildFort(0), buildFort(1)];
-  s.cats = [0, 1].map(() => ({ x: 0, y: 0, room: -1, doomed: false, dead: false, vy: 0 }));
+  s.cats = Array.from({ length: s.n }, () => ({ x: 0, y: 0, room: -1, doomed: false, dead: false, vy: 0 }));
   s.phase = 'pick';
   s.t = PICK_T;
   s.first = -1;         // (whoever picked first: they shoot first)
@@ -98,10 +101,15 @@ function newRound(s, api) {
   api.ev('round', { n: s.round });
 }
 
+// The players on a side, and the next of them to shoot (in 1 vs 1, just the one).
+const sidePlayers = (s, t) => s.cats.map((c, i) => i).filter(i => s.team(i) === t);
+function nextShooter(s, t) { const p = sidePlayers(s, t); const i = p[s.ptr[t] % p.length]; s.ptr[t]++; return i; }
+
 function place(s, i, room, api) {
   const c = s.cats[i];
   if (c.room >= 0) return;
-  const spot = s.forts[i].rooms[room];
+  if (s.cats.some((o, j) => j !== i && s.team(j) === s.team(i) && o.room === room)) return; // (a teammate is hiding there)
+  const spot = s.forts[s.team(i)].rooms[room];
   c.room = room;
   c.x = spot.x;
   c.y = spot.y;
@@ -113,8 +121,8 @@ function startTurn(s, i, api) {
   s.phase = 'aim';
   s.turn = i;
   s.t = AIM_T;
-  s.charging = [false, false];
-  s.power = [0, 0];
+  s.charging = new Array(s.n).fill(false);
+  s.power = new Array(s.n).fill(0);
   api.ev('turn', { i, redeem: s.redeem ? 1 : 0 });
 }
 
@@ -128,18 +136,23 @@ function aimAngle(i, ax, ay) {
 function step(s, inp, dt, api) {
   if (s.phase === 'over') return;
   s.t -= dt;
-  for (let i = 0; i < 2; i++) s.a[i] = aimAngle(i, inp[i].ax, inp[i].ay);
+  for (let i = 0; i < s.n; i++) s.a[i] = aimAngle(s.team(i), inp[i].ax, inp[i].ay);
   if (s.phase === 'pick') {
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < s.n; i++) {
       const n = inp[i];
       if (!n.hit.fire || s.cats[i].room >= 0) continue;
       let best = -1, bd = 46;
-      s.forts[i].rooms.forEach((m, k) => { const d = Math.hypot(n.ax - m.x, n.ay - (m.y - CELL * 2)); if (d < bd) { bd = d; best = k; } });
+      s.forts[s.team(i)].rooms.forEach((m, k) => { const d = Math.hypot(n.ax - m.x, n.ay - (m.y - CELL * 2)); if (d < bd) { bd = d; best = k; } });
       if (best >= 0) place(s, i, best, api);
     }
-    if (s.t <= 0 || (s.cats[0].room >= 0 && s.cats[1].room >= 0)) {
-      for (let i = 0; i < 2; i++) if (s.cats[i].room < 0) place(s, i, Math.floor(Math.random() * s.forts[i].rooms.length), api);
-      startTurn(s, s.first >= 0 ? s.first : Math.floor(Math.random() * 2), api);
+    if (s.t <= 0 || s.cats.every(c => c.room >= 0)) {
+      for (let i = 0; i < s.n; i++) {
+        if (s.cats[i].room >= 0) continue;
+        const free = s.forts[s.team(i)].rooms.map((m, k) => k).filter(k => !s.cats.some((o, j) => s.team(j) === s.team(i) && o.room === k));
+        place(s, i, free[Math.floor(Math.random() * free.length)], api);
+      }
+      if (s.n > 2) { const t = s.first >= 0 ? s.team(s.first) : Math.floor(Math.random() * 2); s.ptr = [0, 0]; if (s.first >= 0) s.ptr[t] = sidePlayers(s, t).indexOf(s.first); startTurn(s, nextShooter(s, t), api); }
+      else startTurn(s, s.first >= 0 ? s.first : Math.floor(Math.random() * 2), api);
     }
   } else if (s.phase === 'aim') {
     const i = s.turn, n = inp[i];
@@ -163,7 +176,7 @@ function step(s, inp, dt, api) {
 }
 
 function fire(s, i, api) {
-  const p = pivot(i), a = s.a[i], v = POWER_MIN + (POWER_MAX - POWER_MIN) * s.power[i];
+  const p = pivot(s.team(i)), a = s.a[i], v = POWER_MIN + (POWER_MAX - POWER_MIN) * s.power[i];
   s.balls.push({ x: p.x + Math.cos(a) * 34, y: p.y + Math.sin(a) * 34, vx: Math.cos(a) * v, vy: Math.sin(a) * v, o: i, tr: [] });
   s.charging[i] = false;
   s.power[i] = 0;
@@ -172,27 +185,34 @@ function fire(s, i, api) {
 }
 
 // After a shot has landed and the blocks have stopped falling: did it get the other cat (or its own)?
+// (s.doomed is the side waiting to lose a life. In Duos, a side is hit if either of its cats was blown up.)
 function afterShot(s, api) {
-  const i = s.turn, o = 1 - i;
-  const hit = s.cats[o].doomed && s.doomed !== o;  // (the other cat was blown up just now)
-  const self = s.cats[i].doomed && s.doomed !== i; // (it blew up its own cat)
-  const lose = who => {
-    who.forEach(k => { s.lives[k] = Math.max(0, s.lives[k] - 1); s.cats[k].dead = true; });
+  const i = s.turn, me = s.team(i), o = 1 - me;
+  const blown = t => s.cats.some((c, k) => s.team(k) === t && c.doomed);
+  const hit = blown(o) && s.doomed !== o;   // (the other side was blown up just now)
+  const self = blown(me) && s.doomed !== me; // (it blew up its own side)
+  const lose = sides => {
+    const died = [];
+    sides.forEach(t => {
+      s.lives[t] = Math.max(0, s.lives[t] - 1);
+      s.cats.forEach((c, k) => { if (s.team(k) === t && (c.doomed || s.n <= 2)) { c.dead = true; died.push(k); } });
+    });
     api.score(LIVES - s.lives[1], LIVES - s.lives[0]);
-    api.ev('lost', { who, both: who.length > 1 ? 1 : 0, self: self && !hit ? 1 : 0 });
+    api.ev('lost', { who: died, both: sides.length > 1 ? 1 : 0, self: self && !hit ? 1 : 0 });
     s.phase = 'ko';
     s.t = 3.2;
   };
-  if (s.redeem) { lose(hit ? [i, o] : [i]); return; } // a redemption shot: it got them back (both lose a life), or it didn't
-  if (self) { lose(hit ? [i, o] : [i]); return; }       // (oops)
-  if (hit) { // a hit! the other cat gets one redemption shot
+  if (s.redeem) { lose(hit ? [me, o] : [me]); return; } // a redemption shot: it got them back (both lose a life), or it didn't
+  if (self) { lose(hit ? [me, o] : [me]); return; }     // (oops)
+  if (hit) { // a hit! the cat that was blown up gets one redemption shot
     s.doomed = o;
     s.redeem = true;
-    api.ev('doomed', { i: o });
-    startTurn(s, o, api);
+    const shooter = s.n > 2 ? s.cats.findIndex((c, k) => s.team(k) === o && c.doomed) : o;
+    api.ev('doomed', { i: shooter });
+    startTurn(s, shooter, api);
     return;
   }
-  startTurn(s, o, api);
+  startTurn(s, s.n > 2 ? nextShooter(s, o) : o, api);
 }
 
 function flyBalls(s, dt, api) {
@@ -280,23 +300,27 @@ function snap(s) {
 // the blocks) and picks the shot that blows up closest to the other cat; easier bots aim worse.
 function bot(s, i, dt, api) {
   const st = (s.bs || (s.bs = {}))[i] || (s.bs[i] = { plan: null, think: 0, wait: 0 });
-  const out = { ax: CANNON[1 - i], ay: 200, held: {}, hit: {} };
+  const side = s.team(i);
+  const out = { ax: CANNON[1 - side], ay: 200, held: {}, hit: {} };
   if (s.phase === 'pick') {
     st.plan = null;
     st.wait += dt;
     if (s.cats[i].room < 0 && st.wait > 1 + Math.random() * 2) {
-      const m = s.forts[i].rooms[Math.floor(Math.random() * s.forts[i].rooms.length)];
+      const free = s.forts[side].rooms.filter((m, k) => !s.cats.some((o, j) => s.team(j) === side && o.room === k));
+      const m = free[Math.floor(Math.random() * free.length)] || s.forts[side].rooms[0];
       Object.assign(out, { ax: m.x, ay: m.y - CELL * 2, hit: { fire: true } });
     }
     return out;
   }
   st.wait = 0;
   if (s.phase !== 'aim' || s.turn !== i) { st.plan = null; return out; }
-  const target = s.cats[1 - i], p = pivot(i);
+  // (the cat of the other side to aim at: in Duos, one still in it, the nearer one)
+  const foes = s.cats.filter((c, k) => s.team(k) !== side && c.room >= 0 && !c.dead);
+  const target = foes.sort((a, b) => Math.abs(a.x - CANNON[side]) - Math.abs(b.x - CANNON[side]))[0] || s.cats[(i + 1) % s.n], p = pivot(side);
   if (!st.plan) {
     let best = null, bestD = Infinity;
     for (let a = -Math.PI + 0.12; a < -0.12; a += 0.04) {
-      if ((i === 0 && Math.cos(a) < 0) || (i === 1 && Math.cos(a) > 0)) continue;
+      if ((side === 0 && Math.cos(a) < 0) || (side === 1 && Math.cos(a) > 0)) continue;
       for (let pw = 0.04; pw <= 1.0001; pw += 0.04) {
         const v = POWER_MIN + (POWER_MAX - POWER_MIN) * pw;
         let x = p.x + Math.cos(a) * 34, y = p.y + Math.sin(a) * 34, vx = Math.cos(a) * v, vy = Math.sin(a) * v;
@@ -323,17 +347,17 @@ function bot(s, i, dt, api) {
 
 /* ---------- drawing ---------- */
 
-const heads = [null, null];   // a head that came off: { t0, x, y, vx, vy, spin } (just for show, on each screen)
+const heads = [null, null, null, null];   // a head that came off: { t0, x, y, vx, vy, spin } (just for show, on each screen)
 const debris = [];
 
 function event(v, e) {
-  if (e.type === 'round') { heads[0] = heads[1] = null; debris.length = 0; v.note('Round ' + e.n + ' · hide your cat!'); v.banner('ROUND ' + e.n, '#ffffff'); }
-  if (e.type === 'placed') { v.sound('pop'); if (e.first) v.pop(FORT_X[e.i] + COLS * CELL / 2, fortTop(e.i) - 20, 'FIRST SHOT!', '#ffd23f'); }
+  if (e.type === 'round') { heads.fill(null); debris.length = 0; v.note('Round ' + e.n + ' · hide your cat!'); v.banner('ROUND ' + e.n, '#ffffff'); }
+  if (e.type === 'placed') { v.sound('pop'); if (e.first) v.pop(FORT_X[v.teamOf(e.i)] + COLS * CELL / 2, fortTop(e.i) - 20, 'FIRST SHOT!', '#ffd23f'); }
   if (e.type === 'turn') {
     v.sound(e.redeem ? 'whoosh' : 'tick');
     v.mood(e.i, e.redeem ? 'dizzy' : 'angry', 2.5);
   }
-  if (e.type === 'fire') { v.burst(e.x, e.y, '#fff3b0', 12, 220); v.sound([[120, 0, 0.12], [80, 0.05, 0.2], [600, 0, 0.18, { w: 'noise', to: 120, g: 1 }]]); v.shake(6); v.mood(e.i, 'smug', 1.2); v.mood(1 - e.i, 'shock', 1.6); }
+  if (e.type === 'fire') { v.burst(e.x, e.y, '#fff3b0', 12, 220); v.sound([[120, 0, 0.12], [80, 0.05, 0.2], [600, 0, 0.18, { w: 'noise', to: 120, g: 1 }]]); v.shake(6); v.mood(e.i, 'smug', 1.2); if (v.duo) v.foes(e.i).forEach(k => v.mood(k, 'shock', 1.6)); else v.mood(1 - e.i, 'shock', 1.6); }
   if (e.type === 'boom') {
     v.burst(e.x, e.y, '#ff9a3c', 26, 360);
     v.burst(e.x, e.y, '#c98b4a', 10 + e.n * 2, 300);
@@ -349,14 +373,14 @@ function event(v, e) {
     v.flash('#ff3b3b', 0.25);
     v.mood(e.i, 'dizzy', 30);
   }
-  if (e.type === 'skip') v.pop(CANNON[e.i], GY - 90, 'TOO SLOW!', '#ffffff');
+  if (e.type === 'skip') v.pop(CANNON[v.teamOf(e.i)], GY - 90, 'TOO SLOW!', '#ffffff');
   if (e.type === 'miss') v.sound([[300, 0, 0.1]]);
   if (e.type === 'lost') {
     v.banner(e.both ? 'DOUBLE KO! 💀💀' : e.self ? 'OOPS! 💀' : 'NO REDEMPTION! 💀', e.both ? '#ffd23f' : '#ff5a5a');
     v.shake(22);
     v.flash('#ffffff', 0.35);
     v.sound('boom');
-    (e.who || []).forEach(k => { heads[k] = { t0: performance.now(), vx: (k ? 1 : -1) * (80 + Math.random() * 120), vy: -420 - Math.random() * 120, spin: (Math.random() - 0.5) * 16 }; v.mood(k, 'ko', 30); });
+    (e.who || []).forEach(k => { heads[k] = { t0: performance.now(), vx: (v.teamOf(k) ? 1 : -1) * (80 + Math.random() * 120), vy: -420 - Math.random() * 120, spin: (Math.random() - 0.5) * 16 }; v.mood(k, 'ko', 30); });
   }
 }
 
@@ -369,7 +393,7 @@ function catPic(v, i, face, look) {
 function drawCat(v, s, i, c) {
   const g = v.g, [x0, y0, room, doomed, dead] = c;
   if (room < 0) return;
-  const k = 0.4, look = i === 0 ? 1 : -1;
+  const k = 0.4, look = v.teamOf(i) === 0 ? 1 : -1;
   const shake = doomed && !dead ? Math.sin(v.now / 22) * 2.5 : 0;
   const face = dead ? 'ko' : doomed ? 'dizzy' : s.tn === i && s.ph === 'aim' ? (s.ch[i] ? 'squint' : 'angry') : s.ph === 'fly' && s.tn !== i ? 'shock' : 'normal';
   // (waiting in its room, it blinks now and then, and breathes: its head rises and falls a little)
@@ -435,8 +459,9 @@ function draw(v, s) {
   drawFort(v, s, 1);
   if (s.ph === 'pick') { // where you can hide (and where you did)
     const mine = s.c[v.me];
-    (s.rm[v.me] || []).forEach(([x, y], k) => {
-      if (mine[2] >= 0 && mine[2] !== k) return;
+    const mates = s.c.filter((c, j) => j !== v.me && v.teamOf(j) === v.myTeam).map(c => c[2]);
+    (s.rm[v.myTeam] || []).forEach(([x, y], k) => {
+      if ((mine[2] >= 0 && mine[2] !== k) || mates.includes(k)) return; // (taken by your teammate)
       const pulse = 1 + Math.sin(v.now / 160 + k) * 0.08;
       g.strokeStyle = mine[2] === k ? '#7dff8a' : '#ffd23f';
       g.lineWidth = 3;
@@ -445,12 +470,14 @@ function draw(v, s) {
       g.setLineDash([]);
     });
   }
-  s.c.forEach((c, i) => { if (i === v.me || s.ph !== 'pick') drawCat(v, s, i, c); }); // (where they hide stays secret until both have picked)
-  [0, 1].forEach(i => {
-    const p = pivot(i);
+  s.c.forEach((c, i) => { if (v.teamOf(i) === v.myTeam || s.ph !== 'pick') drawCat(v, s, i, c); }); // (where they hide stays secret until everyone has picked)
+  [0, 1].forEach(side => {
+    const p = pivot(side);
+    // (the cannon points where whoever is at it aims: on its side's turn, the one shooting)
+    const i = s.tn >= 0 && v.teamOf(s.tn) === side ? s.tn : s.c.findIndex((c, j) => v.teamOf(j) === side);
     g.save(); g.translate(p.x, p.y); g.rotate(s.a[i]);
     g.fillStyle = '#2b2b38'; v.roundRect(-6, -10, 48, 20, 8); g.fill();
-    g.fillStyle = v.team[i].main; g.fillRect(32, -11, 8, 22);
+    g.fillStyle = v.sideColor(side).main; g.fillRect(32, -11, 8, 22);
     g.restore();
     g.fillStyle = '#5a3b22'; v.dot(p.x, GY - 10, 14);
     g.fillStyle = '#c99a63'; v.dot(p.x, GY - 10, 5);
@@ -459,6 +486,7 @@ function draw(v, s) {
       g.fillStyle = s.pw[i] < 0.5 ? '#7dff8a' : s.pw[i] < 0.85 ? '#ffd23f' : '#ff5a5a';
       v.roundRect(p.x - 39, GY - 95, Math.max(6, 78 * s.pw[i]), 8, 4); g.fill();
     }
+    if (v.duo && s.ph === 'aim' && s.tn === i) v.label(i === v.me ? 'You' : v.names[i], p.x, GY - 108, 13, i === v.me ? '#ffd23f' : '#ffffff');
   });
   // the cannonball and its trail
   g.fillStyle = 'rgba(40, 40, 60, .35)';
@@ -468,7 +496,8 @@ function draw(v, s) {
   [0, 1].forEach(i => {
     const x = i === 0 ? 260 : W - 260;
     for (let k = 0; k < LIVES; k++) v.heart(x + (k - 1) * 20, 26, k < s.lv[i]);
-    v.label(i === v.me ? 'You' : v.names[i], x, 48, 13, i === v.me ? '#ffd23f' : '#ffffff');
+    if (v.duo) v.label(v.side(i) + (i === v.myTeam ? ' (you)' : ''), x, 48, 13, i === v.myTeam ? '#ffd23f' : '#ffffff');
+    else v.label(i === v.me ? 'You' : v.names[i], x, 48, 13, i === v.me ? '#ffd23f' : '#ffffff');
   });
   g.fillStyle = 'rgba(20, 30, 60, .7)';
   v.roundRect(W / 2 - 80, 12, 160, 30, 15); g.fill();
@@ -479,7 +508,7 @@ function draw(v, s) {
     g.fillStyle = f < 0.3 ? '#ff5a5a' : '#ffd23f'; v.roundRect(W / 2 - 80, 48, 160 * f, 6, 3); g.fill();
   }
   const mine = s.c[v.me];
-  v.msg(s.ph === 'pick' ? (mine[2] < 0 ? 'Click a glowing room in your fort to hide your cat there (first to pick shoots first)' : 'Hidden! Waiting for ' + v.names[1 - v.me] + '…')
+  v.msg(s.ph === 'pick' ? (mine[2] < 0 ? 'Click a glowing room in your fort to hide your cat there (first to pick shoots first)' : 'Hidden! Waiting for ' + (v.duo ? 'the others' : v.names[1 - v.me]) + '…')
     : s.ph === 'aim' ? (s.tn === v.me ? (s.rd ? '💀 REDEMPTION SHOT: get them back! ' : 'Your turn! ') + 'Aim with the mouse, hold the button to charge, let go to fire' : v.names[s.tn] + (s.rd ? ' has a REDEMPTION shot!' : ' is aiming…'))
       : s.ph === 'ko' ? '' : '', s.ph === 'aim' && s.rd && s.tn === v.me);
 }

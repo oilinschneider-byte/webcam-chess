@@ -18,7 +18,7 @@ const approach = (v, to, d) => (v < to ? Math.min(to, v + d) : Math.max(to, v - 
 const r1 = v => Math.round(v * 10) / 10;
 
 CA.games.add('dodge', {
-  name: 'Dodge', icon: '☄️',
+  name: 'Dodge', icon: '☄️', duos: true,
   blurb: 'Two cats, one map, and colorful things falling from the sky! Dodge the balls, stars and bombs (3 lives each), catch ❤️ to heal, and press Space to GRAB the other cat and toss them into the danger. Last cat standing wins!',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -36,16 +36,22 @@ function newCat(x, face) {
   return { x, y: GROUND, vx: 0, vy: 0, ground: true, face, lives: LIVES, inv: 0, gw: 1, hold: 0, by: -1 };
 }
 
-function init() {
-  return { t: 0, cats: [newCat(250, 1), newCat(710, -1)], obs: [], next: 1.4, id: 0, endT: 0 };
+function init(api) {
+  const n = (api && api.n) || 2, team = (api && api.team) || (i => i);
+  // (Duos: four cats, a team on each side; a cat out of lives is out, and the last team standing wins)
+  const cats = n > 2 ? [newCat(190, 1), newCat(320, 1), newCat(640, -1), newCat(770, -1)] : [newCat(250, 1), newCat(710, -1)];
+  return { n, team, t: 0, cats, obs: [], next: 1.4, id: 0, endT: 0 };
 }
+// Each side's lives (in Duos, a team's lives added up).
+const sideLives = s => (s.n > 2 ? [0, 1].map(t => s.cats.reduce((a, c, i) => a + (s.team(i) === t ? Math.max(0, c.lives) : 0), 0)) : [s.cats[0].lives, s.cats[1].lives]);
+const isOut = (s, c) => s.n > 2 && c.lives <= 0;
 
 /* ---------- the things that fall ---------- */
 
 function spawn(s, api) {
   const r = api.rng(), k = r < 0.07 ? 'heart' : r < 0.24 ? 'bomb' : r < 0.44 ? 'star' : 'ball';
   let x = 40 + api.rng() * (W - 80);
-  if (api.rng() < 0.28) x = clamp(s.cats[Math.floor(api.rng() * 2)].x + (api.rng() - 0.5) * 120, 40, W - 40); // (some are aimed at a cat)
+  if (api.rng() < 0.28) x = clamp(s.cats[Math.floor(api.rng() * s.cats.length)].x + (api.rng() - 0.5) * 120, 40, W - 40); // (some are aimed at a cat)
   const o = { id: ++s.id, k, x, y: -40, vx: (api.rng() - 0.5) * 70, vy: 60, r: 18, h: Math.floor(api.rng() * 360), fz: -1, age: 0 };
   if (k === 'ball') { o.r = 16 + api.rng() * 15; o.g = 520; }
   if (k === 'star') { o.r = 12; o.g = 760; o.vy = 260; o.vx *= 1.8; }
@@ -59,7 +65,7 @@ function hurt(s, c, i, api, x, y) {
   c.inv = INVULN;
   c.vy = -380;
   c.ground = false;
-  if (c.hold > 0) { s.cats[1 - i].by = -1; c.hold = 0; } // (a hit drops whoever you were carrying)
+  if (c.hold > 0) { const h = s.cats[c.hi != null ? c.hi : 1 - i]; if (h) h.by = -1; c.hold = 0; } // (a hit drops whoever you were carrying)
   if (c.by >= 0) { s.cats[c.by].hold = 0; c.by = -1; }
   api.ev('hit', { x, y, i, l: c.lives });
 }
@@ -78,26 +84,26 @@ function stepObs(s, dt, api) {
     if (o.k === 'bomb') {
       if (o.fz >= 0) { o.fz -= dt; if (o.fz <= 0) { blast(s, o, api); continue; } }
       if (o.y + o.r >= GROUND) { o.y = GROUND - o.r; o.vy = -Math.abs(o.vy) * 0.42; o.vx *= 0.7; if (o.fz < 0) o.fz = FUSE; }
-      s.cats.forEach(c => { if (!o.dead && c.inv <= 0 && hits(c, o.x, o.y, o.r)) blast(s, o, api); }); // (touching a bomb sets it off)
+      s.cats.forEach(c => { if (!o.dead && c.inv <= 0 && !isOut(s, c) && hits(c, o.x, o.y, o.r)) blast(s, o, api); }); // (touching a bomb sets it off)
       continue;
     }
     if (o.k === 'heart') {
       if (o.y + o.r >= GROUND) { o.y = GROUND - o.r; o.vy = 0; o.vx = 0; }
       if (o.age > 9) { o.dead = true; continue; }
       s.cats.forEach((c, i) => {
-        if (o.dead || c.lives >= LIVES || !hits(c, o.x, o.y, o.r)) return;
+        if (o.dead || c.lives >= LIVES || isOut(s, c) || !hits(c, o.x, o.y, o.r)) return;
         o.dead = true;
         c.lives++;
-        api.score(s.cats[0].lives, s.cats[1].lives);
+        api.score(...sideLives(s));
         api.ev('heal', { x: c.x, y: c.y - 70, i });
       });
       continue;
     }
     // a ball or a star
     if (o.y + o.r >= GROUND) { o.dead = true; api.ev('splat', { x: o.x, y: GROUND - 4, h: o.h, k: o.k }); continue; }
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < s.cats.length; i++) {
       const c = s.cats[i];
-      if (c.inv > 0 || !hits(c, o.x, o.y, o.r)) continue;
+      if (c.inv > 0 || isOut(s, c) || !hits(c, o.x, o.y, o.r)) continue;
       o.dead = true;
       hurt(s, c, i, api, o.x, o.y);
       api.ev('splat', { x: o.x, y: o.y, h: o.h, k: o.k });
@@ -105,19 +111,28 @@ function stepObs(s, dt, api) {
     }
   }
   s.obs = s.obs.filter(o => !o.dead);
-  api.score(s.cats[0].lives, s.cats[1].lives);
+  api.score(...sideLives(s));
 }
 
 function blast(s, o, api) {
   o.dead = true;
   api.ev('boom', { x: o.x, y: o.y });
-  s.cats.forEach((c, i) => { if (c.inv <= 0 && Math.hypot(c.x - o.x, (c.y - 36) - o.y) < BLAST + 16) hurt(s, c, i, api, c.x, c.y - 40); });
+  s.cats.forEach((c, i) => { if (c.inv <= 0 && !isOut(s, c) && Math.hypot(c.x - o.x, (c.y - 36) - o.y) < BLAST + 16) hurt(s, c, i, api, c.x, c.y - 40); });
 }
 
 /* ---------- the cats ---------- */
 
+// The cat of the other side nearest to cat i that can be grabbed (Duos).
+function grabbable(s, i) {
+  const c = s.cats[i];
+  let best = null, bd = 1e9;
+  s.cats.forEach((o, j) => { if (s.team(j) !== s.team(i) && !isOut(s, o) && o.by < 0) { const d = Math.abs(o.x - c.x); if (d < bd) { bd = d; best = o; } } });
+  return best || s.cats[(i + 2) % 4];
+}
+
 function stepCat(s, c, i, n, dt, api) {
-  const o = s.cats[1 - i];
+  const o = s.n > 2 ? grabbable(s, i) : s.cats[1 - i];
+  if (isOut(s, c)) { c.vx *= 0.9; c.vy += G * dt; c.y = Math.min(GROUND, c.y + c.vy * dt); if (c.y >= GROUND) c.vy = 0; c.by = -1; return; } // (out: lying on the ground)
   c.inv = Math.max(0, c.inv - dt);
   c.gw = Math.max(0, c.gw - dt);
   if (c.by >= 0) { // being carried: stuck in front of the cat that grabbed you
@@ -132,6 +147,7 @@ function stepCat(s, c, i, n, dt, api) {
   if (!holding && c.gw <= 0 && n.hit.a && o.by < 0 && Math.abs(o.x - c.x) < GRAB_RANGE && Math.abs(o.y - c.y) < 90) { // grab!
     c.hold = GRAB_TIME;
     c.gw = GRAB_WAIT;
+    c.hi = s.cats.indexOf(o);
     o.by = i;
     api.ev('grab', { x: o.x, y: o.y - 80 });
   }
@@ -153,8 +169,8 @@ function step(s, inp, dt, api) {
     s.endT -= dt;
     stepObs(s, dt, api);
     if (s.endT <= 0) {
-      const [a, b] = s.cats; // (more lives left wins; the same, even both out, is a draw)
-      api.end(a.lives === b.lives ? -1 : a.lives > b.lives ? 0 : 1, 'LAST CAT!');
+      const [a, b] = sideLives(s); // (more lives left wins; the same, even both out, is a draw)
+      api.end(a === b ? -1 : a > b ? 0 : 1, s.n > 2 ? 'LAST TEAM!' : 'LAST CAT!');
     }
     return;
   }
@@ -165,8 +181,8 @@ function step(s, inp, dt, api) {
     if (c.hold <= 0) return;
     c.hold -= dt;
     if (c.hold > 0) return;
-    const o = s.cats[1 - i];
-    if (o.by !== i) return;
+    const o = s.cats[c.hi != null ? c.hi : 1 - i];
+    if (!o || o.by !== i) return;
     o.by = -1;
     o.vx = c.face * THROW_X;
     o.vy = -THROW_Y;
@@ -174,6 +190,12 @@ function step(s, inp, dt, api) {
     api.ev('throw', { x: o.x, y: o.y - 60, f: c.face });
   });
   stepObs(s, dt, api);
+  if (s.n > 2) { // (Duos: the last team with a cat standing)
+    const left = [0, 1].map(t => s.cats.some((c, i) => s.team(i) === t && c.lives > 0));
+    if (!left[0] || !left[1]) { s.endT = 0.9; return; }
+    if (s.t >= LIMIT) s.endT = 0.5;
+    return;
+  }
   const [a, b] = s.cats;
   if (a.lives <= 0 || b.lives <= 0) { s.endT = 0.9; return; }
   if (s.t >= LIMIT) s.endT = 0.5;
@@ -191,9 +213,9 @@ function snap(s) {
 
 // The bot moves to the nearest spot where nothing is about to land on it, goes for hearts, and now and then grabs you.
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i];
-  const st = s.bs || (s.bs = { think: 0, mx: 0 });
-  if (c.by >= 0) return { hit: {} };
+  const c = s.cats[i], o = s.n > 2 ? grabbable(s, i) : s.cats[1 - i];
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = { think: 0, mx: 0 })) : s.bs || (s.bs = { think: 0, mx: 0 });
+  if (c.by >= 0 || isOut(s, c)) return { hit: {} };
   st.think -= dt;
   const out = { hit: {} };
   if (st.think <= 0) {
@@ -222,9 +244,9 @@ function bot(s, i, dt, api) {
 
 function event(v, e) {
   // (the cats' faces: see view.mood in games-duel.js)
-  if (e.type === 'hit') { v.mood(e.i, e.l <= 1 ? 'shock' : 'hurt', 1.3); v.mood(1 - e.i, 'smug', 1.1); }
+  if (e.type === 'hit') { v.mood(e.i, e.l <= 0 ? 'ko' : e.l <= 1 ? 'shock' : 'hurt', e.l <= 0 && v.duo ? 99 : 1.3); if (!v.duo) v.mood(1 - e.i, 'smug', 1.1); }
   if (e.type === 'heal') v.mood(e.i, 'happy', 1.2);
-  if (e.type === 'hit') { v.burst(e.x, e.y, '#ff5a5a', 16, 300); v.pop(e.x, e.y - 50, e.l > 0 ? '−1 ❤️' : 'K.O.!', '#ff5a5a'); v.shake(10); v.sound(e.i === v.me ? 'miss' : 'point'); }
+  if (e.type === 'hit') { v.burst(e.x, e.y, '#ff5a5a', 16, 300); v.pop(e.x, e.y - 50, e.l > 0 ? '−1 ❤️' : 'K.O.!', '#ff5a5a'); v.shake(10); v.sound(v.teamOf(e.i) === v.myTeam ? 'miss' : 'point'); }
   if (e.type === 'splat') { const c = 'hsl(' + e.h + ', 90%, 62%)'; v.burst(e.x, e.y, c, e.k === 'star' ? 8 : 14, 260); }
   if (e.type === 'boom') { v.burst(e.x, e.y, '#ffb347', 30, 420); v.burst(e.x, e.y, '#ff4d4d', 18, 300); v.ring(e.x, e.y, '#ffd23f', 30); v.shake(16); v.sound('boom'); }
   if (e.type === 'heal') { v.pop(e.x, e.y, '+1 ❤️', '#7dff8a'); v.sound('point'); }
@@ -330,6 +352,7 @@ function draw(v, s) {
     g.globalAlpha = 1;
   });
   s.c.forEach((c, i) => {
+    if (v.duo && c.l <= 0) { v.catSide(i, c.x, c.y, CAT, { lookRight: c.f > 0, tilt: 1.45 * c.f, alpha: 0.5, face: 'ko' }); v.label('OUT', c.x, c.y - 50, 12, '#ff9a9a'); return; }
     const blink = c.iv && Math.floor(v.now / 90) % 2;
     const tilt = c.hb ? 0.5 * c.f : (c.g ? 0 : 0.12 * c.f);
     v.catSide(i, c.x, c.y, CAT, { lookRight: c.f > 0, tilt: Math.sin(v.now / 170 + i) * (c.hb ? 0.15 : 0) + tilt, alpha: blink ? 0.4 : 1 });
@@ -340,9 +363,11 @@ function draw(v, s) {
   s.o.forEach(o => drawOb(v, o, v.now));
   g.fillStyle = 'rgba(30, 20, 70, .6)';
   v.roundRect(W / 2 - 150, 8, 300, 30, 15); g.fill();
-  v.label('❤️ ' + '❤️'.repeat(Math.max(0, s.c[0].l)) + '  ·  ' + '❤️'.repeat(Math.max(0, s.c[1].l)), W / 2, 24, 15, '#ffffff');
+  if (v.duo) { const l = [0, 1].map(t => s.c.reduce((a, c, i) => a + (v.teamOf(i) === t ? Math.max(0, c.l) : 0), 0)); v.label('Blue ❤️ ' + l[0] + '  ·  ' + l[1] + ' ❤️ Orange', W / 2, 24, 15, '#ffffff'); }
+  else v.label('❤️ ' + '❤️'.repeat(Math.max(0, s.c[0].l)) + '  ·  ' + '❤️'.repeat(Math.max(0, s.c[1].l)), W / 2, 24, 15, '#ffffff');
   const mine = s.c[v.me];
-  if (mine) v.msg(mine.hb ? 'You got grabbed!' : mine.hd ? 'You grabbed them! Face the danger…' : mine.gw > 0 ? 'Grab ready in ' + mine.gw.toFixed(1) + 's' : 'Dodge! Space grabs the other cat when you are close');
+  if (mine && v.duo && mine.l <= 0) v.msg('You are out! Cheer on your teammate');
+  else if (mine) v.msg(mine.hb ? 'You got grabbed!' : mine.hd ? 'You grabbed them! Face the danger…' : mine.gw > 0 ? 'Grab ready in ' + mine.gw.toFixed(1) + 's' : 'Dodge! Space grabs the other cat when you are close');
 }
 
 })();

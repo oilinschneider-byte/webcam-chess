@@ -12,7 +12,7 @@ const PADDLE_MAX = 1300, PADDLE_ACCEL = 9000, PUCK_MAX = 1100;
 const WIN = 5;
 
 CA.games.add('hockey', {
-  name: 'Cat Air Hockey', icon: '🏒',
+  name: 'Cat Air Hockey', icon: '🏒', duos: true,
   blurb: 'Move the mouse to move your paddle and smack the puck into the other cat\'s goal! You stay on your half of the table. First to 5 goals.',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -25,10 +25,13 @@ CA.games.add('hockey', {
   },
 });
 
-function init() {
+function init(api) {
+  const n = (api && api.n) || 2, team = (api && api.team) || (i => i);
   return {
-    sc: [0, 0], pause: 0, last: -1,
-    pads: [{ x: L + 90, y: H / 2, vx: 0, vy: 0 }, { x: Rt - 90, y: H / 2, vx: 0, vy: 0 }],
+    n, team, sc: [0, 0], pause: 0, last: -1,
+    // (Duos: two paddles a side, one above the other)
+    pads: n > 2 ? [[L + 110, H / 2 - 90], [L + 110, H / 2 + 90], [Rt - 110, H / 2 - 90], [Rt - 110, H / 2 + 90]].map(([x, y]) => ({ x, y, vx: 0, vy: 0 }))
+      : [{ x: L + 90, y: H / 2, vx: 0, vy: 0 }, { x: Rt - 90, y: H / 2, vx: 0, vy: 0 }],
     puck: { x: MID, y: H / 2, vx: 0, vy: 0 },
   };
 }
@@ -54,7 +57,11 @@ function movePaddle(p, i, tx, ty, dt, top) {
 }
 
 function step(s, inp, dt, api) {
-  for (let i = 0; i < 2; i++) movePaddle(s.pads[i], i, inp[i].ax, inp[i].ay, dt, inp[i].top);
+  for (let i = 0; i < s.pads.length; i++) movePaddle(s.pads[i], s.team(i), inp[i].ax, inp[i].ay, dt, inp[i].top);
+  if (s.n > 2) [[0, 1], [2, 3]].forEach(([a, b]) => { // (teammates' paddles don't overlap)
+    const p = s.pads[a], q = s.pads[b], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 0.01;
+    if (d < PR * 2) { const o = (PR * 2 - d) / 2, sd = s.team(a); p.x = halfOf(sd, p.x - dx / d * o); p.y = clampY(p.y - dy / d * o); q.x = halfOf(sd, q.x + dx / d * o); q.y = clampY(q.y + dy / d * o); }
+  });
   if (s.pause > 0) { s.pause -= dt; return; }
   const k = s.puck;
   const sub = 3;
@@ -89,7 +96,7 @@ function step(s, inp, dt, api) {
     s.pads.forEach((p, i) => {
       const dx = p.x - k.x, dy = p.y - k.y, d = Math.hypot(dx, dy) || 0.01;
       if (d >= PR + KR) return;
-      p.x = halfOf(i, k.x + dx / d * (PR + KR + 0.5));
+      p.x = halfOf(s.team(i), k.x + dx / d * (PR + KR + 0.5));
       p.y = clampY(k.y + dy / d * (PR + KR + 0.5));
       const q = CA.camWalls.push(p.x, p.y, PR);
       if (q) { p.x = q.x; p.y = q.y; }
@@ -126,20 +133,23 @@ function snap(s) {
 
 // The bot stays between the puck and its goal, and hits the puck towards the other goal when it comes close.
 function bot(s, i, dt, api) {
-  const st = s.bs || (s.bs = { think: 0, tx: s.pads[i].x, ty: H / 2 });
+  const fresh = () => ({ think: 0, tx: s.pads[i].x, ty: H / 2 });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.bs || (s.bs = fresh());
   st.think -= dt;
-  const k = s.puck, p = s.pads[i], own = i === 0 ? L : Rt, dir = i === 0 ? 1 : -1;
+  const side = s.team(i), k = s.puck, p = s.pads[i], own = side === 0 ? L : Rt, dir = side === 0 ? 1 : -1;
+  // (Duos: of two teammates, the one nearer the puck goes for it; the other keeps goal)
+  const keeper = s.n > 2 && Math.hypot(k.x - p.x, k.y - p.y) > Math.hypot(k.x - s.pads[api.mate(i)].x, k.y - s.pads[api.mate(i)].y);
   if (st.think <= 0) {
     st.think = 0.04 + (1 - api.skill) * 0.2;
-    const mine = i === 0 ? k.x < MID + 30 : k.x > MID - 30;
+    const mine = !keeper && (side === 0 ? k.x < MID + 30 : k.x > MID - 30);
     const toward = (k.vx * dir) < 30;
     if (mine && (toward || Math.hypot(k.vx, k.vy) < 220)) {
-      const gx = i === 0 ? Rt : L, gy = H / 2 + (Math.random() - 0.5) * 90;
+      const gx = side === 0 ? Rt : L, gy = H / 2 + (Math.random() - 0.5) * 90;
       const ax = gx - k.x, ay = gy - k.y, al = Math.hypot(ax, ay) || 1;
       st.tx = k.x - ax / al * 14 + k.vx * 0.05; // (a little behind the puck, so it goes towards the goal)
       st.ty = k.y - ay / al * 14 + k.vy * 0.05;
     } else {
-      st.tx = own + dir * 95;
+      st.tx = own + dir * (keeper ? 60 : 95);
       st.ty = H / 2 + (k.y - H / 2) * 0.6;
     }
     st.ty += (Math.random() - 0.5) * 40 * (1 - api.skill);
@@ -156,7 +166,7 @@ function event(v, e) {
     v.burst(e.x < MID ? L : Rt, H / 2, v.team[e.w].main, 30, 380);
     v.pop(e.x < MID ? L + 90 : Rt - 90, H / 2 - 40, 'GOAL!', v.team[e.w].light);
     v.shake(12);
-    v.sound(e.w === v.me ? 'win' : 'miss');
+    v.sound(e.w === v.myTeam ? 'win' : 'miss');
   }
 }
 
@@ -198,7 +208,7 @@ function draw(v, s) {
   if (!table) table = makeTable();
   g.drawImage(table, 0, 0, W, H);
   [0, 1].forEach(i => { // goal mouths glow in the color of the player who defends them
-    g.fillStyle = v.team[i].main;
+    g.fillStyle = v.sideColor(i).main;
     g.globalAlpha = 0.6;
     g.fillRect(i ? Rt + 26 : L - 30, GOAL_T, 4, GOAL_B - GOAL_T);
     g.globalAlpha = 1;
@@ -215,7 +225,7 @@ function draw(v, s) {
   s.ps.forEach((p, i) => {
     let { x, y } = p;
     if (i === v.me && !v.host && v.aim.seen) { // (your own paddle follows your mouse right away on your screen)
-      x = halfOf(i, v.aim.x);
+      x = halfOf(v.teamOf(i), v.aim.x);
       y = clampY(v.aim.y);
     }
     g.fillStyle = 'rgba(0, 0, 0, .2)';
@@ -226,11 +236,12 @@ function draw(v, s) {
     v.dot(x, y, PR - 5);
     g.fillStyle = v.team[i].light;
     v.dot(x, y, PR - 16);
-    v.catTop(i, x, y - 4, 0.62, { ring: false, label: false, lookRight: i === 0, bob: 0.3 });
+    v.catTop(i, x, y - 4, 0.62, { ring: false, label: false, lookRight: v.teamOf(i) === 0, bob: 0.3 });
+    if (v.duo) v.label(i === v.me ? 'You' : v.names[i], x, y + PR + 10, 11, i === v.me ? '#ffd23f' : '#ffffff');
   });
   v.label(s.sc[0] + '  :  ' + s.sc[1], MID, 32, 28, '#ffffff');
-  v.label(v.names[0], MID - 120, 32, 14, v.team[0].light);
-  v.label(v.names[1], MID + 120, 32, 14, v.team[1].light);
+  v.label(v.side(0), MID - 120, 32, 14, v.sideColor(0).light);
+  v.label(v.side(1), MID + 120, 32, 14, v.sideColor(1).light);
 }
 
 })();

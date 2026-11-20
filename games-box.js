@@ -15,10 +15,11 @@ const KNOCK = 520, STUN = 0.45;
 const BOX = { x: W / 2 - 75, y: H / 2 - 75, w: 150, h: 150 };
 const GOAL = 20, LENGTH = 75;
 const HOME = [[150, H / 2], [W - 150, H / 2]];
+const HOME4 = [[150, H / 2 - 90], [150, H / 2 + 90], [W - 150, H / 2 - 90], [W - 150, H / 2 + 90]]; // (Duos)
 const inBox = c => c.x > BOX.x && c.x < BOX.x + BOX.w && c.y > BOX.y && c.y < BOX.y + BOX.h;
 
 CA.games.add('box', {
-  name: 'Box King', icon: '📦',
+  name: 'Box King', icon: '📦', duos: true,
   blurb: 'Get in the cardboard box and stay there! You only score while you\'re in it alone. Space throws your boomerang: it\'s slow, but if it hits, it knocks the other cat back. First to 20 seconds wins.',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -32,17 +33,26 @@ CA.games.add('box', {
   },
 });
 
-function init() {
+function init(api) {
+  const n = (api && api.n) || 2, team = (api && api.team) || (i => i);
   return {
-    t: 0, score: [0, 0], owner: -1,
-    cats: HOME.map(([x, y], i) => ({ x, y, vx: 0, vy: 0, fx: i ? -1 : 1, fy: 0, stun: 0, boom: null })),
+    n, team, t: 0, score: [0, 0], owner: -1,
+    cats: (n > 2 ? HOME4 : HOME).map(([x, y], i) => ({ x, y, vx: 0, vy: 0, fx: team(i) ? -1 : 1, fy: 0, stun: 0, boom: null })),
   };
 }
 
 // A boomerang: out it goes, curving, for BOOM_OUT seconds (or until it hits something), then it heads back to its
 // cat, turning towards it, and is caught when it gets there.
+// The nearest cat on the other side.
+function nearFoe(s, i) {
+  const c = s.cats[i];
+  let best = null, bd = 1e9;
+  s.cats.forEach((o, j) => { if (s.team(j) !== s.team(i)) { const d = Math.hypot(o.x - c.x, o.y - c.y); if (d < bd) { bd = d; best = o; } } });
+  return best;
+}
+
 function stepBoom(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i], b = c.boom;
+  const c = s.cats[i], b = c.boom;
   b.t += dt;
   b.spin += dt * 18;
   if (b.out) {
@@ -69,8 +79,9 @@ function stepBoom(s, i, dt, api) {
     if (b.bn < 2) { b.bn++; b.t = Math.max(0, b.t - 0.3); } else b.out = false;
     api.ev('tink', { x: b.x, y: b.y });
   }
-  // the other cat: knocked back the way it was flying, and dazed (once a throw)
-  if (!b.hit && Math.hypot(o.x - b.x, o.y - b.y) < R + BOOM_R) {
+  // a cat of the other side: knocked back the way it was flying, and dazed (once a throw)
+  const o = b.hit ? null : s.cats.find((q, j) => s.team(j) !== s.team(i) && Math.hypot(q.x - b.x, q.y - b.y) < R + BOOM_R);
+  if (o) {
     const sp = Math.hypot(b.vx, b.vy) || 1;
     o.vx = b.vx / sp * KNOCK;
     o.vy = b.vy / sp * KNOCK;
@@ -85,14 +96,14 @@ function stepBoom(s, i, dt, api) {
 function step(s, inp, dt, api) {
   s.t += dt;
   s.cats.forEach((c, i) => {
-    const o = s.cats[1 - i], n = inp[i];
+    const o = s.n > 2 ? nearFoe(s, i) : s.cats[1 - i], n = inp[i];
     c.stun = Math.max(0, c.stun - dt);
     if (n.mx || n.my) { const l = Math.hypot(n.mx, n.my); c.fx = n.mx / l; c.fy = n.my / l; }
     if (n.hit.a && !c.boom && c.stun <= 0) {
       let fx = c.fx, fy = c.fy;
       if (!n.mx && !n.my) { const dx = o.x - c.x, dy = o.y - c.y, l = Math.hypot(dx, dy) || 1; fx = dx / l; fy = dy / l; }
       // (it curves, so it leaves a little to one side of where you aim: it bends back onto the line)
-      const curve = i ? -1 : 1, a = Math.atan2(fy, fx) - curve * BOOM_TURN * BOOM_OUT * 0.35;
+      const curve = s.team(i) ? -1 : 1, a = Math.atan2(fy, fx) - curve * BOOM_TURN * BOOM_OUT * 0.35;
       c.boom = { x: c.x + fx * (R + 8), y: c.y + fy * (R + 8), vx: Math.cos(a) * BOOM_SPEED, vy: Math.sin(a) * BOOM_SPEED, t: 0, out: true, hit: false, spin: 0, curve, bn: 0 };
       api.ev('whoosh', { x: c.x, y: c.y });
     }
@@ -106,14 +117,16 @@ function step(s, inp, dt, api) {
   });
   s.cats.forEach((c, i) => { if (c.boom) stepBoom(s, i, dt, api); });
   // The cats push each other apart.
-  const [a, b] = s.cats;
-  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
-  if (d < R * 2) {
-    const nx = dx / d, ny = dy / d, push = (R * 2 - d) / 2;
-    a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+  for (let p = 0; p < s.cats.length; p++) for (let q = p + 1; q < s.cats.length; q++) {
+    const a = s.cats[p], b = s.cats[q];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+    if (d < R * 2) {
+      const nx = dx / d, ny = dy / d, push = (R * 2 - d) / 2;
+      a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+    }
   }
-  // Who has the box: only a cat that's in it alone scores.
-  const inside = s.cats.map(inBox);
+  // Who has the box: only a side that's in it alone scores (in Duos, either cat of a team, or both).
+  const inside = [0, 1].map(t => s.cats.some((c, j) => s.team(j) === t && inBox(c)));
   const owner = inside[0] && inside[1] ? 2 : inside[0] ? 0 : inside[1] ? 1 : -1;
   if (owner !== s.owner && owner === 2) api.ev('contest', {});
   s.owner = owner;
@@ -137,8 +150,9 @@ function snap(s) {
 // The bot heads for the box. When the other cat has it (or is closing in), it throws its boomerang at them, aimed a
 // little ahead of where they're going (better bots lead the throw more), and steps aside from boomerangs coming at it.
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i];
-  const st = s.botState || (s.botState = { think: 0, mx: 0, my: 0, throw: false, jitter: [0, 0] });
+  const c = s.cats[i], o = s.n > 2 ? nearFoe(s, i) : s.cats[1 - i];
+  const fresh = () => ({ think: 0, mx: 0, my: 0, throw: false, jitter: [0, 0] });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.botState || (s.botState = fresh());
   st.think -= dt;
   if (st.think <= 0) {
     st.think = 0.12 + (1 - api.skill) * 0.3;
@@ -223,7 +237,7 @@ function draw(v, s) {
   if (!floor) floor = makeFloor();
   g.drawImage(floor, 0, 0, W, H);
   // the box: glows in the color of whoever has it
-  const glow = s.o === 0 || s.o === 1 ? v.team[s.o].main : s.o === 2 ? '#ff5a5a' : null;
+  const glow = s.o === 0 || s.o === 1 ? v.sideColor(s.o).main : s.o === 2 ? '#ff5a5a' : null;
   if (glow) {
     g.globalAlpha = 0.35 + 0.15 * Math.sin(v.now / 150);
     g.fillStyle = glow;
@@ -253,13 +267,13 @@ function draw(v, s) {
     const w = 250, x = i ? W - 176 - w : 176, k = Math.min(1, s.sc[i] / GOAL);
     g.fillStyle = 'rgba(20, 12, 4, .7)';
     v.roundRect(x, 30, w, 16, 8); g.fill();
-    g.fillStyle = v.team[i].main;
+    g.fillStyle = v.sideColor(i).main;
     v.roundRect(x + 2, 32, Math.max(10, (w - 4) * k), 12, 6); g.fill();
-    v.label((i === v.me ? 'You' : v.names[i]) + ' ' + s.sc[i].toFixed(1) + 's', x + w / 2, 60, 13, '#ffffff');
+    v.label((v.duo ? v.side(i) + (i === v.myTeam ? ' (you)' : '') : i === v.me ? 'You' : v.names[i]) + ' ' + s.sc[i].toFixed(1) + 's', x + w / 2, 60, 13, '#ffffff');
   }
   v.label('⏱ ' + Math.max(0, Math.ceil(LENGTH - s.t)), W / 2, 38, 16, '#ffffff');
   const me = s.c[v.me];
-  if (s.o === 2) v.msg('Both in the box: nobody scores! Knock them out with your boomerang (Space)');
+  if (s.o === 2) v.msg((v.duo ? 'Both teams in the box' : 'Both in the box') + ': nobody scores! Knock them out with your boomerang (Space)');
   else if (me && me.b) v.msg('Your boomerang is on its way back…');
 }
 

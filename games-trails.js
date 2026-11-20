@@ -13,10 +13,12 @@ const KEY_DIR = { r: 0, d: 1, l: 2, u: 3 };
 const SPEED = 17, SPEED_MAX = 30;                 // cells a second, at the start of a round and at most
 const WIN = 3;
 const START = [[Math.round(COLS * 0.2), Math.floor(ROWS / 2), 0], [Math.round(COLS * 0.8), Math.floor(ROWS / 2), 2]];
+// (Duos: four bikes, a team on each side)
+const START4 = [[Math.round(COLS * 0.2), Math.round(ROWS * 0.3), 0], [Math.round(COLS * 0.2), Math.round(ROWS * 0.7), 0], [Math.round(COLS * 0.8), Math.round(ROWS * 0.3), 2], [Math.round(COLS * 0.8), Math.round(ROWS * 0.7), 2]];
 const px = (c, k) => (k ? Y0 : X0) + (c + 0.5) * CELL;
 
 CA.games.add('trails', {
-  name: 'Light Trails', icon: '🏍️',
+  name: 'Light Trails', icon: '🏍️', duos: true,
   blurb: 'Steer your glowing bike with WASD or the arrows. Every bike leaves a solid trail: hit a wall or any trail and you\'re out! Last bike riding wins the round. First to 3!',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -31,7 +33,7 @@ CA.games.add('trails', {
 });
 
 function init(api) {
-  const s = { wins: [0, 0], round: 0, grid: new Uint8Array(COLS * ROWS), bikes: [], phase: 'run', pause: 0, t: 0, rw: -1 };
+  const s = { n: api.n || 2, team: api.team || (i => i), wins: [0, 0], round: 0, grid: new Uint8Array(COLS * ROWS), bikes: [], phase: 'run', pause: 0, t: 0, rw: -1 };
   newRound(s, api);
   return s;
 }
@@ -43,7 +45,7 @@ function newRound(s, api) {
   s.t = 0;
   s.phase = 'run';
   s.rw = -1;
-  s.bikes = START.map(([x, y, d], i) => {
+  s.bikes = (s.n > 2 ? START4 : START).map(([x, y, d], i) => {
     s.grid[y * COLS + x] = i + 1;
     return { x, y, d, alive: true, prog: 0, queue: [], pts: [[x, y]], stick: -1 };
   });
@@ -83,7 +85,9 @@ function step(s, inp, dt, api) {
       return [b.x + DIRS[b.d][0], b.y + DIRS[b.d][1]];
     });
     const crash = next.map(n => !!n && !free(s, n[0], n[1]));
-    if (next[0] && next[1] && next[0][0] === next[1][0] && next[0][1] === next[1][1]) { crash[0] = crash[1] = true; } // (head on)
+    for (let p = 0; p < next.length; p++) for (let q = p + 1; q < next.length; q++) { // (head on)
+      if (next[p] && next[q] && next[p][0] === next[q][0] && next[p][1] === next[q][1]) crash[p] = crash[q] = true;
+    }
     bs.forEach((b, i) => {
       if (!next[i]) return;
       if (crash[i]) {
@@ -98,8 +102,9 @@ function step(s, inp, dt, api) {
     });
   }
   const alive = bs.filter(b => b.alive).length;
-  if (alive <= 1) {
-    const w = alive === 1 ? (bs[0].alive ? 0 : 1) : -1;
+  const left = [0, 1].map(t => bs.filter((b, i) => b.alive && s.team(i) === t).length); // (Duos: the last team riding wins)
+  if (s.n > 2 ? !left[0] || !left[1] : alive <= 1) {
+    const w = s.n > 2 ? (left[0] ? 0 : left[1] ? 1 : -1) : alive === 1 ? (bs[0].alive ? 0 : 1) : -1;
     if (w >= 0) s.wins[w]++;
     api.score(s.wins[0], s.wins[1]);
     s.rw = w;
@@ -142,7 +147,7 @@ function bot(s, i, dt, api) {
     }
     return seen.size;
   };
-  const other = s.bikes[1 - i];
+  const other = s.n > 2 ? nearFoe(s, i) : s.bikes[1 - i];
   let best = b.d, bestScore = -Infinity;
   for (const d of [b.d, (b.d + 1) % 4, (b.d + 3) % 4]) {
     const nx = b.x + DIRS[d][0], ny = b.y + DIRS[d][1];
@@ -161,9 +166,17 @@ function bot(s, i, dt, api) {
   return out;
 }
 
+// (Duos) The nearest bike of the other team still riding.
+function nearFoe(s, i) {
+  const b = s.bikes[i];
+  let best = null, bd = 1e9;
+  s.bikes.forEach((o, j) => { if (o.alive && s.team(j) !== s.team(i)) { const d = Math.abs(o.x - b.x) + Math.abs(o.y - b.y); if (d < bd) { bd = d; best = o; } } });
+  return best || s.bikes.find((o, j) => s.team(j) !== s.team(i));
+}
+
 function event(v, e) {
   // (the cats' faces: see view.mood in games-duel.js)
-  if (e.type === 'crash') { v.mood(e.i, 'ko', 1.8); v.mood(1 - e.i, 'happy', 1.8); }
+  if (e.type === 'crash') { v.mood(e.i, 'ko', 1.8); if (v.duo) v.foes(e.i).forEach(j => v.mood(j, 'happy', 1.8)); else v.mood(1 - e.i, 'happy', 1.8); }
   if (e.type === 'crash') {
     v.burst(e.x, e.y, v.team[e.i].main, 26, 340);
     v.burst(e.x, e.y, '#ffffff', 10, 220);
@@ -234,8 +247,8 @@ function draw(v, s) {
     v.catTop(i, b.x, b.y - 8, 0.62, { ring: false, lookRight: b.d !== 2, label: false, bob: 0.2 });
     v.label(i === v.me ? 'You' : v.names[i], b.x, b.y + 20, 11, i === v.me ? '#ffd23f' : '#ffffff');
   });
-  v.label('🏍️ ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd, 480, 22, 15, '#ffffff');
-  if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Both crashed! No point' : s.rw === v.me ? 'You win the round!' : v.names[s.rw] + ' wins the round!', 270, 38, '#ffd23f', 1);
+  v.label('🏍️ ' + v.side(0) + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.side(1) + '  ·  Round ' + s.rd, 480, 22, 15, '#ffffff');
+  if (s.ph === 'pause') v.bigText(s.rw < 0 ? (v.duo ? 'Everyone crashed! No point' : 'Both crashed! No point') : v.roundWin(s.rw), 270, 38, '#ffd23f', 1);
 }
 
 })();

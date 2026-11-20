@@ -38,6 +38,19 @@ const sound = (k, r) => { try { CA.sound(k, r); } catch (e) { /* ignore */ } };
 const GAMES = {}, ORDER = [];
 function add(id, def) { GAMES[id] = def; ORDER.push(id); }
 
+// The real games: the very same ones as 1 vs 1 (see games-duel.js), once a game knows how to play with four (its
+// CA.games.add has duos: true). Each takes the place of the simpler stand-in written for Duos before it.
+const REPLACES = { sumo: 'sumo2', trails: 'trails2', hockey: 'hockey2', paint: 'paint2', box: 'box2', dodge: 'dodge2', hoops: 'hoops2', kart: 'kart2', cannons: 'cannons2', poop: 'poop2', laser: 'laser2', walls: 'walls2', pond: 'pond2', mouse: 'heist2' };
+const realIds = () => (CA.games && CA.games.ids ? CA.games.ids().filter(id => { const g = CA.games.get(id); return g && g.duos; }) : []);
+// Every game Duos plays now: { id, name, icon, real }.
+function lineup() {
+  const real = realIds();
+  const gone = new Set(real.map(id => REPLACES[id]).filter(Boolean));
+  return real.map(id => { const g = CA.games.get(id); return { id, name: g.name, icon: g.icon, real: true }; })
+    .concat(ORDER.filter(id => !gone.has(id)).map(id => ({ id, name: GAMES[id].name, icon: GAMES[id].icon, real: false })));
+}
+const gameInfo = id => lineup().find(x => x.id === id);
+
 /* ---------- the screen ---------- */
 
 let state = 'idle';     // idle | searching | connecting | playing
@@ -73,7 +86,7 @@ function showLobby(note) {
     '<h1>Duos <small>2 vs 2</small></h1>' +
     '<p class="duo-sub">Team up with another player against another team of two. Every game is made for four cats at once. All four cameras show the whole time.</p>' +
     (note ? '<p class="duo-note">' + esc(note) + '</p>' : '') +
-    '<div class="duo-games">' + ORDER.map(id => '<span class="duo-chip">' + GAMES[id].icon + ' ' + esc(GAMES[id].name) + '</span>').join('') + '</div>' +
+    '<div class="duo-games">' + lineup().map(x => '<span class="duo-chip">' + x.icon + ' ' + esc(x.name) + '</span>').join('') + '</div>' +
     '<button class="btn duo-go" id="duoFind">Find a Duos match</button>' +
     '<button class="btn ghost duo-bots" id="duoBots">Play now with bots</button>' +
     '<a class="duo-back" href="#/games">Back to the games</a>' +
@@ -276,7 +289,8 @@ function onGuestMsg(seat, msg) {
     seats[seat].ready = true;
     drawCams();
     if ([1, 2, 3].every(s => seats[s].ready)) beginMatch();
-  } else if (msg.t === 'in' && run) run.input(seat, msg);
+  } else if (msg.t === 'in' && run && run.input) run.input(seat, msg);
+  else if (msg.t === 'rg' && run && run.deliver) run.deliver(msg.m, seat, msg.a);
 }
 
 // (guest) What the host sends.
@@ -291,7 +305,8 @@ function onHostMsg(msg) {
     buildPlayScreen();
     if (!match.called) { match.called = true; callEveryone(); } // (everyone has the match by now, so they take the call)
   } else if (msg.t === 'game') startGame(msg.id, msg.seed, msg.score);
-  else if (run) run.fromHost(msg);
+  else if (msg.t === 'rg') { if (run && run.deliver) run.deliver(msg.m, 0, msg.a); }
+  else if (run && run.fromHost) run.fromHost(msg);
 }
 
 // (host) Everyone's here: off we go.
@@ -407,7 +422,7 @@ function drawBar(name) {
   const me = match ? teamOf(match.seat) : 0;
   $('duoBar').innerHTML =
     '<span class="duo-score"><b class="t0">' + TEAM[0].name + (me === 0 ? ' (you)' : '') + ' ' + score[0] + '</b> : <b class="t1">' + score[1] + ' ' + TEAM[1].name + (me === 1 ? ' (you)' : '') + '</b></span>' +
-    '<span class="duo-gname">' + esc(name || '') + '</span>' +
+    '<span class="duo-gname">' + esc(name || '') + ' <small id="duoNote"></small></span>' +
     '<button class="btn ghost duo-quit" id="duoQuit">Leave</button>';
   $('duoQuit').onclick = () => CA.confirmBox('Leave this Duos match?', match && !match.bots ? 'A bot takes your seat for your teammate.' : 'You can start another one any time.', 'Leave', () => { stopAll('quit'); showLobby(); });
 }
@@ -415,22 +430,22 @@ function drawBar(name) {
 // (host) Picks the next game: every game once, in a random order, before any comes back.
 function nextGame() {
   if (!match || !match.host) return;
-  if (!bag.length) bag = ORDER.slice().sort(() => Math.random() - 0.5);
-  const id = (window.__duoGame && GAMES[window.__duoGame]) ? window.__duoGame : bag.pop();
+  if (!bag.length) bag = lineup().map(x => x.id).sort(() => Math.random() - 0.5);
+  const id = (window.__duoGame && gameInfo(window.__duoGame)) ? window.__duoGame : bag.pop();
   const seed = Math.floor(Math.random() * 2 ** 31);
   sendAll({ t: 'game', id, seed, score });
   startGame(id, seed, score);
 }
 
 function startGame(id, seed, sc) {
-  const def = GAMES[id];
-  if (!def || !match) return;
+  const info = gameInfo(id);
+  if (!info || !match) return;
   if (sc) score = sc.slice();
   gameNo++;
   if (run) run.stop();
   $('duoOver').classList.add('hidden');
-  drawBar(def.icon + ' ' + def.name);
-  run = makeRun(def, id, seed);
+  drawBar(info.icon + ' ' + info.name);
+  run = info.real ? makeRealRun(id, seed) : makeRun(GAMES[id], id, seed);
 }
 
 // The game is over: w is the team that won (or -1 for a draw).
@@ -478,6 +493,85 @@ function catPics(eq) {
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }));
   return pics;
+}
+
+/* ---------- running one of the real games ---------- */
+
+// The real game runs on the arcade engine (games-duel.js), exactly as in 1 vs 1, with four players: this gives it what
+// it would get from a 1 vs 1 match (see makeCtx in solos.js), only for four seats and over the Duos connections.
+function makeRealRun(id, seed) {
+  const g = CA.games.get(id), play = $('duoStage').querySelector('.duo-play');
+  $('duoCanvas').classList.add('hidden');
+  const stage = document.createElement('div');
+  stage.className = 'duo-real';
+  play.insertBefore(stage, $('duoOver'));
+  // (a 1 vs 1 game left on the other screen keeps its parts; they mustn't be found instead of this game's)
+  document.querySelectorAll('#dlCanvas, #dlMsg, #dlPad, #dlStick, #dlKnob').forEach(el => { if (!stage.contains(el)) el.removeAttribute('id'); });
+  CA.camWalls.size(0, 0); // (no camera walls in the corners: the four cameras are above the game)
+  const timers = new Set(), intervals = new Set(), listeners = [], handlers = [], enders = [];
+  let alive = true, at = performance.now();
+  const net = { last: 0, jitter: 8 };
+  let a = (seed >>> 0) || 1;
+  const rng = () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const R = {
+    def: { icon: g.icon, name: g.name }, over: false, real: true,
+    // A message for the game, from seat `from`, `age` ms old when it was sent.
+    deliver(msg, from, age) {
+      if (!alive || !msg) return;
+      const now = performance.now();
+      if (msg.t === 's') { if (net.last) net.jitter = Math.max(net.jitter * 0.985, Math.abs(now - net.last - 33) * 0.8); net.last = now; }
+      at = now - (Number.isFinite(age) ? clamp(age, 0, 200) : 0);
+      handlers.forEach(h => h(msg, from));
+    },
+    stop() {
+      if (!alive) return;
+      alive = false;
+      timers.forEach(clearTimeout); intervals.forEach(clearInterval);
+      listeners.splice(0).forEach(([tg, ty, fn, o]) => tg.removeEventListener(ty, fn, o));
+      enders.splice(0).forEach(fn => { try { fn(); } catch (e) { console.warn('Duos game cleanup failed:', e); } });
+      stage.remove();
+      const cv = $('duoCanvas');
+      if (cv) cv.classList.remove('hidden');
+      CA.camWalls.reset();
+    },
+  };
+  const ctx = {
+    stage, seed, rng, started: true, gameLog() {},
+    players: 4, seat: match.seat, teamOf, names: seats.map(p => p.name || 'Player'), equips: seats.map(p => p.equip || {}),
+    isBot: i => !!(seats && seats[i] && seats[i].bot),
+    skill: 0.55,
+    isHost: match.host,
+    bot: match.bots ? { level: 5 } : null, // (all bots: nothing to send)
+    oppName: '', oppEquip: null,
+    alive: () => alive && !!match,
+    send(msg) { if (match.host) sendAll({ t: 'rg', m: msg }); else if (match.hostConn && match.hostConn.open) { try { match.hostConn.send({ t: 'rg', m: msg }); } catch (e) { /* ignore */ } } },
+    stream(msg, age) { const env = { t: 'rg', m: msg, a: age ? Math.round(age) : 0 }; if (match.host) sendAllFast(env); else sendFast(match.fast, env, match.hostConn); },
+    netAt: () => at,
+    viewDelay: sendMs => Math.min(320, sendMs * 1.6 + net.jitter * 1.6 + 12),
+    netStarved(gap) { if (gap > 0) net.jitter = Math.max(net.jitter, Math.min(100, gap) / 1.5 + 2); },
+    on(fn) { handlers.push(fn); },
+    later(fn, ms) { const t = setTimeout(() => { timers.delete(t); if (alive) fn(); }, ms); timers.add(t); return t; },
+    cancel(t) { clearTimeout(t); timers.delete(t); },
+    every(fn, ms) { const t = setInterval(() => { if (alive) fn(); }, ms); intervals.add(t); return t; },
+    stopEvery(t) { clearInterval(t); intervals.delete(t); },
+    listen(tg, ty, fn, o) { tg.addEventListener(ty, fn, o); listeners.push([tg, ty, fn, o]); },
+    onEnd(fn) { enders.push(fn); },
+    record() {}, oppCheer() {}, afk() {}, theirCam: () => null,
+    talking: () => false,
+    score(mine, theirs) { const n = $('duoNote'); if (n) n.textContent = '· ' + (teamOf(match.seat) ? theirs + ' : ' + mine : mine + ' : ' + theirs); },
+    note(text) { const m = $('duoMsg'); if (m) m.textContent = text || ''; },
+    finish(outcome, o) {
+      if (!alive || R.over) return;
+      R.over = true;
+      const me = teamOf(match.seat);
+      gameOver(o && (o.w === 0 || o.w === 1 || o.w === -1) ? o.w : outcome === 'draw' ? -1 : outcome === 'win' ? me : 1 - me, '');
+    },
+  };
+  try { g.start(ctx); } catch (e) { console.error('Duos: the game failed to start:', e); }
+  if (window.__testHooks) {
+    window.__duo = { R, id, seats, phase: () => (window.__duel ? window.__duel.phase() : 'ready'), snap: () => (window.__duel && window.__duel.snapNow ? window.__duel.snapNow() : null), api: window.__duel && window.__duel.api };
+  }
+  return R;
 }
 
 /* ---------- running one game ---------- */

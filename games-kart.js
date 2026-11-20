@@ -50,7 +50,7 @@ function nearestIdx(x, y, hint) {
 }
 
 CA.games.add('kart', {
-  name: 'Kart Dash', icon: '🏎️',
+  name: 'Kart Dash', icon: '🏎️', duos: true,
   blurb: 'Race your kart three laps around the track! W to speed up, S to brake, A and D to steer, Space for a quick boost. You have to go through every checkpoint, so no shortcuts!',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -69,6 +69,8 @@ CA.games.add('kart', {
 function lerp(a, b, f) {
   const o = CA.duel.deepLerp(a, b, f, ['h'], 80);
   o.lead = b.lead;
+  o.pl = b.pl;
+  o.left = b.left;
   o.l = b.l;
   o.k.forEach((k, i) => { k.lap = b.k[i].lap; k.cp = b.k[i].cp; k.b = b.k[i].b; k.w = b.k[i].w; });
   return o;
@@ -79,11 +81,16 @@ function init(api) {
   useLayout(layout);
   const k0 = N - 5, dir = Math.atan2(PATH[0][1] - PATH[k0][1], PATH[0][0] - PATH[k0][0]);
   const nx = -Math.sin(dir), ny = Math.cos(dir);
+  const n = api.n || 2, team = api.team || (i => i);
+  // (Duos: four karts in two rows; each row has one kart of each team)
+  const grid = n > 2 ? [[-1, 0], [1, 1], [1, 0], [-1, 1]] : [[-1, 0], [1, 0]];
   return {
-    l: layout, t: 0, done: -1,
-    karts: [-1, 1].map(side => ({
-      x: PATH[k0][0] + nx * side * 22, y: PATH[k0][1] + ny * side * 22, h: dir, v: 0, idx: k0, lap: 0, cp: 0, go: false, boost: 0, wait: 0, fin: 0,
-    })),
+    n, team, l: layout, t: 0, done: -1, firstFin: 0,
+    karts: grid.map(([side, row]) => {
+      const kk = (k0 - row * 4 + N) % N, d2 = Math.atan2(PATH[(kk + 1) % N][1] - PATH[kk][1], PATH[(kk + 1) % N][0] - PATH[kk][0]);
+      const px = row ? PATH[kk][0] : PATH[k0][0], py = row ? PATH[kk][1] : PATH[k0][1], hx = row ? -Math.sin(d2) : nx, hy = row ? Math.cos(d2) : ny;
+      return { x: px + hx * side * 22, y: py + hy * side * 22, h: row ? d2 : dir, v: 0, idx: row ? kk : k0, lap: 0, cp: 0, go: false, boost: 0, wait: 0, fin: 0 };
+    }),
   };
 }
 
@@ -125,20 +132,51 @@ function step(s, inp, dt, api) {
     }
   });
   // karts bump into each other
-  const [a, b] = s.karts;
-  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
-  if (d < KR * 2) {
-    const nx = dx / d, ny = dy / d, push = (KR * 2 - d) / 2 + 0.5;
-    a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
-    const va = a.v, vb = b.v;
-    a.v = va * 0.6 + vb * 0.3;
-    b.v = vb * 0.6 + va * 0.3;
-    if (Math.abs(va - vb) > 60) api.ev('bump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  for (let p = 0; p < s.karts.length; p++) for (let q = p + 1; q < s.karts.length; q++) {
+    const a = s.karts[p], b = s.karts[q];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+    if (d < KR * 2) {
+      const nx = dx / d, ny = dy / d, push = (KR * 2 - d) / 2 + 0.5;
+      a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+      const va = a.v, vb = b.v;
+      a.v = va * 0.6 + vb * 0.3;
+      b.v = vb * 0.6 + va * 0.3;
+      if (Math.abs(va - vb) > 60) api.ev('bump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, a: p, b: q });
+    }
   }
+  if (s.n > 2) { duoFinish(s, api); return; }
+  const [a, b] = s.karts;
   api.score(Math.min(LAPS, a.lap), Math.min(LAPS, b.lap));
   const fins = s.karts.map(k => k.fin);
   if (fins[0] || fins[1]) api.end(fins[0] && fins[1] ? (fins[0] <= fins[1] ? 0 : 1) : fins[0] ? 0 : 1, 'FINISH!');
   else if (s.t >= LIMIT) { const p = s.karts.map(progress); api.end(p[0] === p[1] ? -1 : p[0] > p[1] ? 0 : 1, 'TIME!'); }
+}
+
+// (Duos) Places score for the team: 1st 4 points, 2nd 3, 3rd 2, 4th 1. Once the first kart is home, the others have
+// 15 seconds to finish (or the race ends after the time limit), and the team with more points wins (a tie: the team
+// with the winner).
+const PLACE_PTS = [4, 3, 2, 1];
+function places(s) {
+  const order = s.karts.map((k, i) => i).sort((a, b) => {
+    const ka = s.karts[a], kb = s.karts[b];
+    if (ka.fin && kb.fin) return ka.fin - kb.fin;
+    if (ka.fin || kb.fin) return ka.fin ? -1 : 1;
+    return progress(kb) - progress(ka);
+  });
+  const pl = [];
+  order.forEach((i, r) => { pl[i] = r; });
+  return pl;
+}
+function duoFinish(s, api) {
+  const pl = places(s), pts = [0, 0];
+  pl.forEach((r, i) => { pts[s.team(i)] += PLACE_PTS[r]; });
+  api.score(pts[0], pts[1]);
+  if (!s.firstFin && s.karts.some(k => k.fin)) { s.firstFin = s.t; api.ev('first', {}); }
+  const allIn = s.karts.every(k => k.fin);
+  if (allIn || (s.firstFin && s.t - s.firstFin >= 15) || s.t >= LIMIT) {
+    const first = s.team(pl.indexOf(0));
+    api.end(pts[0] === pts[1] ? first : pts[0] > pts[1] ? 0 : 1, 'FINISH!');
+  }
 }
 
 // How far round the race a kart is (laps, checkpoints, and how far towards the next one).
@@ -153,7 +191,8 @@ function progress(k) {
 function snap(s) {
   const p = s.karts.map(progress);
   return {
-    l: s.l, t: Math.round(s.t * 10) / 10, lead: p[0] === p[1] ? -1 : p[0] > p[1] ? 0 : 1,
+    l: s.l, t: Math.round(s.t * 10) / 10, lead: p[0] === p[1] ? -1 : p[0] > p[1] ? 0 : 1, pl: s.n > 2 ? places(s) : undefined,
+    left: s.n > 2 && s.firstFin ? Math.max(0, Math.ceil(15 - (s.t - s.firstFin))) : undefined,
     k: s.karts.map(k => ({ x: Math.round(k.x * 10) / 10, y: Math.round(k.y * 10) / 10, h: Math.round(k.h * 100) / 100, v: Math.round(k.v), lap: k.lap, cp: k.cp, b: k.boost > 0 ? 1 : 0, w: Math.round(k.wait * 10) / 10 })),
   };
 }
@@ -177,7 +216,8 @@ function bot(s, i, dt, api) {
 function event(v, e) {
   // (the cats' faces: see view.mood in games-duel.js)
   if (e.type === 'lap') v.mood(e.i, 'happy', 1.5);
-  if (e.type === 'bump') { v.mood(0, 'shock', 0.7); v.mood(1, 'shock', 0.7); }
+  if (e.type === 'bump') { v.mood(e.a != null ? e.a : 0, 'shock', 0.7); v.mood(e.b != null ? e.b : 1, 'shock', 0.7); }
+  if (e.type === 'first') { v.note('The first kart is home! 15 seconds left for the others'); v.sound('notify'); }
   if (e.type === 'boost') { v.burst(e.x, e.y, '#ffd23f', 10, 200); v.sound([[300, 0, 0.06], [600, 0.05, 0.1]]); }
   if (e.type === 'wall') v.sound([[140, 0, 0.05]]);
   if (e.type === 'bump') { v.burst(e.x, e.y, '#ffffff', 8, 180); v.sound([[200, 0, 0.05], [120, 0.04, 0.08]]); v.shake(4); }
@@ -248,7 +288,7 @@ function draw(v, s) {
   const me = s.k[v.me];
   g.fillStyle = 'rgba(20, 20, 30, .78)';
   v.roundRect(W / 2 - 200, 6, 400, 30, 15); g.fill();
-  const pos = s.lead < 0 ? '' : s.lead === v.me ? '1st 🥇' : '2nd';
+  const pos = s.pl ? ['1st 🥇', '2nd', '3rd', '4th'][s.pl[v.me]] + (s.left != null ? '  ·  ' + s.left + 's to finish!' : '') : s.lead < 0 ? '' : s.lead === v.me ? '1st 🥇' : '2nd';
   v.label('Lap ' + Math.min(LAPS, me.lap + 1) + '/' + LAPS + '  ·  ' + pos + '  ·  ⏱ ' + Math.floor(s.t) + 's', W / 2, 21, 16, '#ffffff');
   v.label(me.w > 0 ? '🚀 ' + me.w.toFixed(1) + 's' : '🚀 Boost ready (Space)', W / 2, 52, 13, me.w > 0 ? '#bbbbbb' : '#ffd23f');
 }

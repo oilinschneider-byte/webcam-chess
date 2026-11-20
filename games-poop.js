@@ -32,7 +32,7 @@ const r1 = v => Math.round(v * 10) / 10;
 const roleName = r => (r === 'p' ? 'POOPOO 💩' : 'PEEPEE 💦');
 
 CA.games.add('poop', {
-  name: 'Poop Showdown', icon: '💩',
+  name: 'Poop Showdown', icon: '💩', duos: true,
   blurb: 'One of you is POOPOO and one is PEEPEE (you swap every round). Poopoo turns their big butt toward the other cat (walk away from them) and blasts a powerful poop out the back. Peepee squirts pee straight ahead and makes them dizzy. HOLD Space for a special: a poop MOUNTAIN, or pee RAIN! W jumps. First to win 2 rounds.',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -51,7 +51,7 @@ function newCat(x, face) {
 }
 
 function init(api) {
-  const s = { wins: [0, 0], round: 0, phase: 'fight', pause: 0, rw: -1, cats: [], shots: [], mounds: [], rain: null, roles: ['p', 'w'], t: 0, done: false };
+  const s = { n: api.n || 2, team: api.team || (i => i), wins: [0, 0], round: 0, phase: 'fight', pause: 0, rw: -1, cats: [], shots: [], mounds: [], rain: null, roles: ['p', 'w'], t: 0, done: false };
   newRound(s, api);
   return s;
 }
@@ -65,6 +65,10 @@ function newRound(s, api) {
   s.rain = null;
   s.roles = (s.round % 2 === 1) ? ['p', 'w'] : ['w', 'p']; // (the host is Poopoo first, then you swap every round)
   s.cats = [newCat(250, 1), newCat(710, -1)];
+  if (s.n > 2) { // (Duos: each team has a Poopoo and a Peepee, swapping every round; a cat out of health is out for the round)
+    s.roles = [0, 1, 2, 3].map(i => ((i + s.round + s.team(i)) % 2 ? 'p' : 'w'));
+    s.cats = [newCat(180, 1), newCat(320, 1), newCat(640, -1), newCat(780, -1)];
+  }
   api.ev('round', { n: s.round, r: s.roles });
 }
 
@@ -79,6 +83,14 @@ function groundAt(mounds, x) {
   return y;
 }
 const inSludge = (s, x) => s.mounds.some(m => m.sl > 0 && Math.abs(x - m.x) < SLUDGE_W);
+const outOf = (s, c) => s.n > 2 && c.hp <= 0;
+// The cat of the other side nearest to cat i, still in the round (in 1 vs 1, the other cat).
+function foeOf(s, i) {
+  if (s.n <= 2) return 1 - i;
+  let best = -1, bd = 1e9;
+  s.cats.forEach((o, j) => { if (s.team(j) !== s.team(i) && !outOf(s, o)) { const d = Math.abs(o.x - s.cats[i].x); if (d < bd) { bd = d; best = j; } } });
+  return best >= 0 ? best : s.cats.findIndex((o, j) => s.team(j) !== s.team(i));
+}
 
 function shoot(s, c, i, api) { // a poop, out the back
   const d = -c.face;
@@ -103,13 +115,15 @@ function special(s, c, i, api) {
     s.mounds.push({ o: i, x: clamp(c.x, MOUND_W, W - MOUND_W), h: 0, t: 0, sl: 0 });
     api.ev('mound', { x: c.x, y: GROUND, i });
   } else {
-    s.rain = { o: i, t: RAIN_T, acc: 0, x: s.cats[1 - i].x };
-    api.ev('rain', { x: s.cats[1 - i].x, i });
+    const f = foeOf(s, i);
+    s.rain = { o: i, f, t: RAIN_T, acc: 0, x: s.cats[f].x };
+    api.ev('rain', { x: s.cats[f].x, i, f });
   }
 }
 
 function stepCat(s, c, i, n, dt, api) {
   const role = s.roles[i];
+  if (outOf(s, c)) { c.vx *= 0.9; c.vy += G * dt; c.y = Math.min(groundAt(s.mounds, c.x), c.y + c.vy * dt); c.strain = 0; c.fa = 0; return; } // (out: lying there)
   c.rel = Math.max(0, c.rel - dt);
   c.fa = Math.max(0, c.fa - dt);
   c.dz = Math.max(0, c.dz - dt);
@@ -169,7 +183,7 @@ function stepRain(s, dt) {
   if (!r) return;
   r.t -= dt;
   r.acc += dt;
-  r.x += (s.cats[1 - r.o].x - r.x) * Math.min(1, dt * 1.5); // (the cloud drifts after them, a bit slowly)
+  r.x += (s.cats[r.f != null ? r.f : 1 - r.o].x - r.x) * Math.min(1, dt * 1.5); // (the cloud drifts after them, a bit slowly)
   while (r.acc >= RAIN_EVERY) {
     r.acc -= RAIN_EVERY;
     s.shots.push({ x: r.x + (Math.random() - 0.5) * 2 * RAIN_SPREAD, y: 70 + Math.random() * 20, vx: 0, vy: 260 + Math.random() * 140, o: r.o, a: 0, k: 'r' });
@@ -186,21 +200,24 @@ function stepShots(s, dt, api) {
     sh.a += dt;
     if (sh.dead) continue;
     if (sh.k === 'w' && sh.a > PEE_LIFE) { sh.dead = true; continue; } // (the pee only reaches so far)
-    const o = s.cats[1 - sh.o], r = rain ? 5 : pee ? PEE_R : SHOT_R;
-    if (Math.hypot(sh.x - o.x, sh.y - (o.y - 40)) < r + 30 || Math.hypot(sh.x - o.x, sh.y - (o.y - 74)) < r + 22) { // a hit!
+    const r = rain ? 5 : pee ? PEE_R : SHOT_R;
+    const touches = q => Math.hypot(sh.x - q.x, sh.y - (q.y - 40)) < r + 30 || Math.hypot(sh.x - q.x, sh.y - (q.y - 74)) < r + 22;
+    const vi = s.n > 2 ? s.cats.findIndex((q, j) => s.team(j) !== s.team(sh.o) && !outOf(s, q) && touches(q)) : (touches(s.cats[1 - sh.o]) ? 1 - sh.o : -1);
+    const o = s.cats[vi];
+    if (vi >= 0) { // a hit!
       sh.dead = true;
       if (rain) {
         o.hp = Math.max(0, o.hp - RAIN_DMG);
-        api.ev('drip', { x: sh.x, y: sh.y, i: 1 - sh.o });
+        api.ev('drip', { x: sh.x, y: sh.y, i: vi });
       } else if (pee) {
         o.hp = Math.max(0, o.hp - PEE_DMG);
         o.vx += Math.sign(sh.vx) * 110;
-        api.ev('wet', { x: sh.x, y: sh.y, i: 1 - sh.o });
+        api.ev('wet', { x: sh.x, y: sh.y, i: vi });
         if (o.dz <= 0 && o.di <= 0) { // dizzy, once (then immune for a moment)
           o.dz = DIZZY;
           o.di = DIZZY + IMMUNE;
           o.strain = 0;
-          api.ev('dizzy', { x: o.x, y: o.y - 118, i: 1 - sh.o });
+          api.ev('dizzy', { x: o.x, y: o.y - 118, i: vi });
         }
       } else {
         o.hp = Math.max(0, o.hp - DMG);
@@ -208,7 +225,8 @@ function stepShots(s, dt, api) {
         o.vy = -330;
         o.ground = false;
         o.strain = 0;
-        api.ev('splat', { x: sh.x, y: sh.y, i: 1 - sh.o, hp: o.hp });
+        api.ev('splat', { x: sh.x, y: sh.y, i: vi, hp: o.hp, by: sh.o });
+        if (s.n > 2 && o.hp <= 0) api.ev('out', { i: vi, x: o.x, y: o.y - 60 });
       }
       continue;
     }
@@ -219,7 +237,7 @@ function stepShots(s, dt, api) {
   }
   for (let p = 0; p < s.shots.length; p++) for (let q = p + 1; q < s.shots.length; q++) { // poops that meet splat each other
     const a = s.shots[p], b = s.shots[q];
-    if (a.dead || b.dead || a.o === b.o || a.k !== 'p' || b.k !== 'p' || Math.hypot(a.x - b.x, a.y - b.y) > SHOT_R * 2) continue;
+    if (a.dead || b.dead || s.team(a.o) === s.team(b.o) || a.k !== 'p' || b.k !== 'p' || Math.hypot(a.x - b.x, a.y - b.y) > SHOT_R * 2) continue;
     a.dead = b.dead = true;
     api.ev('clash', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
   }
@@ -251,7 +269,7 @@ function step(s, inp, dt, api) {
   stepRain(s, dt);
   s.cats.forEach((c, i) => stepCat(s, c, i, inp[i], dt, api));
   stepShots(s, dt, api);
-  const out = s.cats.map(c => c.hp <= 0);
+  const out = s.n > 2 ? [0, 1].map(t => s.cats.every((c, i) => s.team(i) !== t || c.hp <= 0)) : s.cats.map(c => c.hp <= 0);
   if (out[0] || out[1]) {
     const w = out[0] && out[1] ? -1 : out[0] ? 1 : 0;
     if (w >= 0) s.wins[w]++;
@@ -270,6 +288,7 @@ function snap(s) {
     sh: s.shots.map(sh => ({ x: Math.round(sh.x), y: Math.round(sh.y), a: r1(sh.a * 8), k: sh.k })),
     m: s.mounds.map(m => [Math.round(m.x), Math.round(m.h), Math.round(m.sl * 100) / 100, m.o]),
     rn: s.rain ? [Math.round(s.rain.x), s.rain.o] : 0,
+    n: s.n > 2 ? s.n : undefined,
   };
 }
 
@@ -278,9 +297,10 @@ function snap(s) {
 // Poopoo bot: stays a good distance away, turns its butt toward you (by walking away) and poops. Peepee bot: runs up close,
 // faces you and squirts. Both jump over incoming poop, get out of sludge, and use their special now and then.
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i], role = s.roles[i];
-  const st = s.bs || (s.bs = { think: 0, mx: 0, jump: 0, hold: 0 });
-  if (s.phase !== 'fight') return { hit: {} };
+  const c = s.cats[i], o = s.cats[foeOf(s, i)], role = s.roles[i];
+  const fresh = () => ({ think: 0, mx: 0, jump: 0, hold: 0 });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.bs || (s.bs = fresh());
+  if (s.phase !== 'fight' || outOf(s, c)) return { hit: {} };
   st.think -= dt;
   st.jump = Math.max(0, st.jump - dt);
   st.hold = Math.max(0, st.hold - dt);
@@ -301,7 +321,7 @@ function bot(s, i, dt, api) {
     }
     if (c.slow) st.mx = c.x < W / 2 ? 1 : -1; // (get out of the sludge)
     for (const sh of s.shots) { // an incoming poop: jump over it
-      if (sh.o === i || sh.k !== 'p' || st.jump > 0 || !c.ground) continue;
+      if (s.team(sh.o) === s.team(i) || sh.k !== 'p' || st.jump > 0 || !c.ground) continue;
       if (Math.sign(sh.vx) === Math.sign(c.x - sh.x) && Math.abs(sh.x - c.x) < 260 && Math.abs(sh.x - c.x) > 60 && Math.abs(sh.y - (c.y - 40)) < 90 && Math.random() < 0.15 + 0.6 * api.skill) { out.hit.u = true; st.jump = 0.8; }
     }
   }
@@ -313,7 +333,7 @@ function bot(s, i, dt, api) {
 
 const puffs = [];                                     // green smoke (just for show, on each screen)
 const puddles = [];
-let emit = [0, 0], lastRd = -1;
+let emit = [0, 0, 0, 0], lastRd = -1;
 
 function addPuff(x, y, vx, vy, r, life) { puffs.push({ x, y, vx, vy, r, life, max: life }); if (puffs.length > 140) puffs.shift(); }
 
@@ -333,7 +353,7 @@ function event(v, e) {
     v.shake(14);
     v.sound('boom');
     v.mood(e.i, 'hurt', 1);
-    v.mood(1 - e.i, 'happy', 1);
+    v.mood(e.by != null ? e.by : 1 - e.i, 'happy', 1);
   }
   if (e.type === 'ground') { puddles.push({ x: e.x, y: e.y || GROUND, t0: performance.now() }); if (puddles.length > 8) puddles.shift(); v.burst(e.x, (e.y || GROUND) - 4, '#7a4a1f', 8, 200); v.sound([[200, 0, 0.06]]); }
   if (e.type === 'clash') { v.burst(e.x, e.y, '#7a4a1f', 14, 260); v.pop(e.x, e.y - 20, 'SPLORT!', '#c8864a'); v.sound([[300, 0, 0.05], [200, 0.04, 0.08]]); }
@@ -353,8 +373,9 @@ function event(v, e) {
     v.sound([[1200, 0, 0.6, { w: 'noise', to: 3000, q: 1, g: 0.7 }], [900, 0, 0.12], [1200, 0.1, 0.16]]);
     v.banner('PEE RAIN! 💦', '#ffe14d');
     v.mood(e.i, 'smug', 1.8);
-    v.mood(1 - e.i, 'shock', 1.2);
+    v.mood(e.f != null ? e.f : 1 - e.i, 'shock', 1.2);
   }
+  if (e.type === 'out') { v.pop(e.x, e.y, 'OUT!', '#ff5a5a'); v.mood(e.i, 'ko', 99); }
   if (e.type === 'round') {
     v.note('Round ' + e.n + ' · you are ' + roleName((e.r || [])[v.me]));
     puffs.length = 0;
@@ -493,6 +514,7 @@ function drawButt(v, i, c) {
 
 function drawCat(v, s, i, c) {
   const g = v.g, poopoo = c.r === 'p', reload = poopoo ? RELOAD : PEE_RELOAD;
+  if (s.n && c.hp <= 0) { v.catSide(i, c.x, c.y, 1, { lookRight: c.f > 0, tilt: 1.45 * c.f, alpha: 0.5, face: 'ko' }); v.label('OUT', c.x, c.y - 56, 12, '#ff9a9a'); return; } // (Duos: out for the round)
   g.fillStyle = v.team[i].main; g.globalAlpha = 0.3;
   g.beginPath(); g.ellipse(c.x, groundAt(s.m || [], c.x) + 6, 40, 9, 0, 0, Math.PI * 2); g.fill();
   g.globalAlpha = 1;
@@ -594,17 +616,27 @@ function draw(v, s) {
     g.fillText('💩', 0, 0);
     g.restore();
   });
-  // health bars along the top, between the camera walls
-  [0, 1].forEach(i => {
+  // health bars along the top, between the camera walls (Duos: four small ones, each team on its side)
+  if (s.n) s.c.forEach((c, i) => {
+    const x0 = [60, 260, 500, 700][i], w = 200;
+    g.fillStyle = 'rgba(40, 20, 10, .7)'; v.roundRect(x0, 14, w, 20, 10); g.fill();
+    g.fillStyle = c.hp > 50 ? '#3ddc84' : c.hp > 25 ? '#ffd23f' : '#ff5a5a';
+    if (c.hp > 0) { v.roundRect(x0 + 3, 17, (w - 6) * c.hp / HP, 14, 7); g.fill(); }
+    v.label((i === v.me ? 'You' : v.names[i]) + (c.r === 'p' ? ' 💩' : ' 💦'), x0 + w / 2, 24, 12, v.team[i].light);
+  });
+  else [0, 1].forEach(i => {
     const c = s.c[i], x0 = i === 0 ? 200 : 520, w = 240;
     g.fillStyle = 'rgba(40, 20, 10, .7)'; v.roundRect(x0, 14, w, 20, 10); g.fill();
     g.fillStyle = c.hp > 50 ? '#3ddc84' : c.hp > 25 ? '#ffd23f' : '#ff5a5a';
     if (c.hp > 0) { v.roundRect(x0 + 3, 17, (w - 6) * c.hp / HP, 14, 7); g.fill(); }
     v.label((i === v.me ? 'You' : v.names[i]) + '  ' + '💩'.repeat(s.w[i]), x0 + w / 2, 24, 12, '#ffffff');
   });
-  v.label('Round ' + s.rd, W / 2, 48, 13, '#5a3b22');
-  if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Both splatted! Again' : s.rw === v.me ? 'You win the round!' : v.names[s.rw] + ' wins the round!', 100, 32, '#7a4a1f', 1);
-  const mine = s.c[v.me], them = s.c[1 - v.me];
+  v.label('Round ' + s.rd + (s.n ? '  ·  Blue ' + '💩'.repeat(s.w[0]) + ' – ' + '💩'.repeat(s.w[1]) + ' Orange' : ''), W / 2, 48, 13, '#5a3b22');
+  if (s.ph === 'pause') v.bigText(s.rw < 0 ? (s.n ? 'Everyone splatted! Again' : 'Both splatted! Again') : v.roundWin(s.rw), 100, 32, '#7a4a1f', 1);
+  const mine = s.c[v.me];
+  let them = s.c[1 - v.me];
+  if (s.n) { let bd = 1e9; s.c.forEach((o, j) => { if (v.teamOf(j) !== v.myTeam && o.hp > 0 && Math.abs(o.x - mine.x) < bd) { bd = Math.abs(o.x - mine.x); them = o; } }); }
+  if (s.n && mine && mine.hp <= 0) { v.msg('You are out this round! Cheer on your teammate'); return; }
   if (mine && s.ph === 'fight') {
     const ready = mine.sp <= 0 ? ' · ★ HOLD Space for your special!' : '';
     if (mine.dz) v.msg('You are dizzy!');

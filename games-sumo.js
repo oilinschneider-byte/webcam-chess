@@ -15,7 +15,7 @@ const SHOVE = 150;                                 // the fastest two cats leani
 const WIN = 3;
 
 CA.games.add('sumo', {
-  name: 'Sumo Cats', icon: '🤼',
+  name: 'Sumo Cats', icon: '🤼', duos: true,
   blurb: 'Lean in and shove the other cat out of the ring! WASD to push, Space to charge (then you need a moment to recover). The ring shrinks as the round goes on. First to 3!',
   start(ctx) {
     CA.duel.run(ctx, {
@@ -30,7 +30,7 @@ CA.games.add('sumo', {
 });
 
 function init(api) {
-  const s = { wins: [0, 0], round: 0, phase: 'fight', pause: 0, t: 0, rw: -1, cats: [] };
+  const s = { n: api.n || 2, wins: [0, 0], round: 0, phase: 'fight', pause: 0, t: 0, rw: -1, cats: [] };
   newRound(s, api);
   return s;
 }
@@ -40,7 +40,9 @@ function newRound(s, api) {
   s.t = 0;
   s.phase = 'fight';
   s.rw = -1;
-  s.cats = [-1, 1].map(side => ({ x: CX + side * 110, y: CY, vx: 0, vy: 0, fx: -side, fy: 0, charge: 0, rec: 0, wait: 0.6, out: false, cm: 0, pw: 0 }));
+  const newCat = (side, dy) => ({ x: CX + side * 110, y: CY + dy, vx: 0, vy: 0, fx: -side, fy: 0, charge: 0, rec: 0, wait: 0.6, out: false, cm: 0, pw: 0 });
+  // (Duos: four cats, a team on each side, one above the other)
+  s.cats = s.n > 2 ? [newCat(-1, -62), newCat(-1, 62), newCat(1, -62), newCat(1, 62)] : [-1, 1].map(side => newCat(side, 0));
   if (api) api.note('Round ' + s.round + ' · first to ' + WIN);
 }
 
@@ -55,7 +57,8 @@ function step(s, inp, dt, api) {
   }
   s.t += dt;
   s.cats.forEach((c, i) => {
-    const n = inp[i], o = s.cats[1 - i];
+    const n = inp[i], o = s.n > 2 ? nearFoe(s, i, api) : s.cats[1 - i];
+    if (c.out) { c.x += c.vx * dt; c.y += c.vy * dt; c.vx *= 0.9; c.vy *= 0.9; return; } // (Duos: pushed out, waiting for the next round)
     c.wait = Math.max(0, c.wait - dt);
     c.rec = Math.max(0, c.rec - dt);
     if (n.mx || n.my) { const l = Math.hypot(n.mx, n.my); c.fx = n.mx / l; c.fy = n.my / l; }
@@ -94,23 +97,9 @@ function step(s, inp, dt, api) {
   // Touching: no bouncing. They lean on each other, and along the line between them both move at the same speed, so
   // whoever pushes harder slowly drives the other back (and pushing against each other is a standoff). A charge
   // that lands gives a small shove on top.
-  const [a, b] = s.cats;
-  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
-  if (d < R * 2) {
-    const nx = dx / d, ny = dy / d, push = (R * 2 - d) / 2;
-    a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
-    const va = a.vx * nx + a.vy * ny, vb = b.vx * nx + b.vy * ny;
-    if (va - vb > 0) {
-      const charging = a.charge > 0 || b.charge > 0, by = a.charge > 0 ? 0 : b.charge > 0 ? 1 : -1;
-      const together = charging ? (va + vb) / 2 : Math.max(-SHOVE, Math.min(SHOVE, (va + vb) / 2));
-      a.vx += (together - va) * nx; a.vy += (together - va) * ny;
-      b.vx += (together - vb) * nx; b.vy += (together - vb) * ny;
-      if (a.charge > 0) { const kk = KNOCK * (1 + 1.5 * a.pw); b.vx += nx * kk; b.vy += ny * kk; a.charge = 0; a.rec = RECOVER * (1 + 1.6 * a.pw); }
-      if (b.charge > 0) { const kk = KNOCK * (1 + 1.5 * b.pw); a.vx -= nx * kk; a.vy -= ny * kk; b.charge = 0; b.rec = RECOVER * (1 + 1.6 * b.pw); }
-      if (Math.abs(va - vb) > 260) api.ev('thump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, big: charging ? 1 : 0, by });
-    }
-  }
+  for (let p = 0; p < s.cats.length; p++) for (let q = p + 1; q < s.cats.length; q++) lean(s, p, q, api);
   const rr = ringR(s.t);
+  if (s.n > 2) { duoOut(s, rr, api); return; }
   const out = s.cats.map(c => Math.hypot(c.x - CX, c.y - CY) > rr);
   if (out[0] || out[1]) {
     const w = out[0] && out[1] ? -1 : out[0] ? 1 : 0;
@@ -124,17 +113,63 @@ function step(s, inp, dt, api) {
   }
 }
 
+// The nearest cat of the other team still in the ring (Duos).
+function nearFoe(s, i, api) {
+  const c = s.cats[i];
+  let best = null, bd = 1e9;
+  s.cats.forEach((o, j) => { if (j !== i && !o.out && api.team(j) !== api.team(i)) { const d = Math.hypot(o.x - c.x, o.y - c.y); if (d < bd) { bd = d; best = o; } } });
+  return best || s.cats.find((o, j) => api.team(j) !== api.team(i));
+}
+
+// (Duos) Cats pushed out are out for the round; when a whole team is out, the other team wins it.
+function duoOut(s, rr, api) {
+  s.cats.forEach((c, i) => { if (!c.out && Math.hypot(c.x - CX, c.y - CY) > rr) { c.out = true; c.charge = 0; c.cm = 0; api.ev('out', { x: c.x, y: c.y, i }); } });
+  const left = [0, 1].map(t => s.cats.filter((c, i) => api.team(i) === t && !c.out).length);
+  if (left[0] && left[1]) return;
+  const w = !left[0] && !left[1] ? -1 : left[0] ? 0 : 1;
+  if (w >= 0) s.wins[w]++;
+  api.score(s.wins[0], s.wins[1]);
+  s.rw = w;
+  if (s.wins[0] >= WIN || s.wins[1] >= WIN) { api.end(s.wins[0] >= WIN ? 0 : 1, 'YOKOZUNA!'); return; }
+  s.phase = 'pause';
+  s.pause = 1.7;
+}
+
+// Two cats touching: no bouncing. They lean on each other, and along the line between them both move at the same speed,
+// so whoever pushes harder slowly drives the other back (and pushing against each other is a standoff). A charge that
+// lands gives a small shove on top.
+function lean(s, p, q, api) {
+  const a = s.cats[p], b = s.cats[q];
+  if (a.out || b.out) return;
+  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+  if (d < R * 2) {
+    const nx = dx / d, ny = dy / d, push = (R * 2 - d) / 2;
+    a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+    const va = a.vx * nx + a.vy * ny, vb = b.vx * nx + b.vy * ny;
+    if (va - vb > 0) {
+      const charging = a.charge > 0 || b.charge > 0, by = a.charge > 0 ? 0 : b.charge > 0 ? 1 : -1;
+      const together = charging ? (va + vb) / 2 : Math.max(-SHOVE, Math.min(SHOVE, (va + vb) / 2));
+      a.vx += (together - va) * nx; a.vy += (together - va) * ny;
+      b.vx += (together - vb) * nx; b.vy += (together - vb) * ny;
+      if (a.charge > 0) { const kk = KNOCK * (1 + 1.5 * a.pw); b.vx += nx * kk; b.vy += ny * kk; a.charge = 0; a.rec = RECOVER * (1 + 1.6 * a.pw); }
+      if (b.charge > 0) { const kk = KNOCK * (1 + 1.5 * b.pw); a.vx -= nx * kk; a.vy -= ny * kk; b.charge = 0; b.rec = RECOVER * (1 + 1.6 * b.pw); }
+      if (Math.abs(va - vb) > 260) api.ev('thump', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, big: charging ? 1 : 0, by: by < 0 ? -1 : by ? q : p, to: by < 0 ? -1 : by ? p : q });
+    }
+  }
+}
+
 function snap(s) {
   return {
     w: s.wins, rd: s.round, ph: s.phase, rw: s.rw, rr: Math.round(ringR(s.t) * 10) / 10,
-    c: s.cats.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), f: c.fx >= 0 ? 1 : -1, ch: c.charge > 0 ? 1 : 0, rc: c.rec > 0 ? 1 : 0, cm: Math.round((c.cm || 0) * 20) / 20 })),
+    c: s.cats.map(c => { const o = { x: Math.round(c.x), y: Math.round(c.y), f: c.fx >= 0 ? 1 : -1, ch: c.charge > 0 ? 1 : 0, rc: c.rec > 0 ? 1 : 0, cm: Math.round((c.cm || 0) * 20) / 20 }; if (s.n > 2) o.o = c.out ? 1 : 0; return o; }),
   };
 }
 
 function bot(s, i, dt, api) {
-  const c = s.cats[i], o = s.cats[1 - i];
-  const st = s.bs || (s.bs = { think: 0, mx: 0, my: 0, go: false, side: 1 });
-  if (s.phase !== 'fight') return { hit: {} };
+  const c = s.cats[i], o = s.n > 2 ? nearFoe(s, i, api) : s.cats[1 - i];
+  const fresh = () => ({ think: 0, mx: 0, my: 0, go: false, side: 1 });
+  const st = s.n > 2 ? ((s.bss || (s.bss = {}))[i] || (s.bss[i] = fresh())) : s.bs || (s.bs = fresh());
+  if (s.phase !== 'fight' || c.out) return { hit: {} };
   st.think -= dt;
   if (st.think <= 0) {
     st.think = 0.08 + (1 - api.skill) * 0.25;
@@ -163,7 +198,7 @@ function event(v, e) {
   if (e.type === 'thump') {
     v.burst(e.x, e.y, '#fff3b0', e.big ? 16 : 8, 260); v.shake(e.big ? 10 : 4); v.sound([[150, 0, 0.08], [100, 0.05, 0.12]]);
     if (e.big) v.pop(e.x, e.y - 60, 'OOF!');
-    if (e.by >= 0) { v.mood(1 - e.by, 'shock', 0.7); v.mood(e.by, 'smug', 0.7); } // (a charge that landed)
+    if (e.by >= 0) { v.mood(e.to >= 0 ? e.to : 1 - e.by, 'shock', 0.7); v.mood(e.by, 'smug', 0.7); } // (a charge that landed)
   }
   if (e.type === 'charge') v.sound([[520, 0, 0.05], [360, 0.04, 0.08]]);
   if (e.type === 'out') { v.burst(e.x, e.y, '#e8c99a', 22, 300); v.pop(e.x, e.y - 50, 'OUT!', '#ff5a5a'); v.sound('boom'); v.shake(12); }
@@ -187,7 +222,7 @@ function drawSumo(v, i, c, o, pushing) {
     for (const dy of [-70, -50, -30]) { g.moveTo(c.x - f * 40, feet + dy); g.lineTo(c.x - f * 78, feet + dy); }
     g.stroke();
   }
-  const face = wind || c.ch ? 'angry' : c.rc ? 'dizzy' : pushing ? 'squint' : undefined;
+  const face = c.o ? 'ko' : wind || c.ch ? 'angry' : c.rc ? 'dizzy' : pushing ? 'squint' : undefined;
   // (each cat stands a little back from its spot, so when two are touching, their paws meet in the middle)
   const x = c.x - f * 19 + shakeX, tilt = f * lean + (c.rc ? Math.sin(v.now / 60) * 0.12 : 0);
   // (shoulders, turned with the lean)
@@ -243,10 +278,13 @@ function draw(v, s) {
   g.beginPath(); g.arc(CX, CY, s.rr, 0, Math.PI * 2); g.stroke();
   g.setLineDash([]);
   if (s.rr < RING0 - 1) { g.strokeStyle = 'rgba(255, 80, 80, .5)'; g.lineWidth = 2; g.beginPath(); g.arc(CX, CY, s.rr + 9, 0, Math.PI * 2); g.stroke(); }
-  const pushing = Math.hypot(s.c[0].x - s.c[1].x, s.c[0].y - s.c[1].y) < R * 2 + 8; // (leaning on each other)
-  [0, 1].sort((a, b) => s.c[a].y - s.c[b].y).forEach(i => { // (the one nearer the front is drawn last)
+  const n = s.c.length;
+  // (leaning on another cat; and each cat faces the nearest cat of the other team)
+  const touching = i => s.c.some((o, j) => j !== i && !o.o && !s.c[i].o && Math.hypot(s.c[i].x - o.x, s.c[i].y - o.y) < R * 2 + 8);
+  const facing = i => { let best = null, bd = 1e9; s.c.forEach((o, j) => { if (j !== i && (n === 2 || (v.teamOf(j) !== v.teamOf(i) && !o.o))) { const d = Math.hypot(o.x - s.c[i].x, o.y - s.c[i].y); if (d < bd) { bd = d; best = o; } } }); return best || s.c[n === 2 ? 1 - i : (i + 2) % 4]; };
+  s.c.map((c, i) => i).sort((a, b) => s.c[a].y - s.c[b].y).forEach(i => { // (the one nearer the front is drawn last)
     const c = s.c[i];
-    drawSumo(v, i, c, s.c[1 - i], pushing);
+    drawSumo(v, i, c, facing(i), touching(i));
     v.label(i === v.me ? 'You' : v.names[i], c.x, c.y + 50, 12, i === v.me ? '#ffd23f' : '#ffffff');
     if (c.cm > 0) { // the charge meter
       g.fillStyle = 'rgba(0, 0, 0, .6)';
@@ -255,9 +293,14 @@ function draw(v, s) {
       v.roundRect(c.x - 25, c.y - 111, Math.max(3, 50 * c.cm), 7, 3.5); g.fill();
     }
   });
-  v.label('🤼 ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd, W / 2, 24, 16, '#ffffff');
-  if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Both out! Again' : s.rw === v.me ? 'You win the round!' : v.names[s.rw] + ' wins the round!', 96, 34, '#ffd23f', 1);
-  else if (s.rr < RING0 - 1) v.label('The ring is shrinking!', W / 2, H - 18, 14, '#ff9a9a');
+  if (v.duo) {
+    v.label('🤼 Blue ' + s.w[0] + ' – ' + s.w[1] + ' Orange  ·  Round ' + s.rd, W / 2, 24, 16, '#ffffff');
+    if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Everyone out! Again' : s.rw === v.myTeam ? 'Your team wins the round!' : (s.rw ? 'Orange' : 'Blue') + ' wins the round!', 96, 34, '#ffd23f', 1);
+  } else {
+    v.label('🤼 ' + v.names[0] + ' ' + s.w[0] + ' – ' + s.w[1] + ' ' + v.names[1] + '  ·  Round ' + s.rd, W / 2, 24, 16, '#ffffff');
+    if (s.ph === 'pause') v.bigText(s.rw < 0 ? 'Both out! Again' : s.rw === v.me ? 'You win the round!' : v.names[s.rw] + ' wins the round!', 96, 34, '#ffd23f', 1);
+  }
+  if (s.ph !== 'pause' && s.rr < RING0 - 1) v.label('The ring is shrinking!', W / 2, H - 18, 14, '#ff9a9a');
 }
 
 })();
