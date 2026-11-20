@@ -1290,7 +1290,8 @@ end $$;
 -- the server puts them together in random teams: seats 0 and 1 are the blue team, 2 and 3 the orange team, and seat 0
 -- (the player whose poll made the match) runs the games. The other three collect the match on their next poll and
 -- connect to seat 0. Duos games are just for fun: they never change streaks or fish. (Nothing here touches the 1 vs 1
--- queue above.)
+-- queue above.) Only two or three looking? After FILL seconds of nobody else turning up, they play anyway, with bots
+-- in the empty seats (an empty seat is null): two players always go on opposite teams, each with a bot teammate.
 create table if not exists camarcade.duo_queue (
   player_id bigint primary key references camarcade.players on delete cascade,
   peer_id text not null,
@@ -1321,6 +1322,10 @@ declare
 begin
   select * into m from camarcade.duo_matches where id = p_match;
   for k in 1..4 loop
+    if m.players[k] is null then -- (a bot's seat: seat 0's app plays it)
+      ps := ps || jsonb_build_array(jsonb_build_object('seat', k - 1, 'bot', true));
+      continue;
+    end if;
     select * into o from camarcade.players where id = m.players[k];
     ps := ps || jsonb_build_array(jsonb_build_object('seat', k - 1, 'id', o.id, 'name', o.name, 'peer', m.peers[k]));
   end loop;
@@ -1338,6 +1343,13 @@ declare
   adults boolean;
   ids bigint[];
   pids text[];
+  fill constant int := 8;      -- (seconds before two or three players start with bots)
+  n int;
+  waited numeric;
+  seat_p bigint[] := array[p_me, null, null, null]::bigint[];
+  seat_k text[] := array[p_peer, null, null, null]::text[];
+  free int[];
+  k int;
 begin
   select * into me from camarcade.players where id = p_me;
   if me.banned_until > now() then
@@ -1383,17 +1395,27 @@ begin
     adults := adults and q.adult;
   end loop;
 
-  if coalesce(array_length(picks, 1), 0) < 3 then
-    return jsonb_build_object('waiting', true, 'looking', 1 + (select count(*) from camarcade.duo_queue d
-                                                                   where d.player_id <> p_me and d.match_id is null and d.seen_at > now() - interval '8 seconds'),
+  n := coalesce(array_length(picks, 1), 0);
+  -- (how long the one who's waited longest of us has been looking)
+  waited := extract(epoch from now() - least(mine.joined_at, coalesce((select min(d.joined_at) from camarcade.duo_queue d where d.player_id = any(picks)), mine.joined_at)));
+  if n < 3 and (n = 0 or waited < fill) then
+    return jsonb_build_object('waiting', true, 'looking', 1 + n,
+      'fill_in', case when n > 0 then greatest(0, ceil(fill - waited)) else null end,
       'online', (select count(*) from camarcade.players where last_seen > now() - interval '2 minutes'));
   end if;
 
-  -- Random seats for the other three (so random teams); we're seat 0.
+  -- Random seats for the others (so random teams); we're seat 0. With one other player, they go on the other team
+  -- (seat 2 or 3); with two, one of seats 1 to 3 is left for a bot.
   select array_agg(x.player_id order by x.r), array_agg(x.peer_id order by x.r) into ids, pids
   from (select d.player_id, d.peer_id, random() as r from camarcade.duo_queue d where d.player_id = any(picks)) x;
+  free := case n when 3 then array[2, 3, 4] when 2 then (select array_agg(s order by random()) from unnest(array[2, 3, 4]) s)
+                 else (select array_agg(s order by random()) from unnest(array[3, 4]) s) end;
+  for k in 1..n loop
+    seat_p[free[k]] := ids[k];
+    seat_k[free[k]] := pids[k];
+  end loop;
   insert into camarcade.duo_matches (players, peers, cats_only)
-  values (array[p_me] || ids, array[p_peer] || pids, not adults)
+  values (seat_p, seat_k, not adults)
   returning * into m;
   update camarcade.duo_queue set match_id = m.id where player_id = any(ids);
   delete from camarcade.duo_queue where player_id = p_me;

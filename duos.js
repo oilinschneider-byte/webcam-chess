@@ -201,7 +201,7 @@ async function startSearch() {
       if (r && r.match) { startMatch(r.match, myGen); return; }
       if (r && r.waiting) {
         const t = $('duoSearchTitle'), sub = $('duoSearchSub');
-        if (t) t.textContent = r.looking > 1 ? r.looking + ' of 4 players found…' : 'Looking for 3 more players…';
+        if (t) t.textContent = r.looking > 1 ? r.looking + ' of 4 players found…' + (r.fill_in != null ? ' Starting with bots in ' + r.fill_in + 's' : '') : 'Looking for 3 more players…';
         if (sub && r.online) sub.textContent = '🟢 ' + r.online + ' online now · teams are picked at random';
       }
     } catch (err) {
@@ -224,10 +224,13 @@ function onPeerError(p, err) {
 function startMatch(m, myGen) {
   state = 'connecting';
   match = { id: m.id, seat: m.seat, host: m.seat === 0, catsOnly: !!m.cats_only, players: m.players, conns: {}, hostConn: null, myGen, live: false, bots: false };
-  seats = m.players.map(p => ({ name: p.name, equip: null, me: p.seat === m.seat, peer: p.peer, stream: null }));
+  // (an empty seat is a bot: the host's app plays it)
+  const botNames = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+  seats = m.players.map(p => (p.bot ? { name: botNames[p.seat], equip: BOT_EQUIP[p.seat], bot: true, ready: true } : { name: p.name, equip: null, me: p.seat === m.seat, peer: p.peer, stream: null }));
   seats[m.seat].equip = CA.profile.equip;
   drawCams();
-  showSearching('Found 3 players! Connecting…', 'Your team: ' + TEAM[teamOf(m.seat)].name + ', with ' + (seats[mateOf(m.seat)].name || 'a teammate'));
+  const people = m.players.filter(p => !p.bot).length;
+  showSearching(people === 4 ? 'Found 3 players! Connecting…' : 'Found ' + (people - 1) + ' player' + (people > 2 ? 's' : '') + '! Bots fill the rest. Connecting…', 'Your team: ' + TEAM[teamOf(m.seat)].name + ', with ' + (seats[mateOf(m.seat)].name || 'a teammate'));
   match.timer = setTimeout(() => connectFailed('timeout'), CONNECT_MS);
   if (!match.host) {
     const host = m.players[0].peer;
@@ -288,7 +291,7 @@ function onGuestMsg(seat, msg) {
     if (typeof msg.name === 'string') seats[seat].name = msg.name.slice(0, 24);
     seats[seat].ready = true;
     drawCams();
-    if ([1, 2, 3].every(s => seats[s].ready)) beginMatch();
+    if ([1, 2, 3].every(s => seats[s].ready || seats[s].bot)) beginMatch();
   } else if (msg.t === 'in' && run && run.input) run.input(seat, msg);
   else if (msg.t === 'rg' && run && run.deliver) run.deliver(msg.m, seat, msg.a);
 }
@@ -359,7 +362,7 @@ function callEveryone() {
   const stream = CA.voice.outgoing();
   if (!stream) return;
   match.players.forEach(p => {
-    if (p.seat === match.seat) return;
+    if (p.seat === match.seat || p.bot || !p.peer) return;
     const call = peer.call(p.peer, stream, { metadata: { seat: match.seat } });
     if (!call) return;
     outCalls[p.seat] = call;
@@ -389,10 +392,13 @@ window.addEventListener('ca:media', () => {
 
 /* ---------- playing with bots ---------- */
 
+const BOT_NAMES = ['Mochi', 'Biscuit', 'Pickle', 'Noodle', 'Waffles', 'Pepper', 'Tofu', 'Nugget'];
+const BOT_EQUIP = [null, { skin: 'skin-gray' }, { skin: 'skin-midnight' }, { skin: 'skin-cream' }];
+
 function startBots() {
   stopAll('bots');
-  const names = ['Mochi', 'Biscuit', 'Pickle', 'Noodle', 'Waffles', 'Pepper', 'Tofu', 'Nugget'].sort(() => Math.random() - 0.5);
-  const eqs = [null, { skin: 'skin-gray' }, { skin: 'skin-midnight' }, { skin: 'skin-cream' }];
+  const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+  const eqs = BOT_EQUIP;
   match = { id: 0, seat: 0, host: true, catsOnly: false, players: [0, 1, 2, 3].map(s => ({ seat: s })), conns: {}, live: true, bots: true };
   seats = [0, 1, 2, 3].map(s => (s === 0 ? { name: CA.profile.name, equip: CA.profile.equip, me: true } : { name: names[s], equip: eqs[s], bot: true }));
   state = 'playing';
@@ -813,7 +819,7 @@ CA.register('duos', {
 addEventListener('beforeunload', () => { if (state === 'searching' && CA.token) CA.server.call('ca_duo_leave', { p_token: CA.token }, { keepalive: true }).catch(() => {}); });
 
 // (For the tests: four browsers in one match without the server, each with a PeerJS id made from tag and seat.)
-async function testMatch(seat, tag) {
+async function testMatch(seat, tag, bots) {
   if (!window.__testHooks) return;
   stopAll('test');
   const myGen = ++gen;
@@ -822,7 +828,7 @@ async function testMatch(seat, tag) {
   peer.on('connection', c => onIncoming(c));
   peer.on('call', call => onCall(call));
   if (seat) await sleep(2500); // (the host first)
-  startMatch({ id: 0, seat, cats_only: true, players: [0, 1, 2, 3].map(s => ({ seat: s, id: s, name: 'Player ' + (s + 1), peer: PEER_PREFIX + tag + s })) }, myGen);
+  startMatch({ id: 0, seat, cats_only: true, players: [0, 1, 2, 3].map(s => ((bots || []).includes(s) ? { seat: s, bot: true } : { seat: s, id: s, name: 'Player ' + (s + 1), peer: PEER_PREFIX + tag + s })) }, myGen);
 }
 
 CA.duos = { add, GAMES, ORDER, TEAM, teamOf, mateOf, W, H, clamp, testMatch, get state() { return state; } };

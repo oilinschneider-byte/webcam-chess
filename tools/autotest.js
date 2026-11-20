@@ -306,7 +306,7 @@ async function main() {
         window.__testHooks = true;
         const seat = Number(q.get('seat')), tag = q.get('duonet');
         window.__duoGame = q.get('duogame') || 'sumo2';
-        CA.duos.testMatch(seat, tag).catch(e => log('duos net: peer', false, String(e)));
+        CA.duos.testMatch(seat, tag, (q.get('duobots') || '').split(',').filter(Boolean).map(Number)).catch(e => log('duos net: peer', false, String(e)));
         await until(() => CA.duos.state === 'playing', 40000, 'the match').catch(() => {});
         await check('duos net: seat ' + seat + ' is in the match', CA.duos.state === 'playing', CA.duos.state);
         await until(() => window.__duo && window.__duo.phase() === 'play', 20000, 'play').catch(() => {});
