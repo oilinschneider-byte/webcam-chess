@@ -288,10 +288,24 @@ async function main() {
         for (let k = 0; k <= top; k++) { clearTimeout(k); clearInterval(k); } // (nothing moves on after this)
       }
       if (q.get('duo') && CA.route === 'perm') { $('permSkip').click(); await sleep(1500); location.hash = '#/duos'; await sleep(1500); }
+      if (q.get('duofind')) { // (four browsers press Find a Duos match on the real server)
+        window.__testHooks = true;
+        if (CA.route === 'perm') { $('permSkip').click(); await sleep(1500); }
+        location.hash = '#/duos'; await sleep(1500);
+        $('duoFind').click();
+        await until(() => CA.duos.state === 'playing', 90000, 'a Duos match').catch(() => {});
+        await check('duos online: found a match and connected', CA.duos.state === 'playing', CA.duos.state);
+        await until(() => window.__duo && window.__duo.phase() === 'play', 20000, 'play').catch(() => {});
+        await sleep(2000);
+        const sn = window.__duo && window.__duo.snap();
+        await log('duos online: playing', !!sn, { game: window.__duo && window.__duo.id, seat: window.__duo && window.__duo.seats.findIndex(p => p.me), names: window.__duo && window.__duo.seats.map(p => p.name) });
+        await sleep(3000);
+        await log('done', true);
+      }
       if (q.get('duonet')) { // (four browsers in one Duos match, connected straight to each other: see testMatch in duos.js)
         window.__testHooks = true;
         const seat = Number(q.get('seat')), tag = q.get('duonet');
-        window.__duoGame = 'sumo2';
+        window.__duoGame = q.get('duogame') || 'sumo2';
         CA.duos.testMatch(seat, tag).catch(e => log('duos net: peer', false, String(e)));
         await until(() => CA.duos.state === 'playing', 40000, 'the match').catch(() => {});
         await check('duos net: seat ' + seat + ' is in the match', CA.duos.state === 'playing', CA.duos.state);

@@ -636,10 +636,22 @@ function makeRun(def, id, seed) {
       g.restore();
       if (o.label !== false) paint.label(seat === me ? 'You' : view.names[seat], x, y + 31 * k + 2, 12, seat === me ? '#ffd23f' : col.light);
     },
+    // A cat seen from the side, standing with its feet at (x, y), with a mark in its team's color under it and its name above.
+    catSide(seat, x, y, size, o) {
+      o = o || {};
+      const k = size || 1, col = TEAM[teamOf(seat)];
+      g.globalAlpha = 0.45 * (o.alpha == null ? 1 : o.alpha); g.fillStyle = col.main;
+      g.beginPath(); g.ellipse(x, y + 2, 30 * k, 7 * k, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+      g.save(); g.translate(x, y); g.scale(k, k);
+      F().drawBody(g, looks[seat], 0, 0, { tilt: o.tilt || 0, lookRight: o.lookRight !== false, alpha: o.alpha == null ? 1 : o.alpha, squash: o.squash || 0, face: view.faceOf(seat, o.face), bob: o.bob });
+      g.restore();
+      if (o.label !== false) paint.label(seat === me ? 'You' : view.names[seat], x, y - 104 * k, 12, seat === me ? '#ffd23f' : col.light);
+    },
     pop(x, y, text, color) { fx.push({ k: 'pop', x, y, text, c: color || '#ffffff', life: 1, max: 1 }); },
     burst(x, y, color, n, speed) { for (let q = 0; q < (n || 10); q++) { const a = Math.random() * Math.PI * 2, sp = (speed || 200) * (0.4 + Math.random() * 0.6); fx.push({ k: 'bit', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, c: color, life: 0.5, max: 0.5 }); } },
     ring(x, y, color, r) { fx.push({ k: 'ring', x, y, c: color, r: r || 20, life: 0.4, max: 0.4 }); },
     shake(n) { shake = Math.max(shake, n); },
+    fur: seat => looks[seat].fur,
     sound, party,
   };
 
